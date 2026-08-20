@@ -406,6 +406,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <Grid Grid.Row="0" Margin="0,0,0,28">
@@ -473,6 +474,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="⌕" FontSize="16" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
                             <TextBox Grid.Column="1"
@@ -483,10 +485,54 @@
                                      Padding="8,7"
                                      Margin="0"
                                      Foreground="{DynamicResource TextBrush}" />
+                            <Button Grid.Column="2"
+                                    Content="×"
+                                    Command="{Binding ClearProfileSearchCommand}"
+                                    ToolTip="Xóa tìm kiếm"
+                                    FontSize="15">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Setter Property="Width" Value="26" />
+                                        <Setter Property="Height" Value="26" />
+                                        <Setter Property="MinWidth" Value="0" />
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="Margin" Value="3,0,0,0" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="BorderBrush" Value="Transparent" />
+                                        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CanClearProfileSearch}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                         </Grid>
                     </Border>
 
-                    <ListBox Grid.Row="4" x:Name="ProfileList"
+                    <StackPanel Grid.Row="4" Style="{StaticResource SidebarPanelStyle}" Margin="0,0,0,10">
+                        <Button Content="{Binding ProfileAddButtonText}"
+                                Command="{Binding AddProfileCommand}"
+                                HorizontalContentAlignment="Left"
+                                Padding="10,7">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource UtilityButtonStyle}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CanAddProfile}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+
+                    <ListBox Grid.Row="5" x:Name="ProfileList"
                              ItemsSource="{Binding FilteredProfileRows}"
                              SelectedValue="{Binding SelectedProfile, Mode=TwoWay}"
                              SelectedValuePath="Profile"

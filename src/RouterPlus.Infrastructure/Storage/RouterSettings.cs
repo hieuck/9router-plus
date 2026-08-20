@@ -1,3 +1,5 @@
+using RouterPlus.Core.Chrome;
+
 namespace RouterPlus.Infrastructure.Storage;
 
 public sealed record RouterSettings(
@@ -5,4 +7,5 @@ public sealed record RouterSettings(
     string? ChromeExecutablePath = null,
     string? ChromeUserDataDirectory = null,
     double FontScale = 1d,
-    bool UseLightTheme = false);
+    bool UseLightTheme = false,
+    IReadOnlyList<ManagedChromeProfile>? ManagedProfiles = null);

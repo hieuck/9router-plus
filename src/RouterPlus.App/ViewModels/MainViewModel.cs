@@ -18,8 +18,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private const int MaxLogEntries = 200;
     private readonly ChromeLocator _chromeLocator = new();
     private readonly ChromeProfileReader _profileReader = new();
+    private readonly ChromeProfileProvisioner _profileProvisioner;
     private readonly ChromeLauncher _chromeLauncher = new();
-    private readonly SettingsStore _settingsStore = new();
+    private readonly SettingsStore _settingsStore;
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private ChromeInstallation? _installation;
@@ -27,6 +28,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private HashSet<string> _workflowExistingIds = new(StringComparer.Ordinal);
     private ProviderKind? _currentWorkflowProvider;
     private bool _workflowInProgress;
+    private readonly List<ManagedChromeProfile> _managedProfiles = new();
     private ChromeProfile? _selectedProfile;
     private ProviderKind _selectedApiKeyProvider = ProviderKind.OpenRouter;
     private int _apiKeyLoadVersion;
@@ -48,18 +50,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly Queue<string> _logEntries = new();
     private string _logText = "Chưa có log.";
 
-    public MainViewModel()
+    public MainViewModel(
+        SettingsStore? settingsStore = null,
+        ChromeProfileProvisioner? profileProvisioner = null)
     {
+        _settingsStore = settingsStore ?? new SettingsStore();
+        _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
         Profiles = new ObservableCollection<ChromeProfile>();
         FilteredProfiles = new ObservableCollection<ChromeProfile>();
         ProfileRows = new ObservableCollection<ProfileRowViewModel>();
         FilteredProfileRows = new ObservableCollection<ProfileRowViewModel>();
+        Profiles.CollectionChanged += Profiles_CollectionChanged;
         Providers = ProviderCatalog.All;
         ProviderCards = Providers.Select(definition => new ProviderCardViewModel(definition)).ToArray();
         ApiKeyProviders = Providers.Where(provider => provider.Workflow == WorkflowKind.ApiKey).ToArray();
         RefreshCommand = new AsyncRelayCommand(InitializeAsync);
         RefreshConnectionStatusesCommand = new AsyncRelayCommand(RefreshConnectionStatusesAsync);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, CanSaveSettings);
+        AddProfileCommand = new AsyncRelayCommand(AddProfileAsync, () => CanAddProfile);
+        ClearProfileSearchCommand = new AsyncRelayCommand(ClearProfileSearchAsync, () => CanClearProfileSearch);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         OpenProviderCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderAsync);
         OpenProviderDashboardCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderDashboardAsync, _ => SelectedProfile is not null);
@@ -137,9 +146,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             _profileSearchText = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanAddProfile));
+            OnPropertyChanged(nameof(ProfileAddButtonText));
+            OnPropertyChanged(nameof(CanClearProfileSearch));
+            AddProfileCommand.RaiseCanExecuteChanged();
+            ClearProfileSearchCommand.RaiseCanExecuteChanged();
             ApplyProfileFilter();
         }
     }
+
+    public bool CanAddProfile =>
+        !string.IsNullOrWhiteSpace(ProfileSearchText.Trim()) &&
+        !Profiles.Any(profile => string.Equals(
+            profile.Name.Trim(),
+            ProfileSearchText.Trim(),
+            StringComparison.OrdinalIgnoreCase));
+
+    public string ProfileAddButtonText => string.IsNullOrWhiteSpace(ProfileSearchText.Trim())
+        ? "Thêm profile"
+        : $"Thêm profile \"{ProfileSearchText.Trim()}\"";
+
+    public bool CanClearProfileSearch => !string.IsNullOrEmpty(ProfileSearchText);
 
     public bool IsSettingsExpanded
     {
@@ -337,6 +364,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand SaveSettingsCommand { get; }
 
+    public AsyncRelayCommand AddProfileCommand { get; }
+
+    public AsyncRelayCommand ClearProfileSearchCommand { get; }
+
     public AsyncRelayCommand LaunchSelectedCommand { get; }
 
     public AsyncRelayCommand<ProviderKind> OpenProviderCommand { get; }
@@ -359,6 +390,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ChromeUserDataDirectory = settings.ChromeUserDataDirectory ?? string.Empty;
             FontScale = settings.FontScale;
             UseLightTheme = settings.UseLightTheme;
+            _managedProfiles.Clear();
+            _managedProfiles.AddRange(settings.ManagedProfiles ?? []);
             RefreshProfiles();
             MarkSettingsSaved();
             await LoadSelectedProfileApiKeysAsync();
@@ -387,7 +420,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         ChromeExecutablePath = _installation.ExecutablePath;
         ChromeUserDataDirectory = _installation.UserDataDirectory;
-        var profiles = _profileReader.Read(_installation.UserDataDirectory);
+        var profiles = ChromeProfileCatalog.Merge(
+            _profileReader.Read(_installation.UserDataDirectory),
+            _managedProfiles,
+            _installation.UserDataDirectory);
         Profiles.Clear();
         ProfileRows.Clear();
         foreach (var profile in profiles)
@@ -405,6 +441,60 @@ public sealed class MainViewModel : INotifyPropertyChanged
         LaunchSelectedCommand.RaiseCanExecuteChanged();
         OpenProviderDashboardCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
+    }
+
+    public async Task AddProfileAsync()
+    {
+        if (!CanAddProfile)
+        {
+            return;
+        }
+
+        try
+        {
+            _installation = _chromeLocator.Find(
+                string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath,
+                string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory);
+            if (_installation is null)
+            {
+                throw new InvalidOperationException("Không tìm thấy Chrome User Data Directory. Hãy kiểm tra đường dẫn trong Cài đặt.");
+            }
+
+            var createdProfile = _profileProvisioner.Create(
+                _installation.UserDataDirectory,
+                ProfileSearchText,
+                Profiles,
+                _managedProfiles);
+            _managedProfiles.Add(createdProfile);
+            try
+            {
+                await _settingsStore.SaveAsync(BuildSettings());
+            }
+            catch
+            {
+                _managedProfiles.Remove(createdProfile);
+                throw;
+            }
+
+            MarkSettingsSaved();
+            RefreshProfiles();
+            SelectedProfile = Profiles.FirstOrDefault(profile =>
+                string.Equals(profile.Id, ChromeProfile.CreateId(
+                    createdProfile.UserDataDirectory,
+                    createdProfile.DirectoryName),
+                    StringComparison.Ordinal));
+            StatusText = $"Đã thêm profile \"{createdProfile.Name}\" ({createdProfile.DirectoryName}).";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    public Task ClearProfileSearchAsync()
+    {
+        ProfileSearchText = string.Empty;
+        return Task.CompletedTask;
     }
 
     public void MarkLogCopied() => StatusText = "Đã sao chép log vào clipboard.";
@@ -432,6 +522,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 FilteredProfileRows.Add(row);
             }
         }
+    }
+
+    private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(CanAddProfile));
+        OnPropertyChanged(nameof(ProfileAddButtonText));
+        AddProfileCommand.RaiseCanExecuteChanged();
     }
 
     public async Task RefreshConnectionStatusesAsync() =>
@@ -550,12 +647,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         try
         {
-            await _settingsStore.SaveAsync(new RouterSettings(
-                DashboardBaseUrl.Trim(),
-                string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath.Trim(),
-                string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory.Trim(),
-                FontScale,
-                UseLightTheme));
+            await _settingsStore.SaveAsync(BuildSettings());
             RefreshProfiles();
             MarkSettingsSaved();
             await RefreshConnectionStatusesAsync();
@@ -1035,6 +1127,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     private RouterApiClient CreateApiClient() => new(_httpClient, DashboardBaseUrl);
+
+    private RouterSettings BuildSettings() => new(
+        DashboardBaseUrl.Trim(),
+        string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath.Trim(),
+        string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory.Trim(),
+        FontScale,
+        UseLightTheme,
+        _managedProfiles.ToArray());
 
     private void SetError(Exception exception, [CallerMemberName] string? operation = null)
     {

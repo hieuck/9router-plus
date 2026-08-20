@@ -6,6 +6,7 @@ Công cụ Windows hỗ trợ mở Chrome profile và thêm connection vào 9Rou
 
 - Tự tìm `chrome.exe` và Chrome User Data Directory.
 - Đọc danh sách profile từ file `Local State`.
+- Khi tìm kiếm không trùng tên, có thể thêm profile mới; tool tự cấp thư mục `Profile N` và lưu mapping riêng trong settings.
 - Nháy đúp profile để mở dashboard 9Router bằng đúng profile đó.
 - Bảng profile hiển thị trạng thái từng provider bằng badge `✓`/`—` và có nút đồng bộ với 9Router.
 - Nút `Thêm` cho Codex, Kiro và Kimchi; OpenRouter/Ollama có ô API key ngay trong card provider.
