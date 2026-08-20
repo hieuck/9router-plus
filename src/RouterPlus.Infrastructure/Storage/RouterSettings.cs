@@ -8,4 +8,8 @@ public sealed record RouterSettings(
     string? ChromeUserDataDirectory = null,
     double FontScale = 1d,
     bool UseLightTheme = false,
-    IReadOnlyList<ManagedChromeProfile>? ManagedProfiles = null);
+    IReadOnlyList<ManagedChromeProfile>? ManagedProfiles = null,
+    double? WindowLeft = null,
+    double? WindowTop = null,
+    double? WindowWidth = null,
+    double? WindowHeight = null);

@@ -1,9 +1,47 @@
 using RouterPlus.App.ViewModels;
+using RouterPlus.Infrastructure.Storage;
 
 namespace RouterPlus.Core.Tests;
 
 public sealed class MainViewModelSettingsTests
 {
+    [Fact]
+    public async Task SaveWindowPlacement_preserves_unsaved_settings_and_updates_placement()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            var store = new SettingsStore(filePath);
+            await store.SaveAsync(new RouterSettings(DashboardBaseUrl: "http://saved.example"));
+
+            var viewModel = new MainViewModel(store)
+            {
+                DashboardBaseUrl = "http://unsaved.example"
+            };
+
+            await viewModel.SaveWindowPlacementAsync(240d, 130d, 1320d, 840d);
+
+            var settings = await store.LoadAsync();
+            Assert.Equal("http://saved.example", settings.DashboardBaseUrl);
+            Assert.Equal(240d, settings.WindowLeft);
+            Assert.Equal(130d, settings.WindowTop);
+            Assert.Equal(1320d, settings.WindowWidth);
+            Assert.Equal(840d, settings.WindowHeight);
+            Assert.Equal(
+                new MainViewModel.WindowPlacement(240d, 130d, 1320d, 840d),
+                viewModel.SavedWindowPlacement);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
     [Fact]
     public void Settings_start_valid_and_saved()
     {

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,6 +11,9 @@ namespace RouterPlus.App;
 
 public partial class MainWindow : Window
 {
+    private const double MinimumVisibleWindowSize = 64d;
+    private bool _isClosing;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -21,6 +25,59 @@ public partial class MainWindow : Window
     private async void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
         await ViewModel.InitializeAsync();
+        ApplySavedWindowPlacement();
+    }
+
+    private async void Window_OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (_isClosing || WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        _isClosing = true;
+        try
+        {
+            await ViewModel.SaveWindowPlacementAsync(Left, Top, Width, Height);
+        }
+        finally
+        {
+            Close();
+        }
+    }
+
+    private void ApplySavedWindowPlacement()
+    {
+        var placement = ViewModel.SavedWindowPlacement;
+        if (placement is null
+            || placement.Width < MinWidth
+            || placement.Height < MinHeight
+            || !IsPlacementVisible(placement))
+        {
+            return;
+        }
+
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Width = placement.Width;
+        Height = placement.Height;
+        Left = placement.Left;
+        Top = placement.Top;
+    }
+
+    private static bool IsPlacementVisible(MainViewModel.WindowPlacement placement)
+    {
+        var virtualScreen = new Rect(
+            SystemParameters.VirtualScreenLeft,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth,
+            SystemParameters.VirtualScreenHeight);
+        var windowRect = new Rect(placement.Left, placement.Top, placement.Width, placement.Height);
+        var visibleRect = Rect.Intersect(virtualScreen, windowRect);
+
+        return !visibleRect.IsEmpty
+            && visibleRect.Width >= MinimumVisibleWindowSize
+            && visibleRect.Height >= MinimumVisibleWindowSize;
     }
 
     private void ProfileList_OnMouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)

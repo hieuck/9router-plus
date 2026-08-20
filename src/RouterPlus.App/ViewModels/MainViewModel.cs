@@ -46,6 +46,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _savedChromeUserDataDirectory = string.Empty;
     private double _savedFontScale = 1d;
     private bool _savedUseLightTheme;
+    private WindowPlacement? _savedWindowPlacement;
     private string _connectionStatusText = "Chưa đồng bộ trạng thái provider.";
     private string _statusText = "Đang khởi tạo…";
     private readonly Queue<string> _logEntries = new();
@@ -276,6 +277,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         public override string ToString() => Label;
     }
 
+    public sealed record WindowPlacement(double Left, double Top, double Width, double Height);
+
+    public WindowPlacement? SavedWindowPlacement => _savedWindowPlacement;
+
     public ProviderKind SelectedApiKeyProvider
     {
         get => _selectedApiKeyProvider;
@@ -406,6 +411,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ChromeUserDataDirectory = settings.ChromeUserDataDirectory ?? string.Empty;
             FontScale = settings.FontScale;
             UseLightTheme = settings.UseLightTheme;
+            _savedWindowPlacement = TryCreateWindowPlacement(
+                settings.WindowLeft,
+                settings.WindowTop,
+                settings.WindowWidth,
+                settings.WindowHeight);
             _managedProfiles.Clear();
             _managedProfiles.AddRange(settings.ManagedProfiles ?? []);
             RefreshProfiles();
@@ -688,6 +698,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
             MarkSettingsSaved();
             await RefreshConnectionStatusesAsync();
             StatusText = "Đã lưu cài đặt.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    public async Task SaveWindowPlacementAsync(double left, double top, double width, double height)
+    {
+        if (!IsValidWindowPlacement(left, top, width, height))
+        {
+            return;
+        }
+
+        var placement = new WindowPlacement(left, top, width, height);
+        try
+        {
+            var settings = await _settingsStore.LoadAsync();
+            await _settingsStore.SaveAsync(settings with
+            {
+                WindowLeft = placement.Left,
+                WindowTop = placement.Top,
+                WindowWidth = placement.Width,
+                WindowHeight = placement.Height
+            });
+            _savedWindowPlacement = placement;
         }
         catch (Exception exception)
         {
@@ -1281,13 +1317,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return string.Equals(leftPath, rightPath, StringComparison.OrdinalIgnoreCase);
     }
 
-    private RouterSettings BuildSettings() => new(
+    private RouterSettings BuildSettings(WindowPlacement? windowPlacement = null)
+    {
+        var placement = windowPlacement ?? _savedWindowPlacement;
+        return new(
         DashboardBaseUrl.Trim(),
         string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath.Trim(),
         string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory.Trim(),
         FontScale,
         UseLightTheme,
-        _managedProfiles.ToArray());
+        _managedProfiles.ToArray(),
+        placement?.Left,
+        placement?.Top,
+        placement?.Width,
+        placement?.Height);
+    }
+
+    private static WindowPlacement? TryCreateWindowPlacement(
+        double? left,
+        double? top,
+        double? width,
+        double? height) =>
+        left is { } leftValue
+        && top is { } topValue
+        && width is { } widthValue
+        && height is { } heightValue
+        && IsValidWindowPlacement(leftValue, topValue, widthValue, heightValue)
+            ? new WindowPlacement(leftValue, topValue, widthValue, heightValue)
+            : null;
+
+    private static bool IsValidWindowPlacement(double left, double top, double width, double height) =>
+        double.IsFinite(left)
+        && double.IsFinite(top)
+        && double.IsFinite(width)
+        && double.IsFinite(height)
+        && width > 0d
+        && height > 0d;
 
     private void SetError(Exception exception, [CallerMemberName] string? operation = null)
     {

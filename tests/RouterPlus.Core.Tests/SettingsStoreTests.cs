@@ -5,6 +5,38 @@ namespace RouterPlus.Core.Tests;
 public sealed class SettingsStoreTests
 {
     [Fact]
+    public async Task SaveAndLoad_preserves_window_placement()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            var settings = new RouterSettings(
+                WindowLeft: 120d,
+                WindowTop: 80d,
+                WindowWidth: 1320d,
+                WindowHeight: 840d);
+
+            var store = new SettingsStore(filePath);
+            await store.SaveAsync(settings);
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(settings.WindowLeft, loaded.WindowLeft);
+            Assert.Equal(settings.WindowTop, loaded.WindowTop);
+            Assert.Equal(settings.WindowWidth, loaded.WindowWidth);
+            Assert.Equal(settings.WindowHeight, loaded.WindowHeight);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task SaveAndLoad_preserves_managed_profile_metadata()
     {
         var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
