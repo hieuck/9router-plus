@@ -6,13 +6,12 @@
         Title="9Router Profile Tool"
         Width="1440"
         Height="900"
-        MinWidth="1040"
+        MinWidth="1060"
         MinHeight="720"
         FontFamily="Segoe UI"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource SurfaceBrush}"
         app:FontScaleBehavior.Scale="{Binding FontScale}"
-        SizeChanged="Window_OnSizeChanged"
         Loaded="Window_OnLoaded">
     <Window.Resources>
         <Style x:Key="SidebarTextStyle"

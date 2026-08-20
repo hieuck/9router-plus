@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Threading;
 using RouterPlus.Core.Providers;
 using RouterPlus.App.ViewModels;
 using WpfButton = System.Windows.Controls.Button;
@@ -11,17 +10,8 @@ namespace RouterPlus.App;
 
 public partial class MainWindow : Window
 {
-    private readonly DispatcherTimer _resizeLogTimer;
-    private double _pendingWindowWidth;
-    private double _pendingWindowHeight;
-
     public MainWindow()
     {
-        _resizeLogTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(250)
-        };
-        _resizeLogTimer.Tick += ResizeLogTimer_OnTick;
         InitializeComponent();
         DataContext = new MainViewModel();
     }
@@ -31,20 +21,6 @@ public partial class MainWindow : Window
     private async void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
         await ViewModel.InitializeAsync();
-    }
-
-    private void Window_OnSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        _pendingWindowWidth = e.NewSize.Width;
-        _pendingWindowHeight = e.NewSize.Height;
-        _resizeLogTimer.Stop();
-        _resizeLogTimer.Start();
-    }
-
-    private void ResizeLogTimer_OnTick(object? sender, EventArgs e)
-    {
-        _resizeLogTimer.Stop();
-        ViewModel.LogWindowSize(_pendingWindowWidth, _pendingWindowHeight);
     }
 
     private void ProfileList_OnMouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)

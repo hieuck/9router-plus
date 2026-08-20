@@ -32,16 +32,6 @@ public sealed class MainViewModelDashboardCommandTests
     }
 
     [Fact]
-    public void Window_size_log_records_dimensions()
-    {
-        var viewModel = new MainViewModel();
-
-        viewModel.LogWindowSize(1280, 800);
-
-        Assert.Contains("[UI] Window size: 1280 × 800", viewModel.LogText, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Test_connection_does_not_refresh_the_full_connection_list()
     {
         var handler = new RecordingHandler();
