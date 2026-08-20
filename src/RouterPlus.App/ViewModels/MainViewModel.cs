@@ -23,7 +23,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ChromeLauncher _chromeLauncher = new();
     private readonly SettingsStore _settingsStore;
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient _httpClient;
     private ChromeInstallation? _installation;
     private CancellationTokenSource? _workflowCancellation;
     private HashSet<string> _workflowExistingIds = new(StringComparer.Ordinal);
@@ -54,11 +54,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public MainViewModel(
         SettingsStore? settingsStore = null,
         ChromeProfileProvisioner? profileProvisioner = null,
-        ChromeProfileDeleter? profileDeleter = null)
+        ChromeProfileDeleter? profileDeleter = null,
+        HttpClient? httpClient = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         Profiles = new ObservableCollection<ChromeProfile>();
         FilteredProfiles = new ObservableCollection<ChromeProfile>();
         ProfileRows = new ObservableCollection<ProfileRowViewModel>();
@@ -75,6 +77,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         OpenProviderCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderAsync);
         OpenProviderDashboardCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderDashboardAsync, _ => SelectedProfile is not null);
+        TestConnectionCommand = new AsyncRelayCommand<ProviderKind>(TestConnectionAsync, _ => SelectedProfile is not null);
         OpenQuickLinkCommand = new AsyncRelayCommand<ProviderKind>(OpenQuickLinkAsync);
         CancelWorkflowCommand = new AsyncRelayCommand(CancelWorkflowAsync, () => IsWorkflowInProgress);
         WaitForConnectionCommand = new AsyncRelayCommand(WaitForConnectionAsync, () => !_workflowInProgress && _currentWorkflowProvider is not null && SelectedProfile is not null);
@@ -127,6 +130,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             UpdateProviderCardStatuses();
             LaunchSelectedCommand.RaiseCanExecuteChanged();
             OpenProviderDashboardCommand.RaiseCanExecuteChanged();
+            TestConnectionCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
             _ = LoadSelectedProfileApiKeysAsync();
         }
@@ -384,6 +388,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand<ProviderKind> OpenProviderDashboardCommand { get; }
 
+    public AsyncRelayCommand<ProviderKind> TestConnectionCommand { get; }
+
     public AsyncRelayCommand<ProviderKind> OpenQuickLinkCommand { get; }
 
     public AsyncRelayCommand CancelWorkflowCommand { get; }
@@ -456,6 +462,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         UpdateProviderCardStatuses();
         LaunchSelectedCommand.RaiseCanExecuteChanged();
         OpenProviderDashboardCommand.RaiseCanExecuteChanged();
+        TestConnectionCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
     }
 
@@ -1186,6 +1193,57 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var definition = ProviderCatalog.Get(provider);
             await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
             StatusText = $"Đã mở dashboard {definition.DisplayName} cho profile {SelectedProfile.Name}.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    private async Task TestConnectionAsync(ProviderKind provider)
+    {
+        var profile = SelectedProfile;
+        if (profile is null)
+        {
+            StatusText = "Select a Chrome profile first.";
+            return;
+        }
+
+        try
+        {
+            var definition = ProviderCatalog.Get(provider);
+            var api = CreateApiClient();
+            var matchingConnections = (await api.ListConnectionsAsync(provider))
+                .Where(connection => string.Equals(
+                    connection.Name?.Trim(),
+                    profile.Name.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (matchingConnections.Length == 0)
+            {
+                StatusText = $"No {definition.DisplayName} connection found for profile {profile.Name}.";
+                return;
+            }
+
+            var errors = new List<string>();
+            foreach (var connection in matchingConnections)
+            {
+                var result = await api.TestConnectionAsync(connection.Id);
+                if (!result.Valid)
+                {
+                    errors.Add(string.IsNullOrWhiteSpace(result.Error) ? "invalid" : result.Error.Trim());
+                }
+            }
+
+            if (errors.Count == 0)
+            {
+                StatusText = $"Test connection succeeded for {definition.DisplayName} on profile {profile.Name}.";
+            }
+            else
+            {
+                StatusText = $"Test connection failed for {definition.DisplayName}: {string.Join("; ", errors)}";
+            }
         }
         catch (Exception exception)
         {

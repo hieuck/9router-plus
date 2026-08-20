@@ -11,6 +11,10 @@ public interface IRouterApiClient
         ProviderKind provider,
         CancellationToken cancellationToken = default);
 
+    Task<ProviderConnectionTestResult> TestConnectionAsync(
+        string connectionId,
+        CancellationToken cancellationToken = default);
+
     Task<OAuthAuthorizationSession> StartOAuthAuthorizationAsync(
         ProviderKind provider,
         string redirectUri,

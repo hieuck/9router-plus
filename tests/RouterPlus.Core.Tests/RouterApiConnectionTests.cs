@@ -104,6 +104,37 @@ public sealed class RouterApiConnectionTests
         Assert.Equal("new-key", document.RootElement.GetProperty("apiKey").GetString());
     }
 
+    [Fact]
+    public async Task TestConnection_posts_to_connection_test_endpoint_and_reads_validation_result()
+    {
+        var handler = new RecordingHandler();
+        using var httpClient = new HttpClient(handler);
+        var api = new RouterApiClient(httpClient, "http://localhost:20128");
+
+        var result = await api.TestConnectionAsync("codex-1");
+
+        Assert.Equal(HttpMethod.Post, handler.Method);
+        Assert.EndsWith("/api/providers/codex-1/test", handler.RequestUri, StringComparison.Ordinal);
+        Assert.False(result.Valid);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task TestConnection_reads_error_message_from_invalid_response()
+    {
+        var handler = new RecordingHandler
+        {
+            ResponseBody = """{"valid":false,"error":"Invalid token"}"""
+        };
+        using var httpClient = new HttpClient(handler);
+        var api = new RouterApiClient(httpClient, "http://localhost:20128");
+
+        var result = await api.TestConnectionAsync("codex-1");
+
+        Assert.False(result.Valid);
+        Assert.Equal("Invalid token", result.Error);
+    }
+
     private sealed class JsonHandler(string json) : HttpMessageHandler
     {
         public int RequestCount { get; private set; }
@@ -128,6 +159,8 @@ public sealed class RouterApiConnectionTests
 
         public string Body { get; private set; } = string.Empty;
 
+        public string ResponseBody { get; init; } = "{}";
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -139,7 +172,7 @@ public sealed class RouterApiConnectionTests
                 : await request.Content.ReadAsStringAsync(cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                Content = new StringContent(ResponseBody, Encoding.UTF8, "application/json")
             };
         }
     }

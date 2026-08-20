@@ -912,6 +912,12 @@
                                                 <TextBlock Grid.Column="1" Text="DPAPI" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
                                             </Grid>
                                             <WrapPanel Margin="0,12,0,0" HorizontalAlignment="Left">
+                                                <Button Content="{DynamicResource ProviderTestConnectionText}"
+                                                        Command="{Binding DataContext.TestConnectionCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                        CommandParameter="{Binding Kind}"
+                                                        Style="{StaticResource ProviderActionButtonStyle}"
+                                                        Focusable="False"
+                                                        ToolTip="Test connection for the selected profile" />
                                                 <Button Content="{DynamicResource ProviderDashboardText}"
                                                         Command="{Binding DataContext.OpenProviderDashboardCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                         CommandParameter="{Binding Kind}"

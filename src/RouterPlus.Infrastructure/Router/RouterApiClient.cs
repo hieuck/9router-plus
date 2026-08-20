@@ -55,6 +55,22 @@ public sealed class RouterApiClient : IRouterApiClient
             .ToArray();
     }
 
+    public async Task<ProviderConnectionTestResult> TestConnectionAsync(
+        string connectionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionId);
+        using var response = await _httpClient.PostAsync(
+            CreateUri($"api/providers/{Uri.EscapeDataString(connectionId)}/test"),
+            null,
+            cancellationToken);
+        using var document = await ReadDocumentAsync(response, cancellationToken);
+        var root = document.RootElement;
+        return new ProviderConnectionTestResult(
+            GetBoolean(root, "valid"),
+            GetString(root, "error"));
+    }
+
     public async Task<OAuthAuthorizationSession> StartOAuthAuthorizationAsync(
         ProviderKind provider,
         string redirectUri,
