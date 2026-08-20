@@ -49,6 +49,23 @@ public sealed class RouterApiConnectionTests
     }
 
     [Fact]
+    public async Task ListAllConnections_uses_unavailable_test_status_as_provider_error()
+    {
+        var handler = new JsonHandler("""
+            {"connections":[
+              {"id":"ollama-1","provider":"ollama","name":"Work","priority":1,"isActive":true,"testStatus":"unavailable"}
+            ]}
+            """);
+        using var httpClient = new HttpClient(handler);
+        var api = new RouterApiClient(httpClient, "http://localhost:20128");
+
+        var connection = Assert.Single(await api.ListAllConnectionsAsync());
+
+        Assert.Equal("unavailable", connection.TestStatus);
+        Assert.True(connection.HasError);
+    }
+
+    [Fact]
     public async Task ListAllConnections_tolerates_null_optional_connection_fields()
     {
         var handler = new JsonHandler("""

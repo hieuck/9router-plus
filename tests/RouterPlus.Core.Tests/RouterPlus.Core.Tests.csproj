@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -19,5 +20,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\RouterPlus.Core\RouterPlus.Core.csproj" />
     <ProjectReference Include="..\..\src\RouterPlus.Infrastructure\RouterPlus.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\RouterPlus.App\RouterPlus.App.csproj" />
   </ItemGroup>
 </Project>

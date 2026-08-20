@@ -8,6 +8,8 @@ namespace RouterPlus.App.ViewModels;
 public sealed class ProviderCardViewModel : INotifyPropertyChanged
 {
     private readonly ProviderApiKeyState _apiKeyState = new();
+    private ProviderHealthState _healthState = ProviderHealthState.Unknown;
+    private string _statusTooltip = "Provider status is waiting for synchronization.";
 
     public ProviderCardViewModel(ProviderDefinition definition)
     {
@@ -49,11 +51,41 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
 
     public string ApiKeyStatusText => _apiKeyState.StatusText;
 
+    public ProviderHealthState HealthState => _healthState;
+
+    public string StatusLabel => ProviderDisplayStatus.From(_healthState).Label;
+
+    public string StatusTooltip => _statusTooltip;
+
+    public bool IsHealthy => _healthState == ProviderHealthState.Healthy;
+
+    public bool IsDisabled => _healthState == ProviderHealthState.Disabled;
+
+    public bool HasError => _healthState == ProviderHealthState.Error;
+
+    public bool IsMissing => _healthState == ProviderHealthState.Missing;
+
+    public bool IsUnknown => _healthState == ProviderHealthState.Unknown;
+
     public void LoadSavedApiKey(string? value) => _apiKeyState.LoadSaved(value);
 
     public void MarkApiKeySaved() => _apiKeyState.MarkSaved();
 
     public void ToggleApiKeyVisibility() => _apiKeyState.ToggleVisibility();
+
+    public void UpdateProviderStatus(ProfileProviderStatusViewModel? status)
+    {
+        _healthState = status?.HealthState ?? ProviderHealthState.Unknown;
+        _statusTooltip = status?.ToolTip ?? "Select a profile to inspect provider status.";
+        OnPropertyChanged(nameof(HealthState));
+        OnPropertyChanged(nameof(StatusLabel));
+        OnPropertyChanged(nameof(StatusTooltip));
+        OnPropertyChanged(nameof(IsHealthy));
+        OnPropertyChanged(nameof(IsDisabled));
+        OnPropertyChanged(nameof(HasError));
+        OnPropertyChanged(nameof(IsMissing));
+        OnPropertyChanged(nameof(IsUnknown));
+    }
 
     private void ApiKeyState_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

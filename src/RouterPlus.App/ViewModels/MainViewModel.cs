@@ -23,6 +23,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private ChromeInstallation? _installation;
+    private CancellationTokenSource? _workflowCancellation;
     private HashSet<string> _workflowExistingIds = new(StringComparer.Ordinal);
     private ProviderKind? _currentWorkflowProvider;
     private bool _workflowInProgress;
@@ -56,7 +57,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         OpenProviderCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderAsync);
+        OpenProviderDashboardCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderDashboardAsync, _ => SelectedProfile is not null);
         OpenQuickLinkCommand = new AsyncRelayCommand<ProviderKind>(OpenQuickLinkAsync);
+        CancelWorkflowCommand = new AsyncRelayCommand(CancelWorkflowAsync, () => IsWorkflowInProgress);
         WaitForConnectionCommand = new AsyncRelayCommand(WaitForConnectionAsync, () => !_workflowInProgress && _currentWorkflowProvider is not null && SelectedProfile is not null);
     }
 
@@ -104,7 +107,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _selectedProfile = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(SelectedProfileRow));
+            UpdateProviderCardStatuses();
             LaunchSelectedCommand.RaiseCanExecuteChanged();
+            OpenProviderDashboardCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
             _ = LoadSelectedProfileApiKeysAsync();
         }
@@ -161,6 +166,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool IsWorkflowInProgress => _workflowInProgress;
+
     public IReadOnlyList<FontScaleOption> FontScaleOptions { get; } =
     [
         new(0.9d, "90%"),
@@ -211,9 +218,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public sealed record FontScaleOption(double Value, string Label);
+    public sealed record FontScaleOption(double Value, string Label)
+    {
+        public override string ToString() => Label;
+    }
 
-    public sealed record ThemeOption(bool Value, string Label);
+    public sealed record ThemeOption(bool Value, string Label)
+    {
+        public override string ToString() => Label;
+    }
 
     public ProviderKind SelectedApiKeyProvider
     {
@@ -316,7 +329,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand<ProviderKind> OpenProviderCommand { get; }
 
+    public AsyncRelayCommand<ProviderKind> OpenProviderDashboardCommand { get; }
+
     public AsyncRelayCommand<ProviderKind> OpenQuickLinkCommand { get; }
+
+    public AsyncRelayCommand CancelWorkflowCommand { get; }
 
     public AsyncRelayCommand WaitForConnectionCommand { get; }
 
@@ -371,7 +388,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ApplyProfileFilter();
         SelectedProfile = restoredProfile;
         OnPropertyChanged(nameof(SelectedProfileRow));
+        UpdateProviderCardStatuses();
         LaunchSelectedCommand.RaiseCanExecuteChanged();
+        OpenProviderDashboardCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
     }
 
@@ -390,11 +409,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         FilteredProfiles.Clear();
         FilteredProfileRows.Clear();
         var rowsByProfileId = ProfileRows.ToDictionary(row => row.Profile.Id, StringComparer.Ordinal);
+        var displayIndex = 1;
         foreach (var profile in ChromeProfileFilter.Filter(Profiles, ProfileSearchText))
         {
             FilteredProfiles.Add(profile);
             if (rowsByProfileId.TryGetValue(profile.Id, out var row))
             {
+                row.SetDisplayIndex(displayIndex++);
                 FilteredProfileRows.Add(row);
             }
         }
@@ -449,6 +470,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         if (ProfileRows.Count == 0)
         {
+            UpdateProviderCardStatuses();
             ConnectionStatusText = "Chưa có Chrome profile để đối chiếu.";
             return;
         }
@@ -462,6 +484,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             OnPropertyChanged(nameof(SelectedProfileRow));
+            UpdateProviderCardStatuses();
 
             var matchedProfiles = ProfileRows.Count(row => row.ConnectedProviderCount > 0);
             ConnectionStatusText =
@@ -477,6 +500,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 row.MarkStatusUnknown();
             }
+            UpdateProviderCardStatuses();
 
             ConnectionStatusText = $"Chưa đồng bộ provider: {SafeError(exception)}";
             if (showStatus)
@@ -585,6 +609,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private ProviderCardViewModel GetProviderCard(ProviderKind provider) =>
         ProviderCards.First(card => card.Kind == provider);
 
+    private void UpdateProviderCardStatuses()
+    {
+        var row = SelectedProfileRow;
+        foreach (var card in ProviderCards)
+        {
+            var status = row?.ProviderStatuses.FirstOrDefault(item => item.Definition.Kind == card.Kind);
+            card.UpdateProviderStatus(status);
+        }
+    }
+
     private async Task OpenProviderAsync(ProviderKind provider)
     {
         var definition = ProviderCatalog.Get(provider);
@@ -594,9 +628,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        using var workflowCancellation = new CancellationTokenSource();
+        _workflowCancellation = workflowCancellation;
+        _workflowInProgress = true;
+        OnPropertyChanged(nameof(IsWorkflowInProgress));
+        CancelWorkflowCommand.RaiseCanExecuteChanged();
+        WaitForConnectionCommand.RaiseCanExecuteChanged();
+
         try
         {
-            _workflowInProgress = true;
+            var cancellationToken = workflowCancellation.Token;
             WaitForConnectionCommand.RaiseCanExecuteChanged();
             var api = CreateApiClient();
             switch (definition.Workflow)
@@ -608,38 +649,75 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     StatusText = $"Đã mở {definition.DisplayName}. Lấy key rồi dán vào ô bảo mật bên dưới và bấm Lưu API key.";
                     break;
                 case WorkflowKind.DeviceCode:
-                    await RunDeviceCodeWorkflowAsync(api, provider);
+                    await RunDeviceCodeWorkflowAsync(api, provider, cancellationToken);
                     break;
                 case WorkflowKind.OAuth:
-                    await RunOAuthWorkflowAsync(api, provider);
+                    await RunOAuthWorkflowAsync(api, provider, cancellationToken);
                     break;
             }
         }
+        catch (OperationCanceledException) when (workflowCancellation.IsCancellationRequested)
+        {
+            _currentWorkflowProvider = null;
+            _workflowExistingIds.Clear();
+            StatusText = $"Đã hủy thao tác thêm {definition.DisplayName}. Bạn có thể thử lại.";
+        }
         catch (Exception exception)
         {
+            _currentWorkflowProvider = null;
+            _workflowExistingIds.Clear();
             SetError(exception);
         }
         finally
         {
+            if (ReferenceEquals(_workflowCancellation, workflowCancellation))
+            {
+                _workflowCancellation = null;
+            }
+
             _workflowInProgress = false;
+            OnPropertyChanged(nameof(IsWorkflowInProgress));
+            CancelWorkflowCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
         }
     }
 
-    private async Task RunOAuthWorkflowAsync(RouterApiClient api, ProviderKind provider)
+    private Task CancelWorkflowAsync()
     {
-        await CaptureExistingConnectionsAsync(api, provider);
+        if (_workflowCancellation is { IsCancellationRequested: false } cancellation)
+        {
+            StatusText = "Đang hủy thao tác thêm provider…";
+            cancellation.Cancel();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task RunOAuthWorkflowAsync(
+        RouterApiClient api,
+        ProviderKind provider,
+        CancellationToken cancellationToken)
+    {
+        await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
         var definition = ProviderCatalog.Get(provider);
         if (provider == ProviderKind.Codex)
         {
-            var session = await api.StartOAuthAuthorizationAsync(provider, "http://localhost:1455/auth/callback");
+            var session = await api.StartOAuthAuthorizationAsync(
+                provider,
+                "http://localhost:1455/auth/callback",
+                cancellationToken);
             OAuthProxyStartResult proxy;
             try
             {
-                proxy = await api.StartOAuthProxyAsync(provider, GetDashboardPort(), session);
+                proxy = await api.StartOAuthProxyAsync(
+                    provider,
+                    GetDashboardPort(),
+                    session,
+                    cancellationToken);
             }
             catch (RouterApiException)
             {
+                _currentWorkflowProvider = null;
                 await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
                 StatusText = "9Router không bật được OAuth proxy tự động. Trong dashboard, bấm Thêm Codex rồi quay lại bấm Chờ connection thủ công.";
                 return;
@@ -647,6 +725,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             if (!proxy.ServerSide)
             {
+                _currentWorkflowProvider = null;
                 await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
                 StatusText = "OAuth proxy chưa sẵn sàng. Trong dashboard, bấm Thêm Codex rồi quay lại bấm Chờ connection thủ công.";
                 return;
@@ -654,15 +733,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             await LaunchUrlAsync(session.AuthUrl);
             StatusText = "Đã mở đăng nhập Codex. Hoàn tất chọn tài khoản; tool đang tự chờ connection mới…";
-            await WaitForOAuthProxyAsync(api, provider, session.State, TimeSpan.FromMinutes(10));
+            await WaitForOAuthProxyAsync(
+                api,
+                provider,
+                session.State,
+                TimeSpan.FromMinutes(10),
+                cancellationToken);
         }
         else
         {
             await using var callbackListener = await OAuthCallbackListener.StartAsync();
-            var session = await api.StartOAuthAuthorizationAsync(provider, callbackListener.RedirectUri.ToString());
+            var session = await api.StartOAuthAuthorizationAsync(
+                provider,
+                callbackListener.RedirectUri.ToString(),
+                cancellationToken);
             await LaunchUrlAsync(session.AuthUrl);
             StatusText = $"Đã mở đăng nhập {definition.DisplayName}. Hoàn tất đăng nhập; tool đang chờ callback…";
-            var callback = await callbackListener.WaitForCallbackAsync(TimeSpan.FromMinutes(10));
+            var callback = await callbackListener.WaitForCallbackAsync(
+                TimeSpan.FromMinutes(10),
+                cancellationToken);
             if (!string.IsNullOrWhiteSpace(callback.Error))
             {
                 throw new InvalidOperationException(callback.ErrorDescription ?? callback.Error);
@@ -678,17 +767,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 callback.Value,
                 session.RedirectUri,
                 session.CodeVerifier,
-                callback.State ?? session.State);
+                callback.State ?? session.State,
+                cancellationToken);
         }
 
-        await RenameNewConnectionAsync(api, provider);
+        await RenameNewConnectionAsync(api, provider, cancellationToken);
     }
 
-    private async Task RunDeviceCodeWorkflowAsync(RouterApiClient api, ProviderKind provider)
+    private async Task RunDeviceCodeWorkflowAsync(
+        RouterApiClient api,
+        ProviderKind provider,
+        CancellationToken cancellationToken)
     {
-        await CaptureExistingConnectionsAsync(api, provider);
+        await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
         var definition = ProviderCatalog.Get(provider);
-        var session = await api.StartDeviceCodeAsync(provider, "idc");
+        var session = await api.StartDeviceCodeAsync(provider, "idc", cancellationToken);
         await LaunchUrlAsync(session.VerificationUriComplete ?? session.VerificationUri);
         StatusText = $"Đã mở AWS Builder ID cho {definition.DisplayName}. Hoàn tất xác nhận; tool đang tự chờ connection…";
 
@@ -696,10 +789,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var intervalSeconds = Math.Clamp(session.Interval, 1, 30);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var result = await api.PollDeviceCodeAsync(provider, session);
+            var result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);
             if (result.Success)
             {
-                await RenameNewConnectionAsync(api, provider);
+                await RenameNewConnectionAsync(api, provider, cancellationToken);
                 return;
             }
 
@@ -714,15 +807,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 intervalSeconds = Math.Min(intervalSeconds + 5, 30);
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(intervalSeconds));
+            await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
         }
 
         throw new TimeoutException($"Hết thời gian chờ đăng nhập {definition.DisplayName}.");
     }
 
-    private async Task CaptureExistingConnectionsAsync(RouterApiClient api, ProviderKind provider)
+    private async Task CaptureExistingConnectionsAsync(
+        RouterApiClient api,
+        ProviderKind provider,
+        CancellationToken cancellationToken = default)
     {
-        var existing = await api.ListConnectionsAsync(provider);
+        var existing = await api.ListConnectionsAsync(provider, cancellationToken);
         _workflowExistingIds = existing.Select(connection => connection.Id).ToHashSet(StringComparer.Ordinal);
         _currentWorkflowProvider = provider;
         WaitForConnectionCommand.RaiseCanExecuteChanged();
@@ -732,12 +828,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RouterApiClient api,
         ProviderKind provider,
         string state,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var status = await api.GetOAuthProxyStatusAsync(provider, state);
+            var status = await api.GetOAuthProxyStatusAsync(provider, state, cancellationToken);
             if (string.Equals(status.Status, "done", StringComparison.OrdinalIgnoreCase))
             {
                 return;
@@ -748,13 +845,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 throw new InvalidOperationException(status.Error ?? "OAuth authorization failed.");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
         throw new TimeoutException($"Hết thời gian chờ đăng nhập {ProviderCatalog.Get(provider).DisplayName}.");
     }
 
-    private async Task RenameNewConnectionAsync(RouterApiClient api, ProviderKind provider)
+    private async Task RenameNewConnectionAsync(
+        RouterApiClient api,
+        ProviderKind provider,
+        CancellationToken cancellationToken = default)
     {
         if (SelectedProfile is null)
         {
@@ -765,8 +865,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             provider,
             _workflowExistingIds,
             TimeSpan.FromMinutes(2),
-            TimeSpan.FromSeconds(2));
-        await api.UpdateConnectionAsync(connection.Id, name: SelectedProfile.Name);
+            TimeSpan.FromSeconds(2),
+            cancellationToken);
+        await api.UpdateConnectionAsync(
+            connection.Id,
+            name: SelectedProfile.Name,
+            cancellationToken: cancellationToken);
         _workflowExistingIds.Add(connection.Id);
         _currentWorkflowProvider = null;
         await RefreshConnectionStatusesAsync(showStatus: false);
@@ -853,6 +957,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             await LaunchUrlAsync(DashboardBaseUrl);
             StatusText = $"Đã mở 9Router bằng profile {SelectedProfile.Name}.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    private async Task OpenProviderDashboardAsync(ProviderKind provider)
+    {
+        if (SelectedProfile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return;
+        }
+
+        try
+        {
+            var definition = ProviderCatalog.Get(provider);
+            await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
+            StatusText = $"Đã mở dashboard {definition.DisplayName} cho profile {SelectedProfile.Name}.";
         }
         catch (Exception exception)
         {

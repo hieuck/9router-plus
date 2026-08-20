@@ -91,6 +91,8 @@
         </Style>
 
         <Style x:Key="ProfileAvatarStyle" TargetType="Border">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
             <Setter Property="Grid.Column" Value="1" />
             <Setter Property="Grid.ColumnSpan" Value="1" />
             <Setter Property="HorizontalAlignment" Value="Center" />
@@ -98,8 +100,10 @@
             <Style.Triggers>
                 <DataTrigger Binding="{Binding DataContext.IsProfileSidebarCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                              Value="True">
+                    <Setter Property="Width" Value="36" />
+                    <Setter Property="Height" Value="36" />
                     <Setter Property="Grid.Column" Value="0" />
-                    <Setter Property="Grid.ColumnSpan" Value="4" />
+                    <Setter Property="Grid.ColumnSpan" Value="1" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -145,6 +149,13 @@
                     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
                     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                 </Trigger>
+                <DataTrigger Binding="{Binding DataContext.IsProfileSidebarCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                             Value="True">
+                    <Setter Property="Width" Value="72" />
+                    <Setter Property="HorizontalAlignment" Value="Center" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Margin" Value="0,0,0,6" />
+                </DataTrigger>
             </Style.Triggers>
         </Style>
 
@@ -165,6 +176,76 @@
             <Setter Property="Padding" Value="7,4" />
             <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
+
+        <Style x:Key="ProviderStatusBadgeStyle" TargetType="Border" BasedOn="{StaticResource ProviderWorkflowTagStyle}">
+            <Setter Property="Margin" Value="6,0,0,0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsHealthy}" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding HasError}" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ProviderStatusDotStyle" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource BorderBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsHealthy}" Value="True">
+                    <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                    <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding HasError}" Value="True">
+                    <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ProviderStatusTextStyle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="FontSize" Value="9" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsHealthy}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding HasError}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ProviderActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="100" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="0,0,4,8" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="ProviderPrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+            <Setter Property="Foreground" Value="{DynamicResource AvatarTextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource AccentDarkBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentDarkBrush}" />
+            <Setter Property="Width" Value="100" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="0,0,4,8" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -173,13 +254,13 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition MinWidth="84">
+            <ColumnDefinition MinWidth="112">
                 <ColumnDefinition.Style>
                     <Style TargetType="ColumnDefinition">
                         <Setter Property="Width" Value="320" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsProfileSidebarCollapsed}" Value="True">
-                                <Setter Property="Width" Value="84" />
+                                <Setter Property="Width" Value="112" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -190,10 +271,10 @@
 
         <Border Grid.RowSpan="2"
                 Grid.Column="0"
-                Background="{DynamicResource SidebarBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,0,1,0"
-                Padding="18,22,18,16">
+                 Background="{DynamicResource SidebarBrush}"
+                 BorderBrush="{DynamicResource BorderBrush}"
+                 BorderThickness="0,0,1,0"
+                 Padding="10,22,10,16">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Bottom" Style="{StaticResource SidebarPanelStyle}" Margin="4,16,4,0">
                     <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,14,0,0">
@@ -204,7 +285,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border Width="30" Height="30" CornerRadius="10" Background="{DynamicResource AccentDarkBrush}">
-                                <TextBlock Text="H" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TextBrush}" />
+                                <TextBlock Text="H" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AvatarTextBrush}" />
                             </Border>
                             <StackPanel Grid.Column="1" Margin="10,0,0,0">
                                 <TextBlock Text="Chrome detected" FontSize="11" FontWeight="SemiBold" />
@@ -305,7 +386,6 @@
                              ItemsSource="{Binding FilteredProfileRows}"
                              SelectedValue="{Binding SelectedProfile, Mode=TwoWay}"
                              SelectedValuePath="Profile"
-                             AlternationCount="2147483647"
                              ItemContainerStyle="{StaticResource ProfileListItemStyle}"
                              HorizontalContentAlignment="Stretch"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -314,26 +394,73 @@
                              MouseDoubleClick="ProfileList_OnMouseDoubleClick">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="7">
+                                <Grid Margin="5">
+                                    <Grid x:Name="ExpandedProfileGrid">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="24" />
-                                        <ColumnDefinition Width="36" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="24">
+                                            <ColumnDefinition.Style>
+                                                <Style TargetType="ColumnDefinition">
+                                                    <Setter Property="Width" Value="24" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsProfileSidebarCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                                     Value="True">
+                                                            <Setter Property="Width" Value="*" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ColumnDefinition.Style>
+                                        </ColumnDefinition>
+                                        <ColumnDefinition Width="36">
+                                            <ColumnDefinition.Style>
+                                                <Style TargetType="ColumnDefinition">
+                                                    <Setter Property="Width" Value="36" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsProfileSidebarCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                                     Value="True">
+                                                            <Setter Property="Width" Value="0" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ColumnDefinition.Style>
+                                        </ColumnDefinition>
+                                        <ColumnDefinition Width="*">
+                                            <ColumnDefinition.Style>
+                                                <Style TargetType="ColumnDefinition">
+                                                    <Setter Property="Width" Value="*" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsProfileSidebarCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                                     Value="True">
+                                                            <Setter Property="Width" Value="0" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ColumnDefinition.Style>
+                                        </ColumnDefinition>
+                                        <ColumnDefinition Width="Auto">
+                                            <ColumnDefinition.Style>
+                                                <Style TargetType="ColumnDefinition">
+                                                    <Setter Property="Width" Value="Auto" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsProfileSidebarCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                                     Value="True">
+                                                            <Setter Property="Width" Value="0" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ColumnDefinition.Style>
+                                        </ColumnDefinition>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0"
-                                               Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}, Path=(ItemsControl.AlternationIndex), Converter={StaticResource OneBasedIndexConverter}}"
+                                                Text="{Binding DisplayIndex}"
                                                Style="{StaticResource SidebarTextStyle}"
                                                Foreground="{DynamicResource MutedTextBrush}"
                                                FontSize="10"
                                                VerticalAlignment="Center"
                                                TextAlignment="Right" />
                                     <Border Style="{StaticResource ProfileAvatarStyle}"
-                                            Width="32"
-                                            Height="32"
                                             CornerRadius="11"
                                             Background="{DynamicResource AccentDarkBrush}">
-                                        <TextBlock Text="{Binding Initial}" Foreground="{DynamicResource TextBrush}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Initial}" Foreground="{DynamicResource AvatarTextBrush}" FontWeight="Bold" Margin="0" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
                                     <StackPanel Grid.Column="2" Margin="10,0,5,0" Style="{StaticResource SidebarPanelStyle}" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -346,19 +473,19 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Ellipse Width="6" Height="6" Margin="0,0,4,0" ToolTip="{Binding ToolTip}">
+                                                    <Ellipse Width="9" Height="9" Margin="0,0,5,0" ToolTip="{Binding ToolTip}">
                                                         <Ellipse.Style>
                                                             <Style TargetType="Ellipse">
                                                                 <Setter Property="Fill" Value="{DynamicResource BorderBrush}" />
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                                    <DataTrigger Binding="{Binding IsHealthy}" Value="True">
                                                                         <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                                                                        <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding HasError}" Value="True">
                                                                         <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding IsKnown}" Value="False">
-                                                                        <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
@@ -369,7 +496,35 @@
                                         </ItemsControl>
                                     </StackPanel>
                             <TextBlock Grid.Column="3" Text="›" Style="{StaticResource SidebarTextStyle}" Foreground="{DynamicResource MutedTextBrush}" FontSize="16" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <Grid x:Name="CollapsedProfileGrid"
+                                          Width="62"
+                                          Height="36"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Visibility="Collapsed">
+                                        <Border Width="36"
+                                                Height="36"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                CornerRadius="11"
+                                                Background="{DynamicResource AccentDarkBrush}">
+                                            <TextBlock Text="{Binding Initial}"
+                                                       Foreground="{DynamicResource AvatarTextBrush}"
+                                                       FontWeight="Bold"
+                                                       Margin="0"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
                                 </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsProfileSidebarCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                 Value="True">
+                                        <Setter TargetName="ExpandedProfileGrid" Property="Visibility" Value="Collapsed" />
+                                        <Setter TargetName="CollapsedProfileGrid" Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -416,7 +571,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Border Width="58" Height="58" CornerRadius="18" Background="{DynamicResource AccentDarkBrush}" VerticalAlignment="Top">
-                            <TextBlock Text="{Binding SelectedProfileRow.Initial, TargetNullValue=?}" Foreground="{DynamicResource TextBrush}" FontSize="21" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding SelectedProfileRow.Initial, TargetNullValue=?}" Foreground="{DynamicResource AvatarTextBrush}" FontSize="21" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <StackPanel Grid.Column="1" Margin="15,0,20,0">
                             <TextBlock Text="SELECTED CHROME PROFILE" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" FontWeight="Bold" />
@@ -500,15 +655,23 @@
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <Border Width="34" Height="34" CornerRadius="11" Background="{DynamicResource AccentDarkBrush}">
-                                                    <TextBlock Text="{Binding ShortCode}" Foreground="{DynamicResource TextBrush}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding ShortCode}" Foreground="{DynamicResource AvatarTextBrush}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                 </Border>
                                                 <StackPanel Grid.Column="1" Margin="10,0,8,0">
                                                     <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" />
                                                     <TextBlock Text="{Binding Workflow}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
                                                 </StackPanel>
-                                                <Border Grid.Column="2" Style="{StaticResource ProviderWorkflowTagStyle}">
-                                                    <TextBlock Text="{Binding Workflow}" Foreground="{DynamicResource MutedTextBrush}" FontSize="9" />
-                                                </Border>
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                                                    <Border Style="{StaticResource ProviderWorkflowTagStyle}">
+                                                        <TextBlock Text="{Binding Workflow}" Foreground="{DynamicResource MutedTextBrush}" FontSize="9" />
+                                                    </Border>
+                                                    <Border Style="{StaticResource ProviderStatusBadgeStyle}" ToolTip="{Binding StatusTooltip}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Ellipse Width="7" Height="7" Margin="0,0,5,0" Style="{StaticResource ProviderStatusDotStyle}" />
+                                                            <TextBlock Text="{Binding StatusLabel}" Style="{StaticResource ProviderStatusTextStyle}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </StackPanel>
                                             </Grid>
                                                 <TextBlock Text="API key cho profile đang chọn" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,14,0,0">
                                                 <TextBlock.Style>
@@ -588,13 +751,26 @@
                                                 <TextBlock Text="{Binding ApiKeyStatusText}" Foreground="{DynamicResource SuccessBrush}" FontSize="10" />
                                                 <TextBlock Grid.Column="1" Text="DPAPI" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
                                             </Grid>
-                                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                            <WrapPanel Margin="0,12,0,0" HorizontalAlignment="Left">
+                                                <Button Content="Dashboard"
+                                                        Command="{Binding DataContext.OpenProviderDashboardCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                        CommandParameter="{Binding Kind}"
+                                                        >
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.ApiKey}">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
                                                 <Button Content="{Binding ApiKeyToggleText}"
-                                                        Click="ToggleProviderApiKeyVisibility_Click"
-                                                        Padding="9,6"
-                                                        HorizontalAlignment="Left">
+                                                        Click="ToggleProviderApiKeyVisibility_Click">
                                                     <Button.Style>
-                                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                        <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.ApiKey}">
@@ -604,12 +780,11 @@
                                                         </Style>
                                                     </Button.Style>
                                                 </Button>
-                                                <Button Content="Thêm vào 9Router"
+                                                <Button Content="Lưu key"
                                                         Click="AddProviderApiKey_Click"
-                                                        Padding="12,7"
-                                                        Margin="7,0,0,0">
+                                                        ToolTip="Thêm hoặc cập nhật key trong 9Router">
                                                     <Button.Style>
-                                                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                                                        <Style TargetType="Button" BasedOn="{StaticResource ProviderPrimaryActionButtonStyle}">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.ApiKey}">
@@ -619,13 +794,12 @@
                                                         </Style>
                                                     </Button.Style>
                                                 </Button>
-                                                <Button Content="Mở trang lấy key"
+                                                <Button Content="Lấy key"
                                                         Command="{Binding DataContext.OpenQuickLinkCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                         CommandParameter="{Binding Kind}"
-                                                        Padding="9,6"
-                                                        Margin="7,0,0,0">
+                                                        ToolTip="Mở trang lấy API key">
                                                     <Button.Style>
-                                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                        <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.ApiKey}">
@@ -635,10 +809,11 @@
                                                         </Style>
                                                     </Button.Style>
                                                 </Button>
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                                <StackPanel.Style>
-                                                    <Style TargetType="StackPanel">
+
+                                            </WrapPanel>
+                                            <WrapPanel Margin="0,16,0,0" HorizontalAlignment="Left">
+                                                <WrapPanel.Style>
+                                                    <Style TargetType="WrapPanel">
                                                         <Setter Property="Visibility" Value="Collapsed" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.OAuth}">
@@ -649,16 +824,36 @@
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
-                                                </StackPanel.Style>
+                                                </WrapPanel.Style>
+                                                <Button Content="Dashboard"
+                                                        Command="{Binding DataContext.OpenProviderDashboardCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                        CommandParameter="{Binding Kind}"
+                                                        Style="{StaticResource ProviderActionButtonStyle}" />
                                                 <Button Content="Thêm"
                                                         Command="{Binding DataContext.OpenProviderCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                         CommandParameter="{Binding Kind}"
-                                                        Style="{StaticResource PrimaryButtonStyle}" />
-                                                <Button Content="Mở nhanh"
-                                                        Command="{Binding DataContext.OpenQuickLinkCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                                                        CommandParameter="{Binding Kind}"
-                                                        Margin="7,0,0,0" />
-                                            </StackPanel>
+                                                         Style="{StaticResource ProviderPrimaryActionButtonStyle}" />
+                                                 <Button Content="Mở nhanh"
+                                                         Command="{Binding DataContext.OpenQuickLinkCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                         CommandParameter="{Binding Kind}"
+                                                         Style="{StaticResource ProviderActionButtonStyle}" />
+
+                                                 <Button Content="Hủy"
+                                                         Command="{Binding DataContext.CancelWorkflowCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                         >
+                                                     <Button.Style>
+                                                         <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
+                                                             <Setter Property="Visibility" Value="Collapsed" />
+                                                             <Style.Triggers>
+                                                                 <DataTrigger Binding="{Binding DataContext.IsWorkflowInProgress, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                                              Value="True">
+                                                                     <Setter Property="Visibility" Value="Visible" />
+                                                                 </DataTrigger>
+                                                             </Style.Triggers>
+                                                         </Style>
+                                                     </Button.Style>
+                                                 </Button>
+                                               </WrapPanel>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
@@ -738,7 +933,7 @@
 
         <Border Grid.RowSpan="2"
                 Grid.Column="1"
-                Background="#66000000"
+                Background="Transparent"
                 Panel.ZIndex="10"
                 Style="{StaticResource DrawerVisibilityStyle}" />
         <Border Grid.RowSpan="2"

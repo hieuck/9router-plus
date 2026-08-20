@@ -8,6 +8,8 @@ namespace RouterPlus.App.ViewModels;
 
 public sealed class ProfileRowViewModel : INotifyPropertyChanged
 {
+    private int _displayIndex;
+
     public ProfileRowViewModel(
         ChromeProfile profile,
         IReadOnlyList<ProviderDefinition> providerDefinitions)
@@ -30,7 +32,21 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
 
     public string DirectoryName => Profile.DirectoryName;
 
+    public int DisplayIndex => _displayIndex;
+
     public ObservableCollection<ProfileProviderStatusViewModel> ProviderStatuses { get; }
+
+    public void SetDisplayIndex(int displayIndex)
+    {
+        var next = Math.Max(0, displayIndex);
+        if (_displayIndex == next)
+        {
+            return;
+        }
+
+        _displayIndex = next;
+        OnPropertyChanged(nameof(DisplayIndex));
+    }
 
     public int ConnectedProviderCount => ProviderStatuses.Count(status => status.IsConnected);
 
@@ -51,10 +67,13 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
                     connection.Provider == status.Definition.Kind &&
                     string.Equals(connection.Name?.Trim(), Profile.Name.Trim(), StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-            var errorConnection = matchingConnections.FirstOrDefault(connection => connection.HasError);
+            var errorConnection = matchingConnections.FirstOrDefault(connection => connection.IsActive && connection.HasError)
+                ?? matchingConnections.FirstOrDefault(connection => connection.HasError);
+            var healthState = ProviderHealthStateResolver.Resolve(true, matchingConnections);
             status.SetConnectionCount(
                 counts[status.Definition.Kind],
-                errorConnection?.HasError == true,
+                healthState,
+                errorConnection?.TestStatus,
                 errorConnection?.ErrorCode,
                 errorConnection?.LastError);
         }
@@ -82,9 +101,10 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
 {
     private int _connectionCount;
     private bool _isKnown;
-    private bool _hasError;
+    private ProviderHealthState _healthState = ProviderHealthState.Unknown;
     private string? _errorCode;
     private string? _lastError;
+    private string? _testStatus;
 
     public ProfileProviderStatusViewModel(ProviderDefinition definition)
     {
@@ -106,33 +126,52 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
 
     public bool IsConnected => _connectionCount > 0;
 
-    public bool HasError => _hasError;
+    public ProviderHealthState HealthState => _healthState;
+
+    public bool IsHealthy => _healthState == ProviderHealthState.Healthy;
+
+    public bool IsDisabled => _healthState == ProviderHealthState.Disabled;
+
+    public bool HasError => _healthState == ProviderHealthState.Error;
 
     public string? ErrorCode => _errorCode;
 
     public string? LastError => _lastError;
 
+    public string? TestStatus => _testStatus;
+
     public string DisplayLabel => $"{ShortName} {StatusMarker}";
 
-    public string StatusMarker => !_isKnown ? "?" : IsConnected ? "✓" : "—";
+    public string StatusMarker => _healthState switch
+    {
+        ProviderHealthState.Healthy => "✓",
+        ProviderHealthState.Disabled => "!",
+        ProviderHealthState.Error => "!",
+        ProviderHealthState.Missing => "—",
+        _ => "?"
+    };
 
-    public string ToolTip => !_isKnown
-        ? $"{Definition.DisplayName}: chưa đồng bộ"
-        : HasError
-            ? $"{Definition.DisplayName}: lỗi{FormatErrorDetails()}"
-            : IsConnected
-                ? $"{Definition.DisplayName}: {_connectionCount} connection tên theo profile"
-                : $"{Definition.DisplayName}: chưa có connection tên theo profile";
+    public string ToolTip => _healthState switch
+    {
+        ProviderHealthState.Unknown => $"{Definition.DisplayName}: chưa đồng bộ",
+        ProviderHealthState.Missing => $"{Definition.DisplayName}: chưa có connection tên theo profile",
+        ProviderHealthState.Healthy => $"{Definition.DisplayName}: OK · {_connectionCount} connection tên theo profile",
+        ProviderHealthState.Disabled => $"{Definition.DisplayName}: có connection nhưng đang tắt",
+        ProviderHealthState.Error => $"{Definition.DisplayName}: lỗi{FormatErrorDetails()}",
+        _ => Definition.DisplayName
+    };
 
     public void SetConnectionCount(
         int connectionCount,
-        bool hasError = false,
+        ProviderHealthState healthState = ProviderHealthState.Unknown,
+        string? testStatus = null,
         string? errorCode = null,
         string? lastError = null)
     {
         _connectionCount = Math.Max(0, connectionCount);
         _isKnown = true;
-        _hasError = hasError;
+        _healthState = healthState;
+        _testStatus = testStatus;
         _errorCode = errorCode;
         _lastError = lastError;
         RaiseStatusChanged();
@@ -142,7 +181,8 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
     {
         _connectionCount = 0;
         _isKnown = false;
-        _hasError = false;
+        _healthState = ProviderHealthState.Unknown;
+        _testStatus = null;
         _errorCode = null;
         _lastError = null;
         RaiseStatusChanged();
@@ -150,18 +190,23 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
 
     private string FormatErrorDetails()
     {
+        var status = string.IsNullOrWhiteSpace(TestStatus) ? null : $" [{TestStatus}]";
         var code = string.IsNullOrWhiteSpace(ErrorCode) ? null : $" ({ErrorCode})";
         var message = string.IsNullOrWhiteSpace(LastError) ? null : $": {LastError.Trim()}";
-        return $"{code}{message}";
+        return $"{status}{code}{message}";
     }
 
     private void RaiseStatusChanged()
     {
         OnPropertyChanged(nameof(IsKnown));
         OnPropertyChanged(nameof(IsConnected));
+        OnPropertyChanged(nameof(HealthState));
+        OnPropertyChanged(nameof(IsHealthy));
+        OnPropertyChanged(nameof(IsDisabled));
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(ErrorCode));
         OnPropertyChanged(nameof(LastError));
+        OnPropertyChanged(nameof(TestStatus));
         OnPropertyChanged(nameof(DisplayLabel));
         OnPropertyChanged(nameof(StatusMarker));
         OnPropertyChanged(nameof(ToolTip));

@@ -13,9 +13,14 @@ public sealed record ProviderConnection(
     string? LastError = null,
     DateTimeOffset? LastErrorAt = null)
 {
+    public bool IsDisabled => !IsActive;
+
     public bool HasError =>
         !string.IsNullOrWhiteSpace(ErrorCode) ||
         !string.IsNullOrWhiteSpace(LastError) ||
         string.Equals(TestStatus, "error", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(TestStatus, "expired", StringComparison.OrdinalIgnoreCase);
+        string.Equals(TestStatus, "expired", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(TestStatus, "unavailable", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(TestStatus, "invalid", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(TestStatus, "failed", StringComparison.OrdinalIgnoreCase);
 }
