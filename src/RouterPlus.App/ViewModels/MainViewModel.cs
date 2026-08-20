@@ -291,17 +291,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string StatusText
     {
         get => _statusText;
-        private set
-        {
-            if (string.Equals(_statusText, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _statusText = value;
-            AppendLog("INFO", value);
-            OnPropertyChanged();
-        }
+        private set => SetStatusText(value, "INFO", forceLog: false);
     }
 
     public string LogText
@@ -352,7 +342,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StatusText = Profiles.Count == 0
                 ? "Chưa tìm thấy Chrome profile. Hãy kiểm tra đường dẫn rồi nhấn Làm mới."
                 : $"Đã đọc {Profiles.Count} Chrome profile.";
-            await RefreshConnectionStatusesAsync();
+            await RefreshConnectionStatusesAsync(showStatus: true);
         }
         catch (Exception exception)
         {
@@ -422,7 +412,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public async Task RefreshConnectionStatusesAsync() =>
-        await RefreshConnectionStatusesAsync(showStatus: true);
+        await RefreshConnectionStatusesAsync(showStatus: true, forceLog: true);
 
     private async Task LoadSelectedProfileApiKeysAsync()
     {
@@ -466,12 +456,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task RefreshConnectionStatusesAsync(bool showStatus)
+    private async Task RefreshConnectionStatusesAsync(bool showStatus, bool forceLog = false)
     {
         if (ProfileRows.Count == 0)
         {
             UpdateProviderCardStatuses();
             ConnectionStatusText = "Chưa có Chrome profile để đối chiếu.";
+            if (showStatus && forceLog)
+            {
+                SetStatusText(ConnectionStatusText, "SYNC", forceLog: true);
+            }
+
             return;
         }
 
@@ -491,7 +486,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 $"Đã đồng bộ {connections.Count} connection · {matchedProfiles}/{ProfileRows.Count} profile có provider.";
             if (showStatus)
             {
-                StatusText = ConnectionStatusText;
+                if (forceLog)
+                {
+                    SetStatusText(ConnectionStatusText, "SYNC", forceLog: true);
+                }
+                else
+                {
+                    StatusText = ConnectionStatusText;
+                }
             }
         }
         catch (Exception exception)
@@ -505,7 +507,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ConnectionStatusText = $"Chưa đồng bộ provider: {SafeError(exception)}";
             if (showStatus)
             {
-                StatusText = ConnectionStatusText;
+                if (forceLog)
+                {
+                    SetStatusText(ConnectionStatusText, "SYNC", forceLog: true);
+                }
+                else
+                {
+                    StatusText = ConnectionStatusText;
+                }
             }
             else
             {
@@ -1010,6 +1019,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? exception.ToString()
             : $"{operation}: {exception}";
         AppendLog("ERROR", details);
+    }
+
+    private void SetStatusText(string value, string level, bool forceLog)
+    {
+        if (!forceLog && string.Equals(_statusText, value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _statusText = value;
+        AppendLog(level, value);
+        OnPropertyChanged(nameof(StatusText));
     }
 
     private void AppendLog(string level, string message)
