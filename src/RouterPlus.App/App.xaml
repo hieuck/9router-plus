@@ -8,6 +8,7 @@
             <converters:OneBasedIndexConverter x:Key="OneBasedIndexConverter" />
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Styles/Theme.xaml" />
+                <ResourceDictionary Source="Resources/Strings.vi.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

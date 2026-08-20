@@ -238,6 +238,17 @@
             <Setter Property="Foreground" Value="{DynamicResource AvatarTextBrush}" />
             <Setter Property="Background" Value="{DynamicResource AccentDarkBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AccentDarkBrush}" />
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}"
+                                   Foreground="{DynamicResource AvatarTextBrush}"
+                                   Margin="0"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Width" Value="100" />
             <Setter Property="Height" Value="38" />
             <Setter Property="Padding" Value="8,6" />
@@ -752,7 +763,7 @@
                                                 <TextBlock Grid.Column="1" Text="DPAPI" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
                                             </Grid>
                                             <WrapPanel Margin="0,12,0,0" HorizontalAlignment="Left">
-                                                <Button Content="Dashboard"
+                                                <Button Content="{DynamicResource ProviderDashboardText}"
                                                         Command="{Binding DataContext.OpenProviderDashboardCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                         CommandParameter="{Binding Kind}"
                                                         Style="{StaticResource ProviderActionButtonStyle}" />
@@ -769,7 +780,7 @@
                                                         </Style>
                                                     </Button.Style>
                                                 </Button>
-                                                <Button Content="Lưu key"
+                                                <Button Content="{DynamicResource ProviderSaveKeyText}"
                                                         Click="AddProviderApiKey_Click"
                                                         ToolTip="Thêm hoặc cập nhật key trong 9Router">
                                                     <Button.Style>
@@ -783,7 +794,7 @@
                                                         </Style>
                                                     </Button.Style>
                                                 </Button>
-                                                <Button Content="Lấy key"
+                                                <Button Content="{DynamicResource ProviderGetKeyText}"
                                                         Command="{Binding DataContext.OpenQuickLinkCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                         CommandParameter="{Binding Kind}"
                                                         ToolTip="Mở trang lấy API key">
@@ -799,10 +810,12 @@
                                                     </Button.Style>
                                                 </Button>
 
-                                            </WrapPanel>
-                                            <WrapPanel Margin="0,16,0,0" HorizontalAlignment="Left">
-                                                <WrapPanel.Style>
-                                                    <Style TargetType="WrapPanel">
+                                            <Button Content="{DynamicResource ProviderAddText}"
+                                                        Command="{Binding DataContext.OpenProviderCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                        CommandParameter="{Binding Kind}"
+                                                        >
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource ProviderPrimaryActionButtonStyle}">
                                                         <Setter Property="Visibility" Value="Collapsed" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.OAuth}">
@@ -813,23 +826,30 @@
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
-                                                </WrapPanel.Style>
-                                                <Button Content="Dashboard"
-                                                        Command="{Binding DataContext.OpenProviderDashboardCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                                                        CommandParameter="{Binding Kind}"
-                                                        Style="{StaticResource ProviderActionButtonStyle}" />
-                                                <Button Content="Thêm"
-                                                        Command="{Binding DataContext.OpenProviderCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                                                        CommandParameter="{Binding Kind}"
-                                                         Style="{StaticResource ProviderPrimaryActionButtonStyle}" />
-                                                 <Button Content="Mở nhanh"
-                                                         Command="{Binding DataContext.OpenQuickLinkCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                                                         CommandParameter="{Binding Kind}"
-                                                         Style="{StaticResource ProviderActionButtonStyle}" />
+                                                </Button.Style>
+                                            </Button>
+                                            <Button Content="{DynamicResource ProviderQuickOpenText}"
+                                                          Command="{Binding DataContext.OpenQuickLinkCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                          CommandParameter="{Binding Kind}"
+                                                          >
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.OAuth}">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.DeviceCode}">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
 
-                                                 <Button Content="Hủy"
-                                                         Command="{Binding DataContext.CancelWorkflowCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                                                         >
+                                            <Button Content="{DynamicResource ProviderCancelText}"
+                                                          Command="{Binding DataContext.CancelWorkflowCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                          >
                                                      <Button.Style>
                                                          <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
                                                              <Setter Property="Visibility" Value="Collapsed" />
@@ -841,9 +861,9 @@
                                                              </Style.Triggers>
                                                          </Style>
                                                      </Button.Style>
-                                                 </Button>
-                                               </WrapPanel>
-                                        </StackPanel>
+                                             </Button>
+                                         </WrapPanel>
+                                     </StackPanel>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
