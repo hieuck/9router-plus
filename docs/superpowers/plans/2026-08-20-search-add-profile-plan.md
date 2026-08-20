@@ -61,7 +61,7 @@ feat: persist managed chrome profiles
 
 - [ ] **Step 1: Write failing provisioner tests**
 
-Use a temporary user-data directory and verify that provisioning trims the display name, creates the first unused `Profile N` directory, skips directories already present on disk or in metadata, and rejects blank or case-insensitive duplicate names.
+Use a temporary user-data directory and verify that provisioning trims the display name, creates the matching `Profile <tên>` directory, rejects an existing directory with that name, and rejects blank or case-insensitive duplicate names.
 
 - [ ] **Step 2: Run the provisioner tests and verify they fail**
 
@@ -72,7 +72,7 @@ Expected: compile failure because `ChromeProfileProvisioner` does not exist.
 
 - [ ] **Step 3: Implement minimal provisioning**
 
-Implement `Create(string userDataDirectory, string name, IEnumerable<ChromeProfile> discovered, IEnumerable<ManagedChromeProfile> managed)` with path validation, exact-name duplicate checks, a case-insensitive directory-name set, first-free `Profile 1`, `Profile 2`, etc. allocation, and `Directory.CreateDirectory` before returning the managed record.
+Implement `Create(string userDataDirectory, string name, IEnumerable<ChromeProfile> discovered, IEnumerable<ManagedChromeProfile> managed)` with path validation, exact-name duplicate checks, a case-insensitive directory-name set, `Profile <tên>` directory-name construction, collision rejection, and `Directory.CreateDirectory` before returning the managed record.
 
 - [ ] **Step 4: Run the provisioner tests and verify they pass**
 
@@ -136,7 +136,7 @@ Expected: build succeeds with zero warnings and zero errors.
 
 - [ ] **Step 3: Launch the published app and verify the user flow**
 
-Open the app, type a unique name into profile search, confirm the button text uses the trimmed query, click it, confirm the new row is selected, double-click it, and verify Chrome starts with the allocated `Profile N` directory. Repeat `Làm mới` and confirm the row remains without duplication.
+Open the app, type a unique name into profile search, confirm the button text uses the trimmed query, click it, confirm the new row is selected, double-click it, and verify Chrome starts with the allocated `Profile <tên>` directory. Repeat `Làm mới` and confirm the row remains without duplication.
 
 - [ ] **Step 4: Run the full build script and final checks**
 

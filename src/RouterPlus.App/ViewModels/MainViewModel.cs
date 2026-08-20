@@ -19,6 +19,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ChromeLocator _chromeLocator = new();
     private readonly ChromeProfileReader _profileReader = new();
     private readonly ChromeProfileProvisioner _profileProvisioner;
+    private readonly ChromeProfileDeleter _profileDeleter;
     private readonly ChromeLauncher _chromeLauncher = new();
     private readonly SettingsStore _settingsStore;
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
@@ -52,10 +53,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public MainViewModel(
         SettingsStore? settingsStore = null,
-        ChromeProfileProvisioner? profileProvisioner = null)
+        ChromeProfileProvisioner? profileProvisioner = null,
+        ChromeProfileDeleter? profileDeleter = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
+        _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         Profiles = new ObservableCollection<ChromeProfile>();
         FilteredProfiles = new ObservableCollection<ChromeProfile>();
         ProfileRows = new ObservableCollection<ProfileRowViewModel>();
@@ -129,7 +132,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public void SelectProfileForContextMenu(ChromeProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        SelectedProfile = profile;
+    }
+
     public ProfileRowViewModel? SelectedProfileRow => _selectedProfile is null
+
         ? null
         : ProfileRows.FirstOrDefault(row => row.Profile.Id == _selectedProfile.Id);
 
@@ -420,9 +430,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         ChromeExecutablePath = _installation.ExecutablePath;
         ChromeUserDataDirectory = _installation.UserDataDirectory;
+        var discoveredProfiles = _profileReader.Read(_installation.UserDataDirectory)
+            .Where(profile => Directory.Exists(profile.ProfilePath))
+            .ToArray();
+        var managedProfiles = _managedProfiles
+            .Where(profile => Directory.Exists(Path.Combine(profile.UserDataDirectory, profile.DirectoryName)))
+            .ToArray();
         var profiles = ChromeProfileCatalog.Merge(
-            _profileReader.Read(_installation.UserDataDirectory),
-            _managedProfiles,
+            discoveredProfiles,
+            managedProfiles,
             _installation.UserDataDirectory);
         Profiles.Clear();
         ProfileRows.Clear();
@@ -498,6 +514,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public void MarkLogCopied() => StatusText = "Đã sao chép log vào clipboard.";
+
+    public void MarkProfileNameCopied() => StatusText = "Đã sao chép tên profile vào clipboard.";
+
+    public void MarkProfileFolderOpened()
+    {
+        if (SelectedProfile is not null)
+        {
+            StatusText = $"Đã mở thư mục profile {SelectedProfile.Name}.";
+        }
+    }
+
+    public void MarkProfileActionFailed(Exception exception, [CallerMemberName] string? operation = null) =>
+        SetError(exception, operation);
 
     public void MarkApiKeyPasted(ProviderKind provider) =>
         StatusText = $"{ProviderCatalog.Get(provider).DisplayName} API key đã được dán vào ô nhập.";
@@ -1070,6 +1099,61 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task OpenSelectedGoogleLoginAsync()
+    {
+        if (SelectedProfile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return;
+        }
+
+        try
+        {
+            await LaunchUrlAsync("https://accounts.google.com/");
+            StatusText = $"Đã mở đăng nhập Google bằng profile {SelectedProfile.Name}.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    public async Task DeleteSelectedProfileAsync()
+    {
+        var profile = SelectedProfile;
+        if (profile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return;
+        }
+
+        var removedManagedProfiles = _managedProfiles
+            .Where(managedProfile => IsManagedProfileFor(managedProfile, profile))
+            .ToArray();
+
+        try
+        {
+            _profileDeleter.Delete(profile, ChromeUserDataDirectory);
+            _managedProfiles.RemoveAll(managedProfile => IsManagedProfileFor(managedProfile, profile));
+            try
+            {
+                await _settingsStore.SaveAsync(BuildSettings());
+            }
+            catch
+            {
+                _managedProfiles.AddRange(removedManagedProfiles);
+                throw;
+            }
+
+            RefreshProfiles();
+            StatusText = $"Đã xóa profile {profile.Name}.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
     private async Task LaunchSelectedProfileAsync()
     {
         if (SelectedProfile is null)
@@ -1127,6 +1211,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     private RouterApiClient CreateApiClient() => new(_httpClient, DashboardBaseUrl);
+
+    private static bool IsManagedProfileFor(ManagedChromeProfile managedProfile, ChromeProfile profile) =>
+        string.Equals(managedProfile.DirectoryName.Trim(), profile.DirectoryName.Trim(), StringComparison.OrdinalIgnoreCase)
+        && PathsEqual(managedProfile.UserDataDirectory, profile.UserDataDirectory);
+
+    private static bool PathsEqual(string left, string right)
+    {
+        var leftPath = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var rightPath = Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(leftPath, rightPath, StringComparison.OrdinalIgnoreCase);
+    }
 
     private RouterSettings BuildSettings() => new(
         DashboardBaseUrl.Trim(),

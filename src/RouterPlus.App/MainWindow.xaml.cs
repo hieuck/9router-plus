@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using RouterPlus.Core.Providers;
@@ -24,6 +26,106 @@ public partial class MainWindow : Window
     private void ProfileList_OnMouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         ViewModel.LaunchSelectedCommand.Execute(null);
+    }
+
+    private void ProfileList_OnPreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ListBox listBox || e.OriginalSource is not DependencyObject source)
+        {
+            return;
+        }
+
+        if (ItemsControl.ContainerFromElement(listBox, source) is System.Windows.Controls.ListBoxItem { DataContext: ProfileRowViewModel row } item)
+        {
+            item.IsSelected = true;
+            ViewModel.SelectProfileForContextMenu(row.Profile);
+        }
+    }
+
+    private void ProfileRow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ProfileRowViewModel row })
+        {
+            ViewModel.SelectProfileForContextMenu(row.Profile);
+            return;
+        }
+
+        e.Handled = true;
+    }
+
+    private async void ProfileGoogleLogin_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.OpenSelectedGoogleLoginAsync();
+    }
+
+    private void ProfileFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var profile = ViewModel.SelectedProfile;
+        if (profile is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!Directory.Exists(profile.ProfilePath))
+            {
+                throw new DirectoryNotFoundException($"Không tìm thấy thư mục profile: {profile.ProfilePath}");
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = profile.ProfilePath,
+                UseShellExecute = true
+            });
+            ViewModel.MarkProfileFolderOpened();
+        }
+        catch (Exception exception)
+        {
+            ViewModel.MarkProfileActionFailed(exception);
+        }
+    }
+
+    private void CopyProfileName_Click(object sender, RoutedEventArgs e)
+    {
+        var profile = ViewModel.SelectedProfile;
+        if (profile is null)
+        {
+            return;
+        }
+
+        try
+        {
+            System.Windows.Clipboard.SetText(profile.Name);
+            ViewModel.MarkProfileNameCopied();
+        }
+        catch (Exception exception)
+        {
+            ViewModel.MarkProfileActionFailed(exception);
+        }
+    }
+
+    private async void DeleteProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var profile = ViewModel.SelectedProfile;
+        if (profile is null)
+        {
+            return;
+        }
+
+        var result = System.Windows.MessageBox.Show(
+            this,
+            $"Bạn có chắc muốn xóa profile \"{profile.Name}\"?\n\nThư mục sẽ bị xóa:\n{profile.ProfilePath}\n\nChỉ thư mục profile này bị xóa; thư mục User Data vẫn được giữ lại.",
+            "Xác nhận xóa profile",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await ViewModel.DeleteSelectedProfileAsync();
     }
 
     private async void AddProviderApiKey_Click(object sender, RoutedEventArgs e)

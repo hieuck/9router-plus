@@ -8,7 +8,7 @@ Allow the profile search field to create a usable Chrome profile when the reques
 
 1. The user enters a non-empty profile name in the profile search field.
 2. If no discovered profile has that exact name, the sidebar shows an action labeled `Thêm profile "<name>"`.
-3. Activating the action allocates the next unused Chromium directory name (`Profile N`), creates the directory under the configured user-data directory, and stores the requested display name and directory mapping in RouterPlus settings.
+3. Activating the action creates the Chromium directory `Profile <tên>` from the trimmed requested name, creates it under the configured user-data directory, and stores the requested display name and directory mapping in RouterPlus settings.
 4. The app reloads the discovered and managed profiles, selects the new profile, and shows a success status.
 5. Existing double-click, 9Router, provider-dashboard, OAuth, and API-key workflows use the selected profile through the existing `ChromeLauncher` path.
 
@@ -16,7 +16,7 @@ Allow the profile search field to create a usable Chrome profile when the reques
 
 - Keep Chrome's `Local State` and the 9Router database read-only. The app stores only its own managed-profile metadata in the existing RouterPlus settings file.
 - Merge profiles discovered from Chrome with managed profiles by stable profile id. Managed metadata wins when Chrome later discovers the same directory, preserving the user-entered display name.
-- Allocate a directory that is not present in the discovered profiles, managed mappings, or filesystem. Use the first available `Profile 1`, `Profile 2`, and so on.
+- Build the directory name as `Profile <tên>` from the trimmed display name and reject it when the same directory already exists in discovered profiles, managed mappings, or the filesystem.
 - Reject blank names and exact case-insensitive duplicates. Trim surrounding whitespace before validation and persistence.
 - Create the directory before exposing the profile to launch workflows. Chrome initializes the profile on its first launch.
 - Show the add action only for a non-empty query that has no exact existing name; an existing partial match remains visible as normal search results.

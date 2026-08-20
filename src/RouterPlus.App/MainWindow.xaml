@@ -541,10 +541,20 @@
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                               ScrollViewer.CanContentScroll="True"
-                             MouseDoubleClick="ProfileList_OnMouseDoubleClick">
+                             MouseDoubleClick="ProfileList_OnMouseDoubleClick"
+                             PreviewMouseRightButtonDown="ProfileList_OnPreviewMouseRightButtonDown">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="5">
+                                <Grid Margin="5" ContextMenuOpening="ProfileRow_ContextMenuOpening">
+                                    <Grid.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Đăng nhập Google bằng Chrome" Click="ProfileGoogleLogin_Click" />
+                                            <MenuItem Header="Mở thư mục profile" Click="ProfileFolder_Click" />
+                                            <MenuItem Header="Sao chép tên profile" Click="CopyProfileName_Click" />
+                                            <Separator />
+                                            <MenuItem Header="Xóa profile…" Click="DeleteProfile_Click" />
+                                        </ContextMenu>
+                                    </Grid.ContextMenu>
                                     <Grid x:Name="ExpandedProfileGrid">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="24">
