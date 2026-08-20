@@ -46,6 +46,24 @@ public sealed class ThemeTemplateTests
         Assert.Equal("{DynamicResource AccentContentBrush}", foregroundSetter!.Attribute("Value")?.Value);
     }
 
+    [Fact]
+    public void Settings_toggle_labels_define_explicit_accent_content_foreground()
+    {
+        var mainWindowDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "MainWindow.xaml")));
+        var settingsLabels = mainWindowDocument
+            .Descendants()
+            .Where(element => element.Name.LocalName == "TextBlock"
+                && ((string?)element.Attribute("Text") == "Xong" || (string?)element.Attribute("Text") == "×"))
+            .ToArray();
+
+        Assert.Equal(2, settingsLabels.Length);
+        Assert.All(settingsLabels, label =>
+        {
+            Assert.Contains(label.Ancestors(), ancestor => ancestor.Name.LocalName == "ToggleButton");
+            Assert.Equal("{DynamicResource AccentContentBrush}", label.Attribute("Foreground")?.Value);
+        });
+    }
+
     private static string FindRepositoryFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
