@@ -968,6 +968,7 @@
                                             <Button Content="{DynamicResource ProviderAddText}"
                                                         Command="{Binding DataContext.OpenProviderCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                         CommandParameter="{Binding Kind}"
+                                                        Focusable="False"
                                                         >
                                                 <Button.Style>
                                                     <Style TargetType="Button" BasedOn="{StaticResource ProviderPrimaryActionButtonStyle}">
