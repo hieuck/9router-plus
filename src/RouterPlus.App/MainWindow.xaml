@@ -755,18 +755,7 @@
                                                 <Button Content="Dashboard"
                                                         Command="{Binding DataContext.OpenProviderDashboardCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                         CommandParameter="{Binding Kind}"
-                                                        >
-                                                    <Button.Style>
-                                                        <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.ApiKey}">
-                                                                    <Setter Property="Visibility" Value="Visible" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Button.Style>
-                                                </Button>
+                                                        Style="{StaticResource ProviderActionButtonStyle}" />
                                                 <Button Content="{Binding ApiKeyToggleText}"
                                                         Click="ToggleProviderApiKeyVisibility_Click">
                                                     <Button.Style>
