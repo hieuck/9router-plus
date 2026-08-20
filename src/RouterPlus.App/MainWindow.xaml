@@ -12,6 +12,7 @@
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource SurfaceBrush}"
         app:FontScaleBehavior.Scale="{Binding FontScale}"
+        SizeChanged="Window_OnSizeChanged"
         Loaded="Window_OnLoaded">
     <Window.Resources>
         <Style x:Key="SidebarTextStyle"

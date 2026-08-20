@@ -522,6 +522,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void MarkLogCopied() => StatusText = "Đã sao chép log vào clipboard.";
 
+    public void LogWindowSize(double width, double height) =>
+        AppendLog("UI", $"Window size: {width:0} × {height:0}.");
+
     public void MarkProfileNameCopied() => StatusText = "Đã sao chép tên profile vào clipboard.";
 
     public void MarkProfileFolderOpened()
