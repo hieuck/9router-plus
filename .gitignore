@@ -1,0 +1,10 @@
+.dotnet/
+.bootstrap/
+bin/
+obj/
+.vs/
+*.user
+*.suo
+publish/
+artifacts/
+work/
