@@ -22,6 +22,30 @@ public sealed class ThemeTemplateTests
         Assert.Equal("{TemplateBinding Foreground}", foregroundBinding!.Value);
     }
 
+    [Fact]
+    public void ToggleButton_checked_state_uses_accent_content_foreground()
+    {
+        var themeDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "Styles", "Theme.xaml")));
+        var toggleButtonStyle = themeDocument
+            .Descendants()
+            .Single(element => element.Name.LocalName == "Style" && (string?)element.Attribute("TargetType") == "ToggleButton");
+        var styleTriggers = toggleButtonStyle
+            .Elements()
+            .Single(element => element.Name.LocalName == "Style.Triggers");
+        var checkedTrigger = styleTriggers
+            .Elements()
+            .Single(element => element.Name.LocalName == "Trigger"
+                && (string?)element.Attribute("Property") == "IsChecked"
+                && (string?)element.Attribute("Value") == "True");
+        var foregroundSetter = checkedTrigger
+            .Elements()
+            .SingleOrDefault(element => element.Name.LocalName == "Setter"
+                && (string?)element.Attribute("Property") == "Foreground");
+
+        Assert.NotNull(foregroundSetter);
+        Assert.Equal("{DynamicResource AccentContentBrush}", foregroundSetter!.Attribute("Value")?.Value);
+    }
+
     private static string FindRepositoryFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
