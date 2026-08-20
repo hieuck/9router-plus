@@ -7,5 +7,6 @@ obj/
 *.suo
 publish/
 artifacts/
+.worktrees/
 work/
 ui-*.png
