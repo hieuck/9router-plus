@@ -168,6 +168,81 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="SettingsSectionStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="13" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+
+        <Style x:Key="SettingsSectionTitleStyle"
+               TargetType="TextBlock"
+               BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,3" />
+        </Style>
+
+        <Style x:Key="SettingsSectionDescriptionStyle"
+               TargetType="TextBlock"
+               BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Margin" Value="0,0,0,14" />
+        </Style>
+
+        <Style x:Key="SettingsFieldLabelStyle"
+               TargetType="TextBlock"
+               BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+
+        <Style x:Key="SettingsFieldHintStyle"
+               TargetType="TextBlock"
+               BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+
+        <Style x:Key="SettingsStatusStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,0,0,14" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasUnsavedSettings}" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding HasSettingsValidationError}" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SettingsStatusTextStyle"
+               TargetType="TextBlock"
+               BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasUnsavedSettings}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding HasSettingsValidationError}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="ProviderWorkflowTagStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
@@ -992,13 +1067,14 @@
                 Style="{StaticResource DrawerVisibilityStyle}">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-                    <Button Content="Lưu cài đặt"
-                            Command="{Binding SaveSettingsCommand}"
-                            Style="{StaticResource ProviderPrimaryActionButtonStyle}" />
                     <ToggleButton Content="Xong"
                                   IsChecked="{Binding IsSettingsExpanded, Mode=TwoWay}"
                                   Style="{StaticResource UtilityToggleButtonStyle}"
-                                  Margin="7,0,0,0" />
+                                  Margin="0,0,7,0" />
+                    <Button Content="Lưu cài đặt"
+                            Command="{Binding SaveSettingsCommand}"
+                            Style="{StaticResource ProviderPrimaryActionButtonStyle}"
+                            Margin="0,0,0,8" />
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
@@ -1009,55 +1085,85 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel>
                                 <TextBlock Text="Cài đặt" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="Dashboard và Chrome paths" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,5,0,0" />
+                        <TextBlock Text="Giao diện, dashboard và Chrome" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,5,0,0" />
                             </StackPanel>
                             <ToggleButton Grid.Column="1" Content="×" IsChecked="{Binding IsSettingsExpanded, Mode=TwoWay}" Width="32" Height="32" Padding="0" />
                         </Grid>
-                        <TextBlock Text="Theme" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
-                        <ComboBox ItemsSource="{Binding ThemeOptions}"
-                                  DisplayMemberPath="Label"
-                                  SelectedValuePath="Value"
-                                  SelectedValue="{Binding UseLightTheme, Mode=TwoWay}"
-                                  Margin="0,5,0,14" />
-                        <TextBlock Text="Font size" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
-                        <ComboBox ItemsSource="{Binding FontScaleOptions}"
-                                  DisplayMemberPath="Label"
-                                  SelectedValuePath="Value"
-                                  SelectedValue="{Binding FontScale, Mode=TwoWay}"
-                                  Margin="0,5,0,14" />
-                        <TextBlock Text="Dashboard URL" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
-                        <TextBox Text="{Binding DashboardBaseUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,5,0,14" />
-                        <TextBlock Text="Chrome executable" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
-                        <Grid Margin="0,5,0,14">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Text="{Binding ChromeExecutablePath, UpdateSourceTrigger=PropertyChanged}" Margin="0" />
-                            <Button Grid.Column="1"
-                                    Content="Chọn file"
-                                    Click="BrowseChrome_Click"
-                                    Style="{StaticResource UtilityButtonStyle}"
-                                    Margin="7,0,0,0" />
-                        </Grid>
-                        <TextBlock Text="Chrome User Data" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
-                        <Grid Margin="0,5,0,14">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Text="{Binding ChromeUserDataDirectory, UpdateSourceTrigger=PropertyChanged}" Margin="0" />
-                            <Button Grid.Column="1"
-                                    Content="Chọn thư mục"
-                                    Click="BrowseUserData_Click"
-                                    Style="{StaticResource UtilityButtonStyle}"
-                                    Margin="7,0,0,0" />
-                        </Grid>
-                        <Border Style="{StaticResource InfoPanelStyle}" Padding="13" Margin="0,8,0,0">
-                            <TextBlock Text="Cài đặt được dùng để đọc profile và mở dashboard bằng đúng Chrome profile."
-                                       Foreground="{DynamicResource MutedTextBrush}"
-                                       FontSize="10"
+                        <Border Style="{StaticResource SettingsStatusStyle}">
+                            <TextBlock Text="{Binding SettingsStatusText}"
+                                       Style="{StaticResource SettingsStatusTextStyle}"
                                        TextWrapping="Wrap" />
+                        </Border>
+
+                        <Border Style="{StaticResource SettingsSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Giao diện" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                <TextBlock Text="Tùy chỉnh cách hiển thị của ứng dụng."
+                                           Style="{StaticResource SettingsSectionDescriptionStyle}" />
+                                <TextBlock Text="Chủ đề" Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <ComboBox ItemsSource="{Binding ThemeOptions}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding UseLightTheme, Mode=TwoWay}"
+                                          Margin="0,0,0,12" />
+                                <TextBlock Text="Cỡ chữ" Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <ComboBox ItemsSource="{Binding FontScaleOptions}"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding FontScale, Mode=TwoWay}"
+                                          Margin="0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource SettingsSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Dashboard" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                <TextBlock Text="Địa chỉ 9Router mà ứng dụng sẽ mở."
+                                           Style="{StaticResource SettingsSectionDescriptionStyle}" />
+                                <TextBlock Text="URL dashboard" Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <TextBox Text="{Binding DashboardBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0" />
+                                <TextBlock Text="Ví dụ: http://localhost:20128"
+                                           Style="{StaticResource SettingsFieldHintStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource SettingsSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Chrome" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                <TextBlock Text="Đường dẫn dùng để đọc profile và mở dashboard đúng tài khoản."
+                                           Style="{StaticResource SettingsSectionDescriptionStyle}" />
+                                <TextBlock Text="Chrome executable" Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ChromeExecutablePath, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="{Binding ChromeExecutablePath}"
+                                             Margin="0" />
+                                    <Button Grid.Column="1"
+                                            Content="Chọn file"
+                                            Click="BrowseChrome_Click"
+                                            Style="{StaticResource UtilityButtonStyle}"
+                                            Margin="7,0,0,0" />
+                                </Grid>
+                                <TextBlock Text="Chrome User Data" Style="{StaticResource SettingsFieldLabelStyle}" Margin="0,14,0,5" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ChromeUserDataDirectory, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="{Binding ChromeUserDataDirectory}"
+                                             Margin="0" />
+                                    <Button Grid.Column="1"
+                                            Content="Chọn thư mục"
+                                            Click="BrowseUserData_Click"
+                                            Style="{StaticResource UtilityButtonStyle}"
+                                            Margin="7,0,0,0" />
+                                </Grid>
+                            </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>

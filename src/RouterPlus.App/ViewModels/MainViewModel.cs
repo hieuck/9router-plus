@@ -38,6 +38,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _isProfileSidebarCollapsed;
     private double _fontScale = 1d;
     private bool _useLightTheme;
+    private string _savedDashboardBaseUrl = "http://localhost:20128";
+    private string _savedChromeExecutablePath = string.Empty;
+    private string _savedChromeUserDataDirectory = string.Empty;
+    private double _savedFontScale = 1d;
+    private bool _savedUseLightTheme;
     private string _connectionStatusText = "Chưa đồng bộ trạng thái provider.";
     private string _statusText = "Đang khởi tạo…";
     private readonly Queue<string> _logEntries = new();
@@ -54,7 +59,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ApiKeyProviders = Providers.Where(provider => provider.Workflow == WorkflowKind.ApiKey).ToArray();
         RefreshCommand = new AsyncRelayCommand(InitializeAsync);
         RefreshConnectionStatusesCommand = new AsyncRelayCommand(RefreshConnectionStatusesAsync);
-        SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
+        SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, CanSaveSettings);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         OpenProviderCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderAsync);
         OpenProviderDashboardCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderDashboardAsync, _ => SelectedProfile is not null);
@@ -197,6 +202,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _fontScale = next;
             OnPropertyChanged();
             OnPropertyChanged(nameof(FontScaleLabel));
+            NotifySettingsStateChanged();
         }
     }
 
@@ -215,6 +221,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _useLightTheme = value;
             ThemeManager.Apply(value);
             OnPropertyChanged();
+            NotifySettingsStateChanged();
         }
     }
 
@@ -255,6 +262,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             _dashboardBaseUrl = value;
             OnPropertyChanged();
+            NotifySettingsStateChanged();
         }
     }
 
@@ -270,6 +278,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             _chromeExecutablePath = value;
             OnPropertyChanged();
+            NotifySettingsStateChanged();
         }
     }
 
@@ -285,6 +294,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             _chromeUserDataDirectory = value;
             OnPropertyChanged();
+            NotifySettingsStateChanged();
         }
     }
 
@@ -293,6 +303,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _statusText;
         private set => SetStatusText(value, "INFO", forceLog: false);
     }
+
+    public bool HasUnsavedSettings => !SettingsMatchSavedValues();
+
+    public string SettingsValidationMessage => GetSettingsValidationMessage();
+
+    public bool HasSettingsValidationError => !string.IsNullOrWhiteSpace(SettingsValidationMessage);
+
+    public string SettingsStatusText => HasSettingsValidationError
+        ? SettingsValidationMessage
+        : HasUnsavedSettings
+            ? "Có thay đổi chưa lưu"
+            : "Đã lưu";
 
     public string LogText
     {
@@ -338,6 +360,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             FontScale = settings.FontScale;
             UseLightTheme = settings.UseLightTheme;
             RefreshProfiles();
+            MarkSettingsSaved();
             await LoadSelectedProfileApiKeysAsync();
             StatusText = Profiles.Count == 0
                 ? "Chưa tìm thấy Chrome profile. Hãy kiểm tra đường dẫn rồi nhấn Làm mới."
@@ -534,6 +557,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 FontScale,
                 UseLightTheme));
             RefreshProfiles();
+            MarkSettingsSaved();
             await RefreshConnectionStatusesAsync();
             StatusText = "Đã lưu cài đặt.";
         }
@@ -1031,6 +1055,60 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _statusText = value;
         AppendLog(level, value);
         OnPropertyChanged(nameof(StatusText));
+    }
+
+    private bool CanSaveSettings() => !HasSettingsValidationError;
+
+    private bool SettingsMatchSavedValues() =>
+        string.Equals(DashboardBaseUrl.Trim(), _savedDashboardBaseUrl, StringComparison.Ordinal)
+        && string.Equals(ChromeExecutablePath.Trim(), _savedChromeExecutablePath, StringComparison.Ordinal)
+        && string.Equals(ChromeUserDataDirectory.Trim(), _savedChromeUserDataDirectory, StringComparison.Ordinal)
+        && Math.Abs(FontScale - _savedFontScale) < 0.001d
+        && UseLightTheme == _savedUseLightTheme;
+
+    private string GetSettingsValidationMessage()
+    {
+        var dashboardBaseUrl = DashboardBaseUrl.Trim();
+        if (!Uri.TryCreate(dashboardBaseUrl, UriKind.Absolute, out var dashboardUri)
+            || dashboardUri is null
+            || (dashboardUri.Scheme != Uri.UriSchemeHttp && dashboardUri.Scheme != Uri.UriSchemeHttps)
+            || string.IsNullOrWhiteSpace(dashboardUri.Host))
+        {
+            return "Nhập URL dashboard hợp lệ.";
+        }
+
+        var chromeExecutablePath = ChromeExecutablePath.Trim();
+        if (!string.IsNullOrWhiteSpace(chromeExecutablePath) && !File.Exists(chromeExecutablePath))
+        {
+            return "Không tìm thấy file Chrome đã chọn.";
+        }
+
+        var chromeUserDataDirectory = ChromeUserDataDirectory.Trim();
+        if (!string.IsNullOrWhiteSpace(chromeUserDataDirectory) && !Directory.Exists(chromeUserDataDirectory))
+        {
+            return "Không tìm thấy thư mục dữ liệu Chrome đã chọn.";
+        }
+
+        return string.Empty;
+    }
+
+    private void MarkSettingsSaved()
+    {
+        _savedDashboardBaseUrl = DashboardBaseUrl.Trim();
+        _savedChromeExecutablePath = ChromeExecutablePath.Trim();
+        _savedChromeUserDataDirectory = ChromeUserDataDirectory.Trim();
+        _savedFontScale = FontScale;
+        _savedUseLightTheme = UseLightTheme;
+        NotifySettingsStateChanged();
+    }
+
+    private void NotifySettingsStateChanged()
+    {
+        OnPropertyChanged(nameof(HasUnsavedSettings));
+        OnPropertyChanged(nameof(SettingsValidationMessage));
+        OnPropertyChanged(nameof(HasSettingsValidationError));
+        OnPropertyChanged(nameof(SettingsStatusText));
+        SaveSettingsCommand?.RaiseCanExecuteChanged();
     }
 
     private void AppendLog(string level, string message)
