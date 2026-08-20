@@ -110,14 +110,14 @@ public sealed class MainViewModelProfileSearchTests
 
             var profile = Assert.Single(viewModel.Profiles);
             Assert.Equal("New profile", profile.Name);
-            Assert.Equal("Profile 1", profile.DirectoryName);
+            Assert.Equal("Profile New profile", profile.DirectoryName);
             Assert.Equal(profile, viewModel.SelectedProfile);
             Assert.True(Directory.Exists(profile.ProfilePath));
 
             var settings = await new SettingsStore(settingsPath).LoadAsync();
             var managedProfile = Assert.Single(settings.ManagedProfiles!);
             Assert.Equal("New profile", managedProfile.Name);
-            Assert.Equal("Profile 1", managedProfile.DirectoryName);
+            Assert.Equal("Profile New profile", managedProfile.DirectoryName);
             Assert.Equal(userDataDirectory, managedProfile.UserDataDirectory);
         }
         finally

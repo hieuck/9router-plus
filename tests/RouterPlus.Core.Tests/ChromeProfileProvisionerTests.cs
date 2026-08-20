@@ -6,7 +6,7 @@ namespace RouterPlus.Core.Tests;
 public sealed class ChromeProfileProvisionerTests
 {
     [Fact]
-    public void Create_trims_name_allocates_first_free_directory_and_creates_it()
+    public void Create_trims_name_uses_name_for_directory_and_creates_it()
     {
         var userDataDirectory = CreateTempDirectory();
         try
@@ -34,9 +34,54 @@ public sealed class ChromeProfileProvisionerTests
                 managed);
 
             Assert.Equal("New profile", created.Name);
-            Assert.Equal("Profile 5", created.DirectoryName);
+            Assert.Equal("Profile New profile", created.DirectoryName);
             Assert.Equal(Path.GetFullPath(userDataDirectory), created.UserDataDirectory);
-            Assert.True(Directory.Exists(Path.Combine(userDataDirectory, "Profile 5")));
+            Assert.True(Directory.Exists(Path.Combine(userDataDirectory, "Profile New profile")));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Theory]
+    [InlineData("abc", "Profile abc")]
+    [InlineData("abc@gmail.com", "Profile abc@gmail.com")]
+    public void Create_preserves_email_and_special_characters_in_directory_name(string name, string expectedDirectoryName)
+    {
+        var userDataDirectory = CreateTempDirectory();
+        try
+        {
+            var created = new ChromeProfileProvisioner().Create(
+                userDataDirectory,
+                name,
+                Array.Empty<ChromeProfile>(),
+                Array.Empty<ManagedChromeProfile>());
+
+            Assert.Equal(expectedDirectoryName, created.DirectoryName);
+            Assert.True(Directory.Exists(Path.Combine(userDataDirectory, expectedDirectoryName)));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Create_rejects_existing_directory_for_name()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(userDataDirectory, "Profile abc"));
+
+            var exception = Assert.Throws<InvalidOperationException>(() => new ChromeProfileProvisioner().Create(
+                userDataDirectory,
+                "abc",
+                Array.Empty<ChromeProfile>(),
+                Array.Empty<ManagedChromeProfile>()));
+
+            Assert.Contains("Profile abc", exception.Message);
         }
         finally
         {

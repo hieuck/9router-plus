@@ -45,24 +45,21 @@ public sealed class ChromeProfileProvisioner
             occupiedDirectoryNames.Add(profile.DirectoryName.Trim());
         }
 
-        Directory.CreateDirectory(normalizedUserDataDirectory);
-        for (var index = 1; ; index++)
+        var directoryName = $"Profile {normalizedName}";
+        if (occupiedDirectoryNames.Contains(directoryName))
         {
-            var directoryName = $"Profile {index}";
-            if (occupiedDirectoryNames.Contains(directoryName))
-            {
-                continue;
-            }
-
-            var profilePath = Path.Combine(normalizedUserDataDirectory, directoryName);
-            if (Directory.Exists(profilePath) || File.Exists(profilePath))
-            {
-                continue;
-            }
-
-            Directory.CreateDirectory(profilePath);
-            return new ManagedChromeProfile(normalizedName, directoryName, normalizedUserDataDirectory);
+            throw new InvalidOperationException($"A Chrome profile directory named '{directoryName}' already exists.");
         }
+
+        Directory.CreateDirectory(normalizedUserDataDirectory);
+        var profilePath = Path.Combine(normalizedUserDataDirectory, directoryName);
+        if (Directory.Exists(profilePath) || File.Exists(profilePath))
+        {
+            throw new InvalidOperationException($"A Chrome profile directory named '{directoryName}' already exists.");
+        }
+
+        Directory.CreateDirectory(profilePath);
+        return new ManagedChromeProfile(normalizedName, directoryName, normalizedUserDataDirectory);
     }
 
     private static bool IsInUserDataDirectory(string path, string expectedPath) =>
