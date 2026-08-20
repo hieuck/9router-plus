@@ -53,6 +53,27 @@ public sealed class ProviderHealthStateTests
     }
 
     [Fact]
+    public void Resolve_trusts_active_test_status_over_stale_error_metadata()
+    {
+        var connections = new[]
+        {
+            new ProviderConnection(
+                "ollama-1",
+                ProviderKind.Ollama,
+                "Work",
+                1,
+                true,
+                TestStatus: "active",
+                ErrorCode: "400",
+                LastError: "stale error from an earlier test")
+        };
+
+        var state = ProviderHealthStateResolver.Resolve(true, connections);
+
+        Assert.Equal(ProviderHealthState.Healthy, state);
+    }
+
+    [Fact]
     public void Resolve_returns_disabled_when_9router_marks_all_connections_inactive()
     {
         var connections = new[]

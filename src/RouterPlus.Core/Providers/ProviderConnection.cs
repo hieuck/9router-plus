@@ -15,12 +15,16 @@ public sealed record ProviderConnection(
 {
     public bool IsDisabled => !IsActive;
 
-    public bool HasError =>
+    public bool HasSuccessfulTestStatus => TestStatus is not null &&
+        TestStatus.Trim().ToLowerInvariant() is "active" or "ok" or "healthy" or "available" or "ready" or "success" or "connected";
+
+    public bool HasError => !HasSuccessfulTestStatus &&
         !string.IsNullOrWhiteSpace(ErrorCode) ||
-        !string.IsNullOrWhiteSpace(LastError) ||
-        string.Equals(TestStatus, "error", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(TestStatus, "expired", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(TestStatus, "unavailable", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(TestStatus, "invalid", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(TestStatus, "failed", StringComparison.OrdinalIgnoreCase);
+        !HasSuccessfulTestStatus &&
+        (!string.IsNullOrWhiteSpace(LastError) ||
+         string.Equals(TestStatus, "error", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(TestStatus, "expired", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(TestStatus, "unavailable", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(TestStatus, "invalid", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(TestStatus, "failed", StringComparison.OrdinalIgnoreCase));
 }
