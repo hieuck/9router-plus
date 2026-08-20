@@ -207,7 +207,15 @@
                                               CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                               Background="Transparent"
                                               BorderThickness="0"
-                                              IsTabStop="False" />
+                                              IsTabStop="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
                             </Track.DecreaseRepeatButton>
                             <Track.Thumb>
                                 <Thumb Background="{DynamicResource BorderBrush}">
@@ -225,7 +233,15 @@
                                               CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                               Background="Transparent"
                                               BorderThickness="0"
-                                              IsTabStop="False" />
+                                              IsTabStop="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
                             </Track.IncreaseRepeatButton>
                         </Track>
                     </Grid>
