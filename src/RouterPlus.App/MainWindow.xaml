@@ -941,23 +941,36 @@
                 </Grid>
 
                 <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Padding="14">
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right"
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="38" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Activity log"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Margin="0" />
+                        <Button Grid.Column="1"
                                 Content="Sao chép log"
                                 Click="CopyLog_Click"
                                 Style="{StaticResource UtilityButtonStyle}"
+                                VerticalAlignment="Center"
                                 Margin="10,0,0,0" />
-                        <StackPanel>
-                            <TextBlock Text="Activity log" FontSize="12" FontWeight="SemiBold" />
-                            <TextBox Text="{Binding LogText, Mode=OneWay}"
-                                     IsReadOnly="True"
-                                     TextWrapping="Wrap"
-                                     VerticalScrollBarVisibility="Auto"
-                                     HorizontalScrollBarVisibility="Disabled"
-                                     Height="92"
-                                     Margin="0,8,0,0" />
-                        </StackPanel>
-                    </DockPanel>
+                        <TextBox Grid.Row="1"
+                                 Grid.ColumnSpan="2"
+                                 Text="{Binding LogText, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Disabled"
+                                 Height="92"
+                                 Margin="0,8,0,0" />
+                    </Grid>
                 </Border>
             </Grid>
         </ScrollViewer>
