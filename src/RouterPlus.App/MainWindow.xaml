@@ -1194,7 +1194,7 @@
                                    Foreground="{DynamicResource AccentContentBrush}"
                                    Margin="0" />
                     </ToggleButton>
-                    <Button Content="🔄 Khôi phục cài đặt gốc"
+                    <Button Content="Khôi phục cài đặt gốc"
                               Command="{Binding ResetSettingsCommand}"
                               Style="{StaticResource UtilityButtonStyle}"
                               HorizontalAlignment="Left"
@@ -1236,11 +1236,53 @@
                         <!-- Improved Settings Section với icons và validation -->
                                                 <Border Style="{StaticResource SettingsSectionStyle}">
                             <StackPanel>
-                                <!-- Section Header with Icon -->
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
-                                    <TextBlock Text="🎨" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <TextBlock Text="Giao diện" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0" />
-                                </StackPanel>
+                                <!-- Clickable Header -->
+                                <Button Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="0"
+                                        Margin="0,0,0,3"
+                                        HorizontalContentAlignment="Stretch"
+                                        Cursor="Hand"
+                                        Command="{Binding ToggleAppearanceSectionCommand}">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <ContentPresenter />
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </Button.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" 
+                                                   FontFamily="Segoe UI Symbol"
+                                                   FontSize="10"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"
+                                                   Foreground="{DynamicResource TextBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="▼" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAppearanceSectionExpanded}" Value="False">
+                                                            <Setter Property="Text" Value="▶" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="1" 
+                                                   Text="Giao diện" 
+                                                   Style="{StaticResource SettingsSectionTitleStyle}" 
+                                                   Margin="0" />
+                                    </Grid>
+                                </Button>
                                 <TextBlock Text="Tùy chỉnh cách hiển thị của ứng dụng."
                                            Style="{StaticResource SettingsSectionDescriptionStyle}" />
                                 
@@ -1358,12 +1400,67 @@
 
                         <Border Style="{StaticResource SettingsSectionStyle}">
                             <StackPanel>
-                                <!-- Section Header with Icon -->
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
-                                    <TextBlock Text="🌐" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <TextBlock Text="Dashboard" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0" />
-                                </StackPanel>
-                                <TextBlock Text="Địa chỉ 9Router mà ứng dụng sẽ mở."
+                                <!-- Clickable Header -->
+                                <Button Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="0"
+                                        Margin="0,0,0,3"
+                                        HorizontalContentAlignment="Stretch"
+                                        Cursor="Hand"
+                                        Command="{Binding ToggleDashboardSectionCommand}">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <ContentPresenter />
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </Button.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" 
+                                                   FontFamily="Segoe UI Symbol"
+                                                   FontSize="10"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"
+                                                   Foreground="{DynamicResource TextBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="▼" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDashboardSectionExpanded}" Value="False">
+                                                            <Setter Property="Text" Value="▶" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="1" 
+                                                   Text="Dashboard" 
+                                                   Style="{StaticResource SettingsSectionTitleStyle}" 
+                                                   Margin="0" />
+                                    </Grid>
+                                </Button>
+                                
+                                <!-- Collapsible Content -->
+                                <StackPanel>
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDashboardSectionExpanded}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+<TextBlock Text="Địa chỉ 9Router mà ứng dụng sẽ mở."
                                            Style="{StaticResource SettingsSectionDescriptionStyle}" />
                                 
                                 <!-- Dashboard URL with validation indicator -->
@@ -1419,21 +1516,59 @@
                                         </TextBlock>
                                     </StackPanel>
                                 </Grid>
+                                </StackPanel>
+
                             </StackPanel>
                         </Border>
 
                         <Border Style="{StaticResource SettingsSectionStyle}">
                             <StackPanel>
-                                <!-- Section Header with Icon and Auto-detect button -->
+                                <!-- Clickable Header with Auto-detect button -->
                                 <Grid Margin="0,0,0,3">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="🔗" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                        <TextBlock Text="Chrome" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0" />
-                                    </StackPanel>
+                                    <Button Grid.Column="0"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="0"
+                                            HorizontalContentAlignment="Stretch"
+                                            Cursor="Hand"
+                                            Command="{Binding ToggleChromeSectionCommand}">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <ContentPresenter />
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Button.Style>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock FontFamily="Segoe UI Symbol"
+                                                       FontSize="10"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,8,0"
+                                                       Foreground="{DynamicResource TextBrush}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="▼" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsChromeSectionExpanded}" Value="False">
+                                                                <Setter Property="Text" Value="▶" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="Chrome" 
+                                                       Style="{StaticResource SettingsSectionTitleStyle}" 
+                                                       Margin="0" />
+                                        </StackPanel>
+                                    </Button>
                                     <Button Grid.Column="1"
                                             Content="⚡ Tự động phát hiện"
                                             Command="{Binding AutoDetectChromeCommand}"
@@ -1443,7 +1578,19 @@
                                             ToolTip="Tự động tìm Chrome installation" />
                                 </Grid>
                                 
-                                <TextBlock Text="Đường dẫn dùng để đọc profile và mở dashboard đúng tài khoản."
+                                <!-- Collapsible Content -->
+                                <StackPanel>
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsChromeSectionExpanded}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+<TextBlock Text="Đường dẫn dùng để đọc profile và mở dashboard đúng tài khoản."
                                            Style="{StaticResource SettingsSectionDescriptionStyle}" />
                                 
                                 <!-- Chrome Executable with validation -->
@@ -1557,6 +1704,8 @@
                                         </TextBlock>
                                     </StackPanel>
                                 </Grid>
+                                </StackPanel>
+
                             </StackPanel>
                         </Border>
 
