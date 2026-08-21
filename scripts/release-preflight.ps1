@@ -100,7 +100,7 @@ if ($readme -notmatch 'releases/latest') {
 }
 
 $changelog = Get-Content -LiteralPath (Get-RepositoryPath 'CHANGELOG.md') -Raw
-if ($changelog -notmatch '(?m)^## Unreleased$') {
+if ($changelog -notmatch '(?m)^## Unreleased\r?$') {
     throw 'CHANGELOG.md must contain an Unreleased section.'
 }
 
