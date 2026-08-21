@@ -51,6 +51,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _chromeUserDataDirectory = string.Empty;
     private string _profileSearchText = string.Empty;
     private bool _isSettingsExpanded;
+    private bool _isAppearanceSectionExpanded = true;
+    private bool _isDashboardSectionExpanded = true;
+    private bool _isChromeSectionExpanded = true;
     private bool _isProfileSidebarCollapsed;
     private double _fontScale = 1d;
     private bool _useLightTheme;
@@ -113,6 +116,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ClearChromeExecutableCommand = new AsyncRelayCommand(ClearChromeExecutable);
         ClearChromeUserDataCommand = new AsyncRelayCommand(ClearChromeUserData);
         ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
+        ToggleAppearanceSectionCommand = new RelayCommand(ToggleAppearanceSection);
+        ToggleDashboardSectionCommand = new RelayCommand(ToggleDashboardSection);
+        ToggleChromeSectionCommand = new RelayCommand(ToggleChromeSection);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -290,6 +296,39 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return hasFilter
                 ? string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0} đang hiển thị", FilteredProfileCount)
                 : string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0} profile", FilteredProfileCount);
+        }
+    }
+
+    public bool IsAppearanceSectionExpanded
+    {
+        get => _isAppearanceSectionExpanded;
+        set
+        {
+            if (_isAppearanceSectionExpanded == value) return;
+            _isAppearanceSectionExpanded = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsDashboardSectionExpanded
+    {
+        get => _isDashboardSectionExpanded;
+        set
+        {
+            if (_isDashboardSectionExpanded == value) return;
+            _isDashboardSectionExpanded = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsChromeSectionExpanded
+    {
+        get => _isChromeSectionExpanded;
+        set
+        {
+            if (_isChromeSectionExpanded == value) return;
+            _isChromeSectionExpanded = value;
+            OnPropertyChanged();
         }
     }
 
@@ -575,6 +614,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AsyncRelayCommand ClearChromeUserDataCommand { get; }
 
     public AsyncRelayCommand ResetSettingsCommand { get; }
+
+    public RelayCommand ToggleAppearanceSectionCommand { get; }
+    public RelayCommand ToggleDashboardSectionCommand { get; }
+    public RelayCommand ToggleChromeSectionCommand { get; }
+
+    private void ToggleAppearanceSection()
+    {
+        IsAppearanceSectionExpanded = !IsAppearanceSectionExpanded;
+    }
+
+    private void ToggleDashboardSection()
+    {
+        IsDashboardSectionExpanded = !IsDashboardSectionExpanded;
+    }
+
+    private void ToggleChromeSection()
+    {
+        IsChromeSectionExpanded = !IsChromeSectionExpanded;
+    }
 
     private async Task ResetSettingsAsync()
     {
@@ -1919,6 +1977,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
+
+
 
 
 
