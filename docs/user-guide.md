@@ -29,7 +29,7 @@ RouterPlus giúp mở Chrome profile đúng ngữ cảnh và quản lý connecti
 
 4. Giải nén vào thư mục bạn muốn giữ ứng dụng.
 5. Mở `RouterPlus.exe`.
-6. Nếu Windows SmartScreen cảnh báo, chỉ tiếp tục khi bạn đã tải đúng asset từ release chính thức và checksum hợp lệ. Bản hiện tại chưa được code-sign.
+6. Nếu Windows SmartScreen cảnh báo, chỉ tiếp tục khi bạn đã tải đúng asset từ release chính thức và checksum hợp lệ. Personal release và build local có thể chưa được code-sign bởi CA; đây là hành vi dự kiến cho bản cá nhân.
 
 ## 3. Thiết lập lần đầu
 
@@ -115,12 +115,20 @@ Nếu OAuth/device code timeout, không tạo lại liên tục; xem [Troublesho
 2. Dán key vào card provider tương ứng hoặc dùng nút `Paste`.
 3. Kiểm tra trạng thái hiển thị `Đã lưu cục bộ`/`DPAPI`.
 4. Nhấn `Thêm vào 9Router`.
-5. App đặt tên connection theo profile và đặt priority ở cuối danh sách.
-6. Ô key không tự xóa để bạn có thể đối chiếu; key vẫn được mask. Chỉ nhấn `Hiện key` khi cần kiểm tra trên máy riêng.
+5. App đặt tên connection theo profile, đặt priority ở cuối danh sách và tự chạy Test Connection để đồng bộ trạng thái.
+6. Nếu key hợp lệ, card chuyển sang `Online`; nếu kiểm tra thất bại, card hiển thị lỗi thay vì báo Online giả.
+7. Ô key không tự xóa để bạn có thể đối chiếu; key vẫn được mask. Chỉ nhấn `Hiện key` khi cần kiểm tra trên máy riêng.
 
 Không gửi API key vào issue, chat, screenshot, clipboard log hoặc file backup không mã hóa. Chi tiết lưu trữ xem [Privacy](privacy.md).
 
-## 8. Theme, font và settings
+## 8. About, Help và tự cập nhật
+
+- Mở menu `Trợ giúp` để xem `Giới thiệu`, hướng dẫn, chính sách bảo mật hoặc trang release cố định của dự án. About chỉ hiển thị tên app, version, MIT License và link công khai; không bind vào profile, log, settings hay secret.
+- Chọn `Kiểm tra cập nhật` để đọc release stable từ repository cố định. Request này không gửi profile, email, API key, OAuth state, Chrome path hoặc machine identifier.
+- Nếu có bản mới, app chỉ cho cài khi executable hiện tại và package mới được xác minh bằng Authenticode, manifest signature, checksum và archive layout. Người dùng phải xác nhận trước khi app đóng.
+- Build unsigned, personal release hoặc release thiếu chữ ký sẽ hiển thị self-update bị vô hiệu hóa; không có fallback tải executable từ URL tùy ý.
+- Updater riêng đổi live directory sang backup, đưa staging vào vị trí live và rollback nếu bản mới không khởi động được. Settings và DPAPI secrets nằm ngoài package update.
+## 9. Theme, font và settings
 
 - Nhấn `⚙ Cài đặt` để mở/thu gọn settings.
 - Chọn theme sáng/tối.
@@ -128,7 +136,7 @@ Không gửi API key vào issue, chat, screenshot, clipboard log hoặc file bac
 - Nhấn `Lưu cài đặt` sau khi đổi đường dẫn hoặc dashboard URL.
 - Vị trí cửa sổ được lưu khi đóng app và áp dụng lại lần sau nếu còn hợp lệ.
 
-## 9. Dữ liệu cục bộ và chuyển máy
+## 10. Dữ liệu cục bộ và chuyển máy
 
 RouterPlus lưu:
 
@@ -137,7 +145,7 @@ RouterPlus lưu:
 
 Khi chuyển sang Windows user khác, `secrets.json` không tự giải mã được. Nếu cần chuyển máy, hãy tạo key mới trên user đích thay vì copy secrets như file văn bản thông thường.
 
-## 10. Gỡ ứng dụng
+## 11. Gỡ ứng dụng
 
 1. Đóng RouterPlus và Chrome.
 2. Xóa thư mục đã giải nén của RouterPlus.

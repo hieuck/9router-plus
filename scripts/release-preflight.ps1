@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [switch]$RequireLicense,
-    [switch]$RequirePublicRepository
+    [switch]$RequirePublicRepository,
+    [switch]$RequirePrivateSecurityChannel,
+    [switch]$RequireUpdateSigning,
+    [string]$PublishDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,7 +32,11 @@ $requiredFiles = @(
     'docs\assets\9router-profile-workspace.png',
     '.github\workflows\ci.yml',
     '.github\workflows\release.yml',
-    'scripts\package-release.ps1'
+    '.github\workflows\release-personal.yml',
+    'scripts\package-release.ps1',
+    'scripts\sign-local-release.ps1',
+    'scripts\sign-release-manifest.ps1',
+    'src\RouterPlus.Updater\RouterPlus.Updater.csproj'
 )
 
 foreach ($requiredFile in $requiredFiles) {
@@ -40,11 +47,17 @@ if ($RequireLicense) {
     Require-File 'LICENSE'
 }
 
-$rawScreenshots = Get-ChildItem -Path $repositoryRoot -Recurse -Filter 'ui-*.png' -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\\(\.git|bin|obj|artifacts|work|\.worktrees)\\' }
-if ($rawScreenshots) {
-    $paths = $rawScreenshots.FullName -join [Environment]::NewLine
-    throw "Raw UI screenshots are present in the release tree:$([Environment]::NewLine)$paths"
+$allowedImagePaths = @(
+    (Get-RepositoryPath 'docs\assets\9router-profile-workspace.png'),
+    (Get-RepositoryPath 'src\RouterPlus.App\Assets\RouterPlus.ico')
+) | ForEach-Object { [IO.Path]::GetFullPath($_) }
+$releaseImages = Get-ChildItem -Path $repositoryRoot -Recurse -File -Include '*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp', '*.bmp', '*.ico' -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch '\\(\.git|bin|obj|artifacts|work|\.worktrees|\.bootstrap|\.dotnet)\\' }
+$unexpectedImages = $releaseImages |
+    Where-Object { $allowedImagePaths -notcontains [IO.Path]::GetFullPath($_.FullName) }
+if ($unexpectedImages) {
+    $paths = $unexpectedImages.FullName -join [Environment]::NewLine
+    throw "Unexpected image assets are present in the release tree. Review them for personal data:$([Environment]::NewLine)$paths"
 }
 
 $publicTextFiles = @(
@@ -89,6 +102,48 @@ if ($readme -notmatch 'releases/latest') {
 $changelog = Get-Content -LiteralPath (Get-RepositoryPath 'CHANGELOG.md') -Raw
 if ($changelog -notmatch '(?m)^## Unreleased$') {
     throw 'CHANGELOG.md must contain an Unreleased section.'
+}
+
+if ($RequirePrivateSecurityChannel) {
+    $configuredChannel = $env:SECURITY_REPORTING_CHANNEL
+    if ([string]::IsNullOrWhiteSpace($configuredChannel)) {
+        throw 'SECURITY_REPORTING_CHANNEL must be configured before a public release.'
+    }
+
+    $security = Get-Content -LiteralPath (Get-RepositoryPath 'SECURITY.md') -Raw
+    if ($security -notmatch [Regex]::Escape($configuredChannel)) {
+        throw 'SECURITY.md does not publish the configured private security reporting channel.'
+    }
+}
+
+if ($RequireUpdateSigning) {
+    if ([string]::IsNullOrWhiteSpace($PublishDirectory)) {
+        throw 'PublishDirectory is required for the update-signing gate.'
+    }
+
+    $publishPath = (Resolve-Path $PublishDirectory).Path
+    $signingSubject = $env:UPDATE_SIGNING_SUBJECT
+    if ([string]::IsNullOrWhiteSpace($signingSubject)) {
+        throw 'UPDATE_SIGNING_SUBJECT must be configured for the update-signing gate.'
+    }
+    if ([string]::IsNullOrWhiteSpace($env:MANIFEST_SIGNING_KEY_BASE64)) {
+        throw 'MANIFEST_SIGNING_KEY_BASE64 must be configured for the manifest-signing gate.'
+    }
+
+    foreach ($binary in @('RouterPlus.exe', 'RouterPlus.Updater.exe')) {
+        $binaryPath = Join-Path $publishPath $binary
+        if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
+            throw "Signed release binary is missing: $binary"
+        }
+
+        $signature = Get-AuthenticodeSignature -FilePath $binaryPath
+        if ($signature.Status -ne 'Valid') {
+            throw "Authenticode signature is not valid for $binary"
+        }
+        if ($signature.SignerCertificate.Subject -notlike "*$signingSubject*") {
+            throw "Authenticode signer does not match the configured publisher for $binary"
+        }
+    }
 }
 
 if ($RequirePublicRepository) {

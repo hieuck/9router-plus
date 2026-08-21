@@ -1,55 +1,67 @@
 # Release Checklist
 
-Dùng checklist này trước và sau mỗi tag release.
+Dùng checklist này trước và sau mỗi tag release. Nếu một hard gate chưa có bằng chứng, không public repository, không push stable tag và không tuyên bố release sẵn sàng.
 
 ## Hard gates trước public release
 
-Không push tag stable nếu còn bất kỳ mục nào sau đây:
-
-- [ ] Repository đã chuyển sang public.
-- [ ] Project đã thêm `LICENSE` do chủ dự án lựa chọn.
-- [ ] GitHub Security Advisories hoặc một kênh báo cáo bảo mật private thực tế đã được cấu hình.
-- [ ] Chủ dự án đã xác nhận package unsigned/SmartScreen limitation và có kế hoạch code signing nếu cần.
+- [ ] Repository đã chuyển sang public và kiểm tra visibility bằng GitHub API.
+- [x] Project đã thêm `LICENSE` MIT; chủ dự án đã xác nhận quyền chọn license.
+- [ ] GitHub Security Advisories hoặc một kênh báo cáo bảo mật private thực tế đã được cấu hình và thử nghiệm.
+- [ ] Certificate code-signing còn hiệu lực, chain/trust và timestamp đều kiểm tra được trên Windows sạch.
+- [ ] `RouterPlus.exe` và `RouterPlus.Updater.exe` đều có Authenticode signature đúng publisher.
+- [ ] Manifest ký bằng private key tương ứng với public key pin trong source; private key chỉ nằm trong secret manager.
+- [ ] Repository không chứa email, profile thật, Chrome path thật, token, key, OAuth state hoặc ảnh debug cá nhân.
 
 ## Trước khi tag
 
 - [ ] Không còn ảnh raw `ui-*.png` chứa dữ liệu cá nhân trong workspace.
 - [ ] Ảnh trong `docs/assets/` chỉ dùng dữ liệu demo.
-- [ ] README có link tải release và quick start.
-- [ ] `docs/user-guide.md`, `docs/privacy.md` và `docs/troubleshooting.md` khớp với code hiện tại.
+- [ ] README có link tải release, About/Help và behavior unsigned fail-closed.
+- [ ] `docs/user-guide.md`, `docs/privacy.md`, `docs/troubleshooting.md` và `SECURITY.md` khớp với code hiện tại.
 - [ ] `CHANGELOG.md` có entry cho thay đổi chuẩn bị phát hành.
-- [ ] `SECURITY.md` không hứa một kênh private chưa cấu hình.
+- [ ] `SECURITY.md` có kênh private thật, không phải placeholder.
 - [ ] Chạy restore với runtime `win-x64`.
 - [ ] Test Release pass.
 - [ ] Build Release pass với 0 warning/error.
-- [ ] Self-contained publish tạo được `RouterPlus.exe`.
-- [ ] Không có secret/email/path thật trong docs, templates hoặc screenshot.
+- [ ] Self-contained publish tạo được cả `RouterPlus.exe` và `RouterPlus.Updater.exe`.
+- [ ] Vulnerability scan không có package vulnerable chưa được chấp nhận.
+- [ ] Preflight public, security channel và signing đều pass.
 
+## Dev và personal release
+
+- [ ] Dev test local chạy `scripts\sign-local-release.ps1` trên máy Windows có Windows SDK; self-signed certificate chỉ dùng để kiểm thử.
+- [ ] Không upload `RouterPlus-Dev-Test.cer` hoặc ZIP dev như stable production release.
+- [ ] Personal GitHub workflow được chạy thủ công từ `Actions` → `Personal Release` với tag `personal-v...`.
+- [ ] Personal release phải ghi rõ unsigned/download-only; self-update phải tiếp tục bị vô hiệu hóa.
+- [ ] Production release vẫn chỉ đi qua workflow tag `v...` và các hard gate bên dưới.
 ## Tạo package
 
 - [ ] Tag đúng format `vMAJOR.MINOR.PATCH` hoặc prerelease.
 - [ ] Release workflow chạy đúng commit/tag.
 - [ ] File zip có tên `RouterPlus-vX.Y.Z-win-x64.zip`.
 - [ ] File `.sha256` khớp đúng zip.
-- [ ] Zip giải nén được và có `RouterPlus.exe`.
+- [ ] Manifest có version/channel/assetName/sha256/publisher/signature đúng archive.
+- [ ] Zip giải nén được và có `RouterPlus.exe`, `RouterPlus.Updater.exe`.
+- [ ] Không có `.pdb`, `artifacts`, `work`, raw screenshots hoặc secrets trong archive.
 - [ ] Release notes generated không chứa dữ liệu nhạy cảm.
-- [ ] Ghi rõ package chưa code-sign nếu chưa có certificate.
 
 ## Smoke test sau khi phát hành
 
-- [ ] Tải zip từ GitHub Release bằng máy/Windows user test riêng.
-- [ ] Kiểm tra checksum.
+- [ ] Tải zip từ GitHub Release bằng Windows user sạch.
+- [ ] Kiểm tra checksum và Authenticode publisher.
 - [ ] Giải nén vào thư mục mới và mở `RouterPlus.exe`.
-- [ ] Thiết lập Chrome executable/User Data.
-- [ ] Mở dashboard và kiểm tra sync.
-- [ ] Thử ít nhất một OAuth/device-code flow.
-- [ ] Thử API key flow bằng key test hợp lệ, không dùng key production trong screenshot/log.
-- [ ] Kiểm tra README và các link tài liệu.
-- [ ] Ghi lại known limitation hoặc rollback nếu phát hiện lỗi.
+- [ ] Mở About/Help; xác nhận không có profile, email, path hoặc secret.
+- [ ] Chạy check update không có update và kiểm tra request/log đã sanitized.
+- [ ] Từ một bản cũ, stage một package đã ký; xác nhận user confirmation trước restart.
+- [ ] Xác nhận settings và DPAPI secrets còn nguyên sau update.
+- [ ] Ép health-check thất bại; xác nhận live bản cũ được rollback.
+- [ ] Kiểm tra target bị khóa, updater chạy song song và parent process chưa thoát.
+- [ ] Thử ít nhất một OAuth/device-code flow và API key flow bằng dữ liệu test.
+- [ ] Không chụp hoặc commit screenshot/log có dữ liệu từ máy smoke test.
 
 ## Sau release
 
 - [ ] Xác nhận GitHub Release ở trạng thái đúng stable/prerelease.
-- [ ] Xác nhận assets và checksum tải được.
+- [ ] Xác nhận assets zip, checksum và manifest tải được.
 - [ ] Cập nhật changelog nếu có hotfix.
-- [ ] Không commit screenshot/log có dữ liệu từ máy smoke test.
+- [ ] Theo dõi rollback/update failure không chứa response body hoặc secret.
