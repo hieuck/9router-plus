@@ -17,7 +17,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        DataContext = new MainViewModel();
+        DataContext = new MainViewModel(runStartupUpdateCheck: true);
     }
 
     private MainViewModel ViewModel => (MainViewModel)DataContext;
@@ -78,6 +78,60 @@ public partial class MainWindow : Window
         return !visibleRect.IsEmpty
             && visibleRect.Width >= MinimumVisibleWindowSize
             && visibleRect.Height >= MinimumVisibleWindowSize;
+    }
+
+    private void HelpMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is WpfButton button && button.ContextMenu is not null)
+        {
+            button.ContextMenu.PlacementTarget = button;
+            button.ContextMenu.IsOpen = true;
+        }
+    }
+
+    private void About_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new AboutWindow
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
+    }
+
+    private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.InstallUpdateCommand.CanExecute(null) || ViewModel.AvailableVersion is null)
+        {
+            return;
+        }
+
+        var result = System.Windows.MessageBox.Show(
+            this,
+            $"Tải và cài bản {ViewModel.AvailableVersion} đã được xác minh? Ứng dụng sẽ đóng để hoàn tất cập nhật.",
+            "Xác nhận cập nhật",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Information,
+            MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var started = await ViewModel.InstallUpdateAsync(confirmedByUser: true);
+        if (!started)
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                ViewModel.UpdateStatusText,
+                "Cập nhật không thành công",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        await ViewModel.SaveWindowPlacementAsync(Left, Top, Width, Height);
+        _isClosing = true;
+        Close();
     }
 
     private void ProfileList_OnMouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -224,9 +278,9 @@ public partial class MainWindow : Window
             card.ApiKeyValue = value;
             ViewModel.MarkApiKeyPasted(card.Kind);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            ViewModel.MarkApiKeyPasteFailed(card.Kind, exception.Message);
+            ViewModel.MarkApiKeyPasteFailed(card.Kind);
         }
     }
 
@@ -237,11 +291,11 @@ public partial class MainWindow : Window
             System.Windows.Clipboard.SetText(ViewModel.LogText);
             ViewModel.MarkLogCopied();
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             System.Windows.MessageBox.Show(
                 this,
-                $"Không thể sao chép log: {exception.Message}",
+                "Không thể sao chép log. Kiểm tra quyền truy cập clipboard rồi thử lại.",
                 "9Router Profile Tool",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);

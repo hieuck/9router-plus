@@ -702,9 +702,23 @@
             <StackPanel>
                 <TextBlock Text="9Router  /  Profile workspace" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                 <TextBlock Text="Manage providers by Chrome profile" FontSize="20" FontWeight="SemiBold" Margin="0,7,0,0" />
+                <TextBlock Text="{Binding UpdateStatusText}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Content="↻  Đồng bộ" Command="{Binding RefreshConnectionStatusesCommand}" />
+                <Button Content="?  Trợ giúp" VerticalAlignment="Center" ToolTip="Trợ giúp và cập nhật" Click="HelpMenu_Click">
+                    <Button.ContextMenu>
+                        <ContextMenu Placement="Bottom">
+                            <MenuItem Header="Kiểm tra cập nhật" Command="{Binding CheckForUpdatesCommand}" />
+                            <MenuItem Header="Cài đặt bản cập nhật" IsEnabled="{Binding CanInstallUpdate}" Click="InstallUpdate_Click" />
+                            <Separator />
+                            <MenuItem Header="Mở hướng dẫn" Command="{Binding OpenHelpCommand}" />
+                            <MenuItem Header="Báo cáo lỗ hổng" Command="{Binding OpenSecurityCommand}" />
+                            <Separator />
+                            <MenuItem Header="Giới thiệu…" Click="About_Click" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
                 <ToggleButton Content="⚙  Cài đặt" IsChecked="{Binding IsSettingsExpanded, Mode=TwoWay}" />
             </StackPanel>
         </Grid>
