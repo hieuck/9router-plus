@@ -43,6 +43,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private ProviderKind? _currentWorkflowProvider;
     private bool _workflowInProgress;
     private readonly List<ManagedChromeProfile> _managedProfiles = new();
+    private readonly List<RecentProfile> _recentProfiles = new();
     private ChromeProfile? _selectedProfile;
     private ProviderKind _selectedApiKeyProvider = ProviderKind.OpenRouter;
     private int _apiKeyLoadVersion;
@@ -130,6 +131,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<ProfileRowViewModel> ProfileRows { get; }
 
     public ObservableCollection<ProfileRowViewModel> FilteredProfileRows { get; }
+
+    public ObservableCollection<ChromeProfile> RecentProfilesList { get; } = new();
 
     public IReadOnlyList<ProviderDefinition> Providers { get; }
 
@@ -772,6 +775,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 settings.WindowHeight);
             _managedProfiles.Clear();
             _managedProfiles.AddRange(settings.ManagedProfiles ?? []);
+            _recentProfiles.Clear();
+            _recentProfiles.AddRange(settings.RecentProfiles ?? []);
             RefreshProfiles();
             MarkSettingsSaved();
             await LoadSelectedProfileApiKeysAsync();
@@ -1711,6 +1716,57 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private void TrackProfileLaunch(ChromeProfile profile)
+    {
+        var existing = _recentProfiles.FirstOrDefault(r => 
+            r.ProfileId == profile.Id && 
+            r.UserDataDirectory.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            _recentProfiles.Remove(existing);
+            _recentProfiles.Insert(0, existing with 
+            { 
+                LastUsedUtc = DateTime.UtcNow, 
+                LaunchCount = existing.LaunchCount + 1 
+            });
+        }
+        else
+        {
+            _recentProfiles.Insert(0, new RecentProfile(
+                profile.Id,
+                profile.Name,
+                profile.UserDataDirectory,
+                DateTime.UtcNow,
+                1,
+                false));
+        }
+
+        // Keep only top 10 recent profiles
+        while (_recentProfiles.Count > 10)
+        {
+            _recentProfiles.RemoveAt(_recentProfiles.Count - 1);
+        }
+
+        UpdateRecentProfilesList();
+    }
+
+    private void UpdateRecentProfilesList()
+    {
+        RecentProfilesList.Clear();
+        foreach (var recent in _recentProfiles.Take(5))
+        {
+            var profile = Profiles.FirstOrDefault(p => 
+                p.Id == recent.ProfileId && 
+                p.UserDataDirectory.Equals(recent.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
+            
+            if (profile != null)
+            {
+                RecentProfilesList.Add(profile);
+            }
+        }
+    }
+
     private async Task LaunchSelectedProfileAsync()
     {
         if (SelectedProfile is null)
@@ -1721,6 +1777,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
+            TrackProfileLaunch(SelectedProfile);
             await LaunchUrlAsync(DashboardBaseUrl);
             StatusText = $"Đã mở 9Router bằng profile {SelectedProfile.Name}.";
         }
@@ -1844,7 +1901,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         placement?.Left,
         placement?.Top,
         placement?.Width,
-        placement?.Height);
+        placement?.Height,
+        _recentProfiles.ToArray());
     }
 
     private static WindowPlacement? TryCreateWindowPlacement(
@@ -1977,6 +2035,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
+
+
+
+
+
+
 
 
 

@@ -12,4 +12,5 @@ public sealed record RouterSettings(
     double? WindowLeft = null,
     double? WindowTop = null,
     double? WindowWidth = null,
-    double? WindowHeight = null);
+    double? WindowHeight = null,
+    IReadOnlyList<RecentProfile>? RecentProfiles = null);
