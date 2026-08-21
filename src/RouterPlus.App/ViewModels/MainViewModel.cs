@@ -106,12 +106,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenHelpCommand = new AsyncRelayCommand(OpenHelpAsync);
         OpenSecurityCommand = new AsyncRelayCommand(OpenSecurityAsync);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsUpdateChecking && !IsWorkflowInProgress);
-        
+        InstallUpdateCommand = new AsyncRelayCommand(() => InstallUpdateAsync(confirmedByUser: true), () => CanInstallUpdate);
         AutoDetectChromeCommand = new AsyncRelayCommand(AutoDetectChromeAsync);
-        ClearDashboardUrlCommand = new RelayCommand(ClearDashboardUrl);
-        ClearChromeExecutableCommand = new RelayCommand(ClearChromeExecutable);
-        ClearChromeUserDataCommand = new RelayCommand(ClearChromeUserData);
         OpenReleasePageCommand = new AsyncRelayCommand(OpenReleasePageAsync);
+        ClearDashboardUrlCommand = new AsyncRelayCommand(ClearDashboardUrl);
+        ClearChromeExecutableCommand = new AsyncRelayCommand(ClearChromeExecutable);
+        ClearChromeUserDataCommand = new AsyncRelayCommand(ClearChromeUserData);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -569,22 +569,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand AutoDetectChromeCommand { get; }
 
-    public RelayCommand ClearDashboardUrlCommand { get; }
-    public RelayCommand ClearChromeExecutableCommand { get; }
-    public RelayCommand ClearChromeUserDataCommand { get; }
+    public AsyncRelayCommand ClearDashboardUrlCommand { get; }
+    public AsyncRelayCommand ClearChromeExecutableCommand { get; }
+    public AsyncRelayCommand ClearChromeUserDataCommand { get; }
 
-    private void ClearDashboardUrl()
-    {
+    private async Task ClearDashboardUrl(){await Task.CompletedTask;
         DashboardBaseUrl = "http://localhost:20128";
     }
 
-    private void ClearChromeExecutable()
-    {
+    private async Task ClearChromeExecutable(){await Task.CompletedTask;
         ChromeExecutablePath = string.Empty;
     }
 
-    private void ClearChromeUserData()
-    {
+    private async Task ClearChromeUserData(){await Task.CompletedTask;
         ChromeUserDataDirectory = string.Empty;
     }
 
@@ -1895,6 +1892,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
+
+
 
 
 

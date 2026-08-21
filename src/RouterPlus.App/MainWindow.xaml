@@ -1299,8 +1299,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Style="{StaticResource SettingsFieldHintStyle}" Margin="0">
-                                            <TextBlock.Style>
+                                        <TextBlock Margin="0"><TextBlock.Style>
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource SettingsFieldHintStyle}">
                                                     <Setter Property="Text" Value="Ví dụ: http://localhost:20128" />
                                                     <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
@@ -1382,8 +1381,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Style="{StaticResource SettingsFieldHintStyle}" Margin="0">
-                                            <TextBlock.Style>
+                                        <TextBlock Margin="0"><TextBlock.Style>
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource SettingsFieldHintStyle}">
                                                     <Setter Property="Text" Value="Đường dẫn hợp lệ" />
                                                     <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
@@ -1439,8 +1437,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Style="{StaticResource SettingsFieldHintStyle}" Margin="0">
-                                            <TextBlock.Style>
+                                        <TextBlock Margin="0"><TextBlock.Style>
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource SettingsFieldHintStyle}">
                                                     <Setter Property="Text" Value="Đường dẫn hợp lệ" />
                                                     <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
@@ -1464,6 +1461,7 @@
         </Border>
     </Grid>
 </Window>
+
 
 
 
