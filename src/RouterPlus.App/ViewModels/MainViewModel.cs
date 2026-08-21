@@ -106,7 +106,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenHelpCommand = new AsyncRelayCommand(OpenHelpAsync);
         OpenSecurityCommand = new AsyncRelayCommand(OpenSecurityAsync);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsUpdateChecking && !IsWorkflowInProgress);
-        InstallUpdateCommand = new AsyncRelayCommand(() => InstallUpdateAsync(confirmedByUser: true), () => CanInstallUpdate);
+        
+        AutoDetectChromeCommand = new AsyncRelayCommand(AutoDetectChromeAsync);
+        ClearDashboardUrlCommand = new RelayCommand(ClearDashboardUrl);
+        ClearChromeExecutableCommand = new RelayCommand(ClearChromeExecutable);
+        ClearChromeUserDataCommand = new RelayCommand(ClearChromeUserData);
         OpenReleasePageCommand = new AsyncRelayCommand(OpenReleasePageAsync);
     }
 
@@ -531,6 +535,81 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _statusText;
         private set => SetStatusText(value, "INFO", forceLog: false);
+    }
+
+    public bool IsDashboardUrlValid
+    {
+        get
+        {
+            var url = DashboardBaseUrl.Trim();
+            return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                && uri != null
+                && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                && !string.IsNullOrWhiteSpace(uri.Host);
+        }
+    }
+
+    public bool IsChromeExecutableValid
+    {
+        get
+        {
+            var path = ChromeExecutablePath.Trim();
+            return string.IsNullOrWhiteSpace(path) || File.Exists(path);
+        }
+    }
+
+    public bool IsChromeUserDataValid
+    {
+        get
+        {
+            var path = ChromeUserDataDirectory.Trim();
+            return string.IsNullOrWhiteSpace(path) || Directory.Exists(path);
+        }
+    }
+
+    public AsyncRelayCommand AutoDetectChromeCommand { get; }
+
+    public RelayCommand ClearDashboardUrlCommand { get; }
+    public RelayCommand ClearChromeExecutableCommand { get; }
+    public RelayCommand ClearChromeUserDataCommand { get; }
+
+    private void ClearDashboardUrl()
+    {
+        DashboardBaseUrl = "http://localhost:20128";
+    }
+
+    private void ClearChromeExecutable()
+    {
+        ChromeExecutablePath = string.Empty;
+    }
+
+    private void ClearChromeUserData()
+    {
+        ChromeUserDataDirectory = string.Empty;
+    }
+
+    private async Task AutoDetectChromeAsync()
+    {
+        try
+        {
+            var installation = _chromeLocator.Find(null, null);
+            if (installation != null)
+            {
+                ChromeExecutablePath = installation.ExecutablePath;
+                ChromeUserDataDirectory = installation.UserDataDirectory;
+                StatusText = "Đã tự động phát hiện Chrome.";
+                RefreshProfiles();
+            }
+            else
+            {
+                StatusText = "Không tìm thấy Chrome. Vui lòng chọn thủ công.";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Lỗi auto-detect: {SafeError(ex)}";
+        }
+        await Task.CompletedTask;
     }
 
     public bool HasUnsavedSettings => !SettingsMatchSavedValues();
@@ -1777,6 +1856,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(SettingsValidationMessage));
         OnPropertyChanged(nameof(HasSettingsValidationError));
         OnPropertyChanged(nameof(SettingsStatusText));
+        OnPropertyChanged(nameof(IsDashboardUrlValid));
+        OnPropertyChanged(nameof(IsChromeExecutableValid));
+        OnPropertyChanged(nameof(IsChromeUserDataValid));
         SaveSettingsCommand?.RaiseCanExecuteChanged();
         InstallUpdateCommand?.RaiseCanExecuteChanged();
     }
@@ -1813,4 +1895,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
+
+
+
+
 
