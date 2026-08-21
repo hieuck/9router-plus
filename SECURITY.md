@@ -14,15 +14,18 @@ Dùng dữ liệu mẫu như `demo.user@example.com`, `C:\Users\demo\...` và `m
 
 ## Báo cáo lỗ hổng
 
-Không mở public issue cho lỗ hổng bảo mật. Trước khi phân phối rộng rãi, chủ dự án cần bật GitHub Security Advisories hoặc công bố một kênh liên hệ bảo mật private thực tế tại đây.
+Không mở public issue cho lỗ hổng bảo mật. Trước khi public release, chủ dự án phải bật GitHub Security Advisories hoặc công bố một kênh liên hệ bảo mật private thực tế tại đây.
 
-Repository hiện chưa công bố email/kênh private cụ thể, vì vậy không nên gửi secret thật qua issue hoặc commit để “báo lỗi”. Nếu phát hiện vấn đề, hãy báo cho maintainer qua kênh private đã được chủ dự án cấu hình trước khi public release.
+Repository hiện chưa công bố email/kênh private cụ thể, vì vậy không nên gửi secret thật qua issue hoặc commit để “báo lỗi”. Đây là hard blocker: không public repository và không tạo stable release cho đến khi kênh private được cấu hình và kiểm tra.
 
 ## Phạm vi bảo mật
 
 - RouterPlus lưu API key bằng Windows DPAPI `CurrentUser`.
 - User Windows khác không tự giải mã được encrypted secrets.
-- Bản phát hành hiện chưa code-sign; hãy kiểm tra nguồn tải và checksum.
+- Request kiểm tra update chỉ tới repository GitHub cố định và không gửi profile, email, API key, OAuth state, Chrome path hoặc machine identifier.
+- Package update phải qua checksum, manifest signature dùng public key pin, Authenticode publisher verification và archive/path validation trước khi staging.
+- Updater helper dùng backup/swap/health-check/rollback; settings và DPAPI secrets nằm ngoài thư mục package.
+- Build unsigned không tự cài update. Chỉ release có chữ ký hợp lệ mới được bật automatic install; nếu thiếu chữ ký, app fail closed.
 - Không chạy executable từ release mirror không xác định.
 
 ## Khi gửi bản vá

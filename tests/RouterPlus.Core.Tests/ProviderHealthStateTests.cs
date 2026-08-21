@@ -53,6 +53,44 @@ public sealed class ProviderHealthStateTests
     }
 
     [Fact]
+    public void Resolve_returns_unknown_when_an_active_connection_has_not_been_tested()
+    {
+        var connections = new[]
+        {
+            new ProviderConnection(
+                "openrouter-1",
+                ProviderKind.OpenRouter,
+                "Work",
+                1,
+                true,
+                TestStatus: "unknown")
+        };
+
+        var state = ProviderHealthStateResolver.Resolve(true, connections);
+
+        Assert.Equal(ProviderHealthState.Unknown, state);
+    }
+
+    [Fact]
+    public void Resolve_returns_unknown_when_active_connection_has_null_test_status()
+    {
+        var connections = new[]
+        {
+            new ProviderConnection(
+                "codex-1",
+                ProviderKind.Codex,
+                "Work",
+                1,
+                true,
+                TestStatus: null)
+        };
+
+        var state = ProviderHealthStateResolver.Resolve(true, connections);
+
+        Assert.Equal(ProviderHealthState.Unknown, state);
+    }
+
+    [Fact]
     public void Resolve_trusts_active_test_status_over_stale_error_metadata()
     {
         var connections = new[]

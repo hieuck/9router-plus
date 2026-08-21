@@ -306,6 +306,67 @@
       .profile-list { grid-template-columns: 1fr; }
       .hero-stats { grid-template-columns: 1fr; }
     }
+
+    body {
+      width: 1440px;
+      height: 900px;
+      overflow: hidden;
+      padding-top: 31px;
+      background: #060b13;
+    }
+
+    body::before {
+      content: "9Router Profile Tool                                      —   □   ×";
+      position: fixed;
+      top: 0;
+      right: 0;
+      left: 0;
+      z-index: 30;
+      height: 31px;
+      padding: 0 12px;
+      color: #4a5568;
+      background: #eef3f8;
+      font-size: 12px;
+      line-height: 31px;
+      white-space: pre;
+    }
+
+    .app-shell {
+      min-height: calc(100vh - 31px);
+      background: var(--bg);
+    }
+
+    .sidebar {
+      padding-top: 22px;
+      background: var(--sidebar);
+    }
+
+    .main {
+      background: var(--bg);
+    }
+
+    .profile-hero {
+      background: var(--surface-strong);
+      box-shadow: none;
+    }
+
+    .profile-hero::after {
+      display: none;
+    }
+
+    .provider-card,
+    .rail-card {
+      box-shadow: none;
+    }
+
+    .design-drawer {
+      top: 31px;
+      height: calc(100vh - 31px);
+    }
+
+    .drawer-backdrop {
+      top: 31px;
+    }
   </style>
 </head>
 <body>
@@ -322,7 +383,7 @@
         <button class="icon-button" id="sidebarToggle" title="Thu gọn danh sách profile" aria-label="Thu gọn danh sách profile">‹</button>
       </div>
 
-      <div class="sidebar-section-label">Chrome profiles <span class="profile-count">8 profiles</span></div>
+      <div class="sidebar-section-label">Chrome profiles <span class="profile-count">8 total</span></div>
       <label class="search-box">
         <span>⌕</span>
         <input id="profileSearch" type="search" placeholder="Tìm theo tên hoặc thư mục" autocomplete="off" />
@@ -334,23 +395,23 @@
       </div>
 
       <div class="profile-list" id="profileList">
-        <button class="profile-row active" data-profile="Work · Hieu" data-path="Profile 1 · Chrome User Data" data-connected="3" data-filter-state="connected">
-          <span class="profile-index">01</span><span class="profile-avatar">W</span>
-          <span class="profile-meta"><span class="profile-name">Work · Hieu</span><span class="profile-subtitle">3/5 provider connected</span><span class="provider-dots"><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot"></i><i class="provider-dot"></i></span></span><span class="profile-arrow">›</span>
+        <button class="profile-row active" data-profile="Demo Work Profile" data-path="Profile 1" data-connected="3" data-filter-state="connected">
+          <span class="profile-index">01</span><span class="profile-avatar">D</span>
+          <span class="profile-meta"><span class="profile-name">Demo Work Profile</span><span class="profile-subtitle">3/5 provider đã thêm</span><span class="provider-dots"><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot"></i><i class="provider-dot"></i></span></span><span class="profile-arrow">›</span>
         </button>
-        <button class="profile-row" data-profile="Personal" data-path="Profile 2 · Chrome User Data" data-connected="2" data-filter-state="connected">
+        <button class="profile-row" data-profile="Personal" data-path="Profile 2" data-connected="2" data-filter-state="connected">
           <span class="profile-index">02</span><span class="profile-avatar alt-a">P</span>
-          <span class="profile-meta"><span class="profile-name">Personal</span><span class="profile-subtitle">2/5 provider connected</span><span class="provider-dots"><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot"></i><i class="provider-dot"></i><i class="provider-dot"></i></span></span><span class="profile-arrow">›</span>
+          <span class="profile-meta"><span class="profile-name">Personal</span><span class="profile-subtitle">2/5 provider đã thêm</span><span class="provider-dots"><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot"></i><i class="provider-dot"></i><i class="provider-dot"></i></span></span><span class="profile-arrow">›</span>
         </button>
-        <button class="profile-row" data-profile="Client A" data-path="Profile 3 · Chrome User Data" data-connected="5" data-filter-state="connected">
+        <button class="profile-row" data-profile="Client A" data-path="Profile 3" data-connected="5" data-filter-state="connected">
           <span class="profile-index">03</span><span class="profile-avatar alt-b">C</span>
-          <span class="profile-meta"><span class="profile-name">Client A</span><span class="profile-subtitle">5/5 provider connected</span><span class="provider-dots"><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot connected"></i></span></span><span class="profile-arrow">›</span>
+          <span class="profile-meta"><span class="profile-name">Client A</span><span class="profile-subtitle">5/5 provider đã thêm</span><span class="provider-dots"><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot connected"></i><i class="provider-dot connected"></i></span></span><span class="profile-arrow">›</span>
         </button>
-        <button class="profile-row" data-profile="Testing" data-path="Profile 4 · Chrome User Data" data-connected="0" data-filter-state="empty">
+        <button class="profile-row" data-profile="Testing" data-path="Profile 4" data-connected="0" data-filter-state="empty">
           <span class="profile-index">04</span><span class="profile-avatar alt-c">T</span>
           <span class="profile-meta"><span class="profile-name">Testing</span><span class="profile-subtitle">Chưa có provider</span><span class="provider-dots"><i class="provider-dot"></i><i class="provider-dot"></i><i class="provider-dot"></i><i class="provider-dot"></i><i class="provider-dot"></i></span></span><span class="profile-arrow">›</span>
         </button>
-        <button class="profile-row" data-profile="Automation" data-path="Profile 5 · Chrome User Data" data-connected="1" data-filter-state="connected">
+        <button class="profile-row" data-profile="Automation" data-path="Profile 5" data-connected="1" data-filter-state="connected">
           <span class="profile-index">05</span><span class="profile-avatar">A</span>
           <span class="profile-meta"><span class="profile-name">Automation</span><span class="profile-subtitle">1/5 provider connected</span><span class="provider-dots"><i class="provider-dot connected"></i><i class="provider-dot"></i><i class="provider-dot"></i><i class="provider-dot"></i><i class="provider-dot"></i></span></span><span class="profile-arrow">›</span>
         </button>
@@ -369,27 +430,27 @@
         <div class="top-actions">
           <button class="ghost-button" id="themeToggle">☼ Chuyển theme</button>
           <button class="soft-button" id="syncButton">↻ Đồng bộ</button>
-          <button class="primary-button" id="settingsButton">⚙ Thiết kế UI</button>
+          <button class="soft-button" id="settingsButton">⚙ Cài đặt</button>
         </div>
       </header>
 
       <section class="profile-hero">
         <div class="hero-heading">
           <div class="hero-identity">
-            <div class="hero-avatar" id="heroAvatar">W</div>
+            <div class="hero-avatar" id="heroAvatar">D</div>
             <div class="hero-copy">
-              <div class="eyebrow">Selected Chrome profile</div>
-              <h1 id="heroName">Work · Hieu</h1>
-              <p class="hero-description" id="heroPath">Profile 1 · Chrome User Data — profile đang được dùng cho các thao tác provider.</p>
+              <div class="eyebrow">SELECTED CHROME PROFILE</div>
+              <h1 id="heroName">Demo Work Profile</h1>
+              <p class="hero-description" id="heroPath">C:\Users\demo\AppData\Local\Google\Chrome\User Data\Profile 1</p>
               <div class="hero-badges"><span class="badge success">● Chrome sẵn sàng</span><span class="badge blue" id="heroConnectionBadge">3/5 provider đã kết nối</span></div>
             </div>
           </div>
-          <div class="hero-actions"><button class="outline-button" id="openDashboard">↗ Mở dashboard</button><button class="primary-button" id="launchProfile">▶ Mở profile</button></div>
+          <div class="hero-actions"><button class="outline-button" id="openDashboard">↗ Mở dashboard</button><button class="outline-button" id="launchProfile">↻ Làm mới</button></div>
         </div>
         <div class="hero-stats">
           <div class="stat"><div class="stat-label">Provider connected</div><div class="stat-value" id="connectedStat">3 <small>/ 5</small></div></div>
-          <div class="stat"><div class="stat-label">Last sync</div><div class="stat-value" id="syncStat">Just now</div></div>
-          <div class="stat"><div class="stat-label">API keys stored</div><div class="stat-value">2 <small>DPAPI</small></div></div>
+          <div class="stat"><div class="stat-label">Provider status</div><div class="stat-value" id="syncStat">Đã đồng bộ 28 connection · 3/5 profile có provider.</div></div>
+          <div class="stat"><div class="stat-label">Dashboard</div><div class="stat-value">http://localhost:20128</div></div>
         </div>
       </section>
 

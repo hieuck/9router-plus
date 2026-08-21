@@ -18,6 +18,9 @@ public sealed record ProviderConnection(
     public bool HasSuccessfulTestStatus => TestStatus is not null &&
         TestStatus.Trim().ToLowerInvariant() is "active" or "ok" or "healthy" or "available" or "ready" or "success" or "connected";
 
+    public bool HasUnknownTestStatus => string.IsNullOrWhiteSpace(TestStatus)
+        || (!HasSuccessfulTestStatus && !HasError);
+
     public bool HasError => !HasSuccessfulTestStatus &&
         !string.IsNullOrWhiteSpace(ErrorCode) ||
         !HasSuccessfulTestStatus &&

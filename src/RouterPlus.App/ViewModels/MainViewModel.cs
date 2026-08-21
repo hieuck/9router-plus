@@ -6,16 +6,20 @@ using System.Runtime.CompilerServices;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Security;
+using RouterPlus.Core.Updates;
+using RouterPlus.App;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Router;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
+using RouterPlus.Infrastructure.Updates;
 
 namespace RouterPlus.App.ViewModels;
 
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private const int MaxLogEntries = 200;
+    private static readonly TimeSpan StartupUpdateCheckCooldown = TimeSpan.FromHours(12);
     private readonly ChromeLocator _chromeLocator = new();
     private readonly ChromeProfileReader _profileReader = new();
     private readonly ChromeProfileProvisioner _profileProvisioner;
@@ -24,6 +28,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly SettingsStore _settingsStore;
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
     private readonly HttpClient _httpClient;
+    private readonly IUpdateService _updateService;
+    private readonly IExternalLinkLauncher _linkLauncher;
+    private readonly bool _runStartupUpdateCheck;
+    private bool _isUpdateChecking;
+    private bool _isUpdateInstalling;
+    private ReleaseCheckResult? _latestRelease;
+    private UpdateState _updateState = UpdateState.Idle;
+    private string _updateStatusText = "Chưa kiểm tra bản cập nhật.";
+    private DateTimeOffset _lastAutomaticUpdateCheck = DateTimeOffset.MinValue;
     private ChromeInstallation? _installation;
     private CancellationTokenSource? _workflowCancellation;
     private HashSet<string> _workflowExistingIds = new(StringComparer.Ordinal);
@@ -56,12 +69,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SettingsStore? settingsStore = null,
         ChromeProfileProvisioner? profileProvisioner = null,
         ChromeProfileDeleter? profileDeleter = null,
-        HttpClient? httpClient = null)
+        HttpClient? httpClient = null,
+        IUpdateService? updateService = null,
+        IExternalLinkLauncher? linkLauncher = null,
+        bool runStartupUpdateCheck = false)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
+        _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
+        _runStartupUpdateCheck = runStartupUpdateCheck;
         Profiles = new ObservableCollection<ChromeProfile>();
         FilteredProfiles = new ObservableCollection<ChromeProfile>();
         ProfileRows = new ObservableCollection<ProfileRowViewModel>();
@@ -82,6 +101,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenQuickLinkCommand = new AsyncRelayCommand<ProviderKind>(OpenQuickLinkAsync);
         CancelWorkflowCommand = new AsyncRelayCommand(CancelWorkflowAsync, () => IsWorkflowInProgress);
         WaitForConnectionCommand = new AsyncRelayCommand(WaitForConnectionAsync, () => !_workflowInProgress && _currentWorkflowProvider is not null && SelectedProfile is not null);
+        OpenHelpCommand = new AsyncRelayCommand(OpenHelpAsync);
+        OpenSecurityCommand = new AsyncRelayCommand(OpenSecurityAsync);
+        CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsUpdateChecking && !IsWorkflowInProgress);
+        InstallUpdateCommand = new AsyncRelayCommand(() => InstallUpdateAsync(confirmedByUser: true), () => CanInstallUpdate);
+        OpenReleasePageCommand = new AsyncRelayCommand(OpenReleasePageAsync);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -214,6 +238,67 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public bool IsWorkflowInProgress => _workflowInProgress;
+
+    public bool IsUpdateChecking
+    {
+        get => _isUpdateChecking;
+        private set
+        {
+            if (_isUpdateChecking == value)
+            {
+                return;
+            }
+
+            _isUpdateChecking = value;
+            OnPropertyChanged();
+            CheckForUpdatesCommand?.RaiseCanExecuteChanged();
+            InstallUpdateCommand?.RaiseCanExecuteChanged();
+        }
+    }
+
+    public bool IsUpdateAvailable => _latestRelease?.IsUpdateAvailable == true;
+
+    public ReleaseVersion? AvailableVersion => _latestRelease?.AvailableVersion;
+
+    public UpdateState UpdateState
+    {
+        get => _updateState;
+        private set
+        {
+            if (_updateState == value)
+            {
+                return;
+            }
+
+            _updateState = value;
+            OnPropertyChanged();
+            InstallUpdateCommand?.RaiseCanExecuteChanged();
+        }
+    }
+
+    public string UpdateStatusText
+    {
+        get => _updateStatusText;
+        private set
+        {
+            if (string.Equals(_updateStatusText, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _updateStatusText = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool CanInstallUpdate =>
+        IsUpdateAvailable
+        && !_isUpdateChecking
+        && !_isUpdateInstalling
+        && !IsWorkflowInProgress
+        && !HasUnsavedSettings
+        && !HasSettingsValidationError
+        && _updateService.IsInstallSupported;
 
     public IReadOnlyList<FontScaleOption> FontScaleOptions { get; } =
     [
@@ -401,6 +486,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand WaitForConnectionCommand { get; }
 
+    public AsyncRelayCommand OpenHelpCommand { get; }
+
+    public AsyncRelayCommand OpenSecurityCommand { get; }
+
+    public AsyncRelayCommand CheckForUpdatesCommand { get; }
+
+    public AsyncRelayCommand InstallUpdateCommand { get; }
+
+    public AsyncRelayCommand OpenReleasePageCommand { get; }
+
     public async Task InitializeAsync()
     {
         try
@@ -425,10 +520,146 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ? "Chưa tìm thấy Chrome profile. Hãy kiểm tra đường dẫn rồi nhấn Làm mới."
                 : $"Đã đọc {Profiles.Count} Chrome profile.";
             await RefreshConnectionStatusesAsync(showStatus: true);
+            if (_runStartupUpdateCheck)
+            {
+                _ = RunStartupUpdateCheckAsync();
+            }
         }
         catch (Exception exception)
         {
             SetError(exception);
+        }
+    }
+
+    private async Task RunStartupUpdateCheckAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastAutomaticUpdateCheck < StartupUpdateCheckCooldown)
+        {
+            return;
+        }
+
+        _lastAutomaticUpdateCheck = now;
+        await CheckForUpdatesAsync();
+    }
+
+    public Task OpenHelpAsync()
+    {
+        _linkLauncher.Open(ApplicationLinks.HelpUri);
+        return Task.CompletedTask;
+    }
+
+    public Task OpenSecurityAsync()
+    {
+        _linkLauncher.Open(ApplicationLinks.SecurityUri);
+        return Task.CompletedTask;
+    }
+
+    public Task OpenReleasePageAsync()
+    {
+        _linkLauncher.Open(ApplicationLinks.ReleaseUri);
+        return Task.CompletedTask;
+    }
+
+    public async Task CheckForUpdatesAsync()
+    {
+        if (IsUpdateChecking)
+        {
+            return;
+        }
+
+        IsUpdateChecking = true;
+        UpdateState = UpdateState.Checking;
+        UpdateStatusText = "Đang kiểm tra bản cập nhật…";
+        try
+        {
+            var release = await _updateService.CheckAsync();
+            _latestRelease = release;
+            OnPropertyChanged(nameof(IsUpdateAvailable));
+            OnPropertyChanged(nameof(AvailableVersion));
+
+            if (!_updateService.IsInstallSupported)
+            {
+                UpdateState = UpdateState.Disabled;
+                UpdateStatusText = release.IsUpdateAvailable
+                    ? $"Có bản {release.AvailableVersion}, nhưng tự cập nhật đang tắt vì chưa xác minh được chữ ký."
+                    : "Tự cập nhật đang tắt vì chưa xác minh được chữ ký phát hành.";
+            }
+            else if (release.IsUpdateAvailable)
+            {
+                UpdateState = UpdateState.Available;
+                UpdateStatusText = $"Có bản cập nhật {release.AvailableVersion}.";
+            }
+            else
+            {
+                UpdateState = UpdateState.Idle;
+                UpdateStatusText = "Bạn đang dùng bản mới nhất.";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateState = UpdateState.Failed;
+            UpdateStatusText = "Đã hủy kiểm tra bản cập nhật.";
+        }
+        catch
+        {
+            _latestRelease = null;
+            OnPropertyChanged(nameof(IsUpdateAvailable));
+            OnPropertyChanged(nameof(AvailableVersion));
+            UpdateState = _updateService.IsInstallSupported ? UpdateState.Failed : UpdateState.Disabled;
+            UpdateStatusText = _updateService.IsInstallSupported
+                ? "Không thể kiểm tra bản cập nhật lúc này."
+                : "Không thể bật tự cập nhật vì chưa xác minh được chữ ký phát hành.";
+        }
+        finally
+        {
+            IsUpdateChecking = false;
+        }
+    }
+
+    public async Task<bool> InstallUpdateAsync(bool confirmedByUser)
+    {
+        if (!confirmedByUser || !CanInstallUpdate || _latestRelease is null)
+        {
+            return false;
+        }
+
+        _isUpdateInstalling = true;
+        UpdateState = UpdateState.Downloading;
+        UpdateStatusText = "Đang tải và kiểm tra bản cập nhật…";
+        InstallUpdateCommand.RaiseCanExecuteChanged();
+        try
+        {
+            var package = await _updateService.DownloadAndStageAsync(_latestRelease);
+            UpdateState = UpdateState.Installing;
+            UpdateStatusText = "Bản cập nhật đã được xác minh. Đang chuẩn bị khởi động lại…";
+            if (!await _updateService.LaunchUpdaterAsync(package))
+            {
+                UpdateState = UpdateState.Failed;
+                UpdateStatusText = "Không thể khởi động trình cập nhật. Bản đang chạy không bị thay đổi.";
+                return false;
+            }
+
+            UpdateState = UpdateState.Completed;
+            UpdateStatusText = "Đã chuẩn bị cập nhật. Ứng dụng sẽ đóng để hoàn tất thay thế an toàn.";
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateState = UpdateState.Failed;
+            UpdateStatusText = "Đã hủy cập nhật. Bản đang chạy không bị thay đổi.";
+            return false;
+        }
+        catch
+        {
+            UpdateState = UpdateState.Failed;
+            UpdateStatusText = "Không thể xác minh hoặc cài đặt bản cập nhật. Bản đang chạy không bị thay đổi.";
+            return false;
+        }
+        finally
+        {
+            _isUpdateInstalling = false;
+            InstallUpdateCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -774,8 +1005,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     existingCard.ApiKeyValue = apiKey;
                     existingCard.MarkApiKeySaved();
                 }
+                var existingTestResult = await api.TestConnectionAsync(existingConnection.Id);
                 await RefreshConnectionStatusesAsync(showStatus: false);
-                StatusText = $"{definition.DisplayName} key updated in 9Router for {profile.Name}; local key saved.";
+                StatusText = existingTestResult.Valid
+                    ? $"{definition.DisplayName} key updated in 9Router for {profile.Name}; local key saved."
+                    : $"{definition.DisplayName} key saved for {profile.Name}, but the connection test failed.";
                 return true;
             }
 
@@ -792,8 +1026,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 card.ApiKeyValue = apiKey;
                 card.MarkApiKeySaved();
             }
+            var createdTestResult = await api.TestConnectionAsync(created.Id);
             await RefreshConnectionStatusesAsync(showStatus: false);
-            StatusText = $"Đã thêm {definition.DisplayName} cho {profile.Name}, priority {created.Priority}.";
+            StatusText = createdTestResult.Valid
+                ? $"Đã thêm {definition.DisplayName} cho {profile.Name}, priority {created.Priority}."
+                : $"Đã lưu {definition.DisplayName} cho {profile.Name}, nhưng kiểm tra kết nối thất bại.";
             return true;
         }
         catch (Exception exception)
@@ -831,6 +1068,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsWorkflowInProgress));
         CancelWorkflowCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
+        CheckForUpdatesCommand.RaiseCanExecuteChanged();
+        InstallUpdateCommand.RaiseCanExecuteChanged();
 
         try
         {
@@ -876,6 +1115,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(IsWorkflowInProgress));
             CancelWorkflowCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
+            CheckForUpdatesCommand.RaiseCanExecuteChanged();
+            InstallUpdateCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -959,12 +1200,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 throw new InvalidOperationException("OAuth callback không có code hoặc token.");
             }
 
+            if (!callback.MatchesState(session.State))
+            {
+                throw new InvalidOperationException("OAuth callback state không khớp phiên đăng nhập.");
+            }
+
             await api.ExchangeOAuthCodeAsync(
                 provider,
                 callback.Value,
                 session.RedirectUri,
                 session.CodeVerifier,
-                callback.State ?? session.State,
+                callback.State,
                 cancellationToken);
         }
 
@@ -1425,6 +1671,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasSettingsValidationError));
         OnPropertyChanged(nameof(SettingsStatusText));
         SaveSettingsCommand?.RaiseCanExecuteChanged();
+        InstallUpdateCommand?.RaiseCanExecuteChanged();
     }
 
     private void AppendLog(string level, string message)

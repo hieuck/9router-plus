@@ -29,4 +29,18 @@ public sealed class OAuthCallbackListenerTests
         Assert.Equal(expectedState, callback.State);
         Assert.Null(callback.Error);
     }
+
+    [Theory]
+    [InlineData("expected-state", "expected-state", true)]
+    [InlineData("unexpected-state", "expected-state", false)]
+    [InlineData(null, "expected-state", false)]
+    public void Callback_state_must_match_the_authorization_session(
+        string? callbackState,
+        string expectedState,
+        bool expectedMatch)
+    {
+        var callback = new OAuthCallbackData("code", null, callbackState, null, null);
+
+        Assert.Equal(expectedMatch, callback.MatchesState(expectedState));
+    }
 }

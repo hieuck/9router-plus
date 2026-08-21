@@ -8,8 +8,17 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $publishPath = (Resolve-Path $PublishDirectory).Path
 
-if (-not (Test-Path -LiteralPath (Join-Path $publishPath 'RouterPlus.exe') -PathType Leaf)) {
-    throw "Publish directory does not contain RouterPlus.exe: $publishPath"
+foreach ($requiredBinary in @('RouterPlus.exe', 'RouterPlus.Updater.exe')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $publishPath $requiredBinary) -PathType Leaf)) {
+        throw "Publish directory does not contain ${requiredBinary}: $publishPath"
+    }
+}
+
+$forbiddenArtifacts = Get-ChildItem -LiteralPath $publishPath -Recurse -File |
+    Where-Object { $_.Extension -in @('.pdb', '.dmp', '.mdmp') }
+if ($forbiddenArtifacts) {
+    $paths = $forbiddenArtifacts.FullName -join [Environment]::NewLine
+    throw "Publish directory contains debug artifacts that must not ship:$([Environment]::NewLine)$paths"
 }
 
 function Copy-ReleaseFile([string]$relativePath, [string]$destinationRelativePath = $relativePath) {

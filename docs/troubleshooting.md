@@ -75,9 +75,16 @@ Làm theo từng mục từ trên xuống dưới. Khi cần báo lỗi, hãy x�
 - Thử lại từ context menu.
 - Chỉ thư mục profile được chọn bị xóa; không chọn nhầm User Data gốc.
 
+## Tự cập nhật bị vô hiệu hóa hoặc thất bại
+
+- Build unsigned không tự cài update. Hãy tải asset chính thức từ GitHub Release và kiểm tra `.sha256`.
+- Nếu package có hash sai, manifest sai version/publisher, signature không hợp lệ, executable không được Authenticode tin cậy hoặc ZIP có path traversal, app giữ nguyên bản đang chạy và không swap.
+- Nếu updater health-check thất bại, helper khôi phục bản backup; không xóa `%LOCALAPPDATA%\9RouterPlus\secrets.json`.
+- Không chạy `RouterPlus.Updater.exe` bằng tay với đường dẫn tự chế. Hãy dùng menu `Trợ giúp` hoặc release chính thức.
+- Khi gửi báo lỗi, chỉ gửi version và bước tái hiện đã sanitized; không gửi URL response, profile, key, email hay OAuth value.
 ## Cần gửi báo lỗi
 
-Dùng [bug report template](../.github/ISSUE_TEMPLATE/bug_report.md). Trước khi gửi:
+Dùng [bug report template](https://github.com/hieuck/9router-plus/issues/new?template=bug_report.md). Trước khi gửi:
 
 - Xóa email/profile thật.
 - Thay path bằng `C:\Users\demo\...`.

@@ -41,6 +41,11 @@ public static class ProviderHealthStateResolver
             return ProviderHealthState.Error;
         }
 
+        if (activeConnections.Any(connection => connection.HasUnknownTestStatus))
+        {
+            return ProviderHealthState.Unknown;
+        }
+
         return ProviderHealthState.Healthy;
     }
 }

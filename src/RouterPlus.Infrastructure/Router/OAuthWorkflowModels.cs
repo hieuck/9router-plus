@@ -37,4 +37,9 @@ public sealed record OAuthCallbackData(
     string? ErrorDescription)
 {
     public string? Value => Token ?? Code;
+
+    public bool MatchesState(string expectedState) =>
+        !string.IsNullOrWhiteSpace(expectedState)
+        && !string.IsNullOrWhiteSpace(State)
+        && string.Equals(State, expectedState, StringComparison.Ordinal);
 }
