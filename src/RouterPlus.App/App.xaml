@@ -6,6 +6,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <converters:OneBasedIndexConverter x:Key="OneBasedIndexConverter" />
+            <converters:InverseBooleanConverter x:Key="InverseBooleanConverter" />
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Styles/Theme.xaml" />
                 <ResourceDictionary Source="Resources/Strings.vi.xaml" />
@@ -13,3 +14,4 @@
         </ResourceDictionary>
     </Application.Resources>
 </Application>
+
