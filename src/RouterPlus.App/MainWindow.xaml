@@ -1194,17 +1194,18 @@
                                    Foreground="{DynamicResource AccentContentBrush}"
                                    Margin="0" />
                     </ToggleButton>
-                    <Button Content="Khôi phục cài đặt gốc"
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,0,8">
+                      <Button Content="Khôi phục cài đặt gốc"
                               Command="{Binding ResetSettingsCommand}"
                               Style="{StaticResource UtilityButtonStyle}"
-                              HorizontalAlignment="Left"
                               Padding="12,8"
-                              Margin="0,0,0,8"
+                              Margin="0,0,8,0"
                               ToolTip="Đặt lại tất cả cài đặt về giá trị mặc định" />
                       <Button Content="Lưu cài đặt"
-                            Command="{Binding SaveSettingsCommand}"
-                            Style="{StaticResource ProviderPrimaryActionButtonStyle}"
-                            Margin="0,0,0,8" />
+                              Command="{Binding SaveSettingsCommand}"
+                              Style="{StaticResource ProviderPrimaryActionButtonStyle}"
+                              Margin="0" />
+                  </StackPanel>
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
@@ -1283,7 +1284,21 @@
                                                    Margin="0" />
                                     </Grid>
                                 </Button>
-                                <TextBlock Text="Tùy chỉnh cách hiển thị của ứng dụng."
+                                
+                                <!-- Collapsible Content -->
+                                <StackPanel>
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsAppearanceSectionExpanded}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    
+                                    <TextBlock Text="Tùy chỉnh cách hiển thị của ứng dụng."
                                            Style="{StaticResource SettingsSectionDescriptionStyle}" />
                                 
                                 <!-- Theme Toggle Buttons -->
@@ -1394,7 +1409,9 @@
                                 <TextBlock Text="Kéo để điều chỉnh kích thước chữ trong ứng dụng"
                                            Style="{StaticResource SettingsFieldHintStyle}"
                                            Margin="0,0,0,0" />
-                            </StackPanel>
+                            
+                                </StackPanel>
+                                </StackPanel>
                         </Border>
 
 
@@ -1518,7 +1535,8 @@
                                 </Grid>
                                 </StackPanel>
 
-                            </StackPanel>
+                            
+                               </StackPanel>
                         </Border>
 
                         <Border Style="{StaticResource SettingsSectionStyle}">
@@ -1533,7 +1551,8 @@
                                             Background="Transparent"
                                             BorderThickness="0"
                                             Padding="0"
-                                            HorizontalContentAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            VerticalContentAlignment="Center"
                                             Cursor="Hand"
                                             Command="{Binding ToggleChromeSectionCommand}">
                                         <Button.Style>
@@ -1706,7 +1725,8 @@
                                 </Grid>
                                 </StackPanel>
 
-                            </StackPanel>
+                            
+                               </StackPanel>
                         </Border>
 
                     </StackPanel>
@@ -1715,6 +1735,14 @@
         </Border>
     </Grid>
 </Window>
+
+
+
+
+
+
+
+
 
 
 
