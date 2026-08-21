@@ -4,6 +4,7 @@
         xmlns:app="clr-namespace:RouterPlus.App"
         xmlns:core="clr-namespace:RouterPlus.Core.Providers;assembly=RouterPlus.Core"
         Title="9Router Profile Tool"
+        Icon="Assets/RouterPlus.ico"
         Width="1440"
         Height="900"
         MinWidth="1060"

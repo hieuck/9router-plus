@@ -7,9 +7,18 @@
     <RootNamespace>RouterPlus.App</RootNamespace>
     <AssemblyName>RouterPlus</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Description>Windows utility for opening Chrome profiles and managing 9Router provider connections.</Description>
+    <AssemblyTitle>9Router Profile Tool</AssemblyTitle>
+    <Product>9Router Profile Tool</Product>
+    <ApplicationIcon>Assets\RouterPlus.ico</ApplicationIcon>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/hieuck/9router-plus</RepositoryUrl>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\RouterPlus.Core\RouterPlus.Core.csproj" />
     <ProjectReference Include="..\RouterPlus.Infrastructure\RouterPlus.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\RouterPlus.ico" />
   </ItemGroup>
 </Project>

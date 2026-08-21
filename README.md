@@ -1,6 +1,37 @@
 # 9Router Profile Tool
 
+[![CI](https://github.com/hieuck/9router-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/hieuck/9router-plus/actions/workflows/ci.yml)
+
 Công cụ Windows hỗ trợ mở Chrome profile và thêm connection vào 9Router.
+
+## Tải bản phát hành
+
+Mở [Latest Releases](https://github.com/hieuck/9router-plus/releases/latest) và tải asset `RouterPlus-vX.Y.Z-win-x64.zip`. Đây là bản self-contained cho Windows x64, không yêu cầu cài .NET 8 Runtime.
+
+1. Tải zip và file `.sha256` cạnh nó.
+2. Kiểm tra checksum trước khi chạy.
+3. Giải nén vào thư mục riêng.
+4. Mở `RouterPlus.exe`.
+
+Bản zip hiện chưa có installer, auto-update hoặc code signing; Windows có thể hiển thị SmartScreen warning.
+
+## Bắt đầu nhanh
+
+1. Mở `⚙ Cài đặt` và chọn `chrome.exe` cùng thư mục Chrome User Data.
+2. Kiểm tra dashboard URL, mặc định `http://localhost:20128`, rồi nhấn `Lưu cài đặt`.
+3. Chọn Chrome profile cần dùng.
+4. Nhấn `Đồng bộ` hoặc nháy đúp profile để mở dashboard.
+5. Thêm provider bằng OAuth/device code hoặc API key theo [User Guide](docs/user-guide.md).
+
+## Tài liệu cho người dùng
+
+- [User Guide](docs/user-guide.md) — cài đặt, profile, provider, settings và gỡ dữ liệu.
+- [Privacy](docs/privacy.md) — dữ liệu local, DPAPI và network behavior.
+- [Troubleshooting](docs/troubleshooting.md) — các lỗi thường gặp và cách xử lý.
+- [Security Policy](SECURITY.md) — cách gửi báo lỗi an toàn.
+- [Changelog](CHANGELOG.md) — thay đổi theo release.
+
+![RouterPlus workspace với dữ liệu demo](docs/assets/9router-profile-workspace.png)
 
 ## Tính năng hiện tại
 
@@ -35,6 +66,23 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
 Build script sẽ restore, test, build và publish vào `artifacts\publish`.
+
+## CI và phát hành
+
+- Pull request vào `master` và push lên `master` tự động chạy restore, test, build và publish.
+- CI tạo artifact self-contained `win-x64` để tải từ trang Actions; artifact CI được giữ trong 14 ngày.
+- Tạo release bằng tag SemVer, ví dụ:
+
+  ```powershell
+  git tag v1.0.0
+  git push origin v1.0.0
+  ```
+
+- Tag `v1.0.0-rc.1` tạo prerelease; tag `v1.0.0` tạo release ổn định.
+- Trước khi tag stable, maintainer phải chuyển repository sang public, thêm `LICENSE` và cấu hình một kênh báo cáo bảo mật private thực tế; workflow sẽ chặn repository private hoặc thiếu `LICENSE`.
+- Release tự động đính kèm `RouterPlus-v1.0.0-win-x64.zip` và file `.sha256`.
+- Bản phát hành self-contained không yêu cầu cài .NET 8 Runtime.
+- Executable hiện chưa được code-sign; Windows có thể hiển thị cảnh báo SmartScreen khi tải bản phát hành. Xem thêm [release checklist](docs/release-checklist.md).
 
 ## Chạy ứng dụng
 

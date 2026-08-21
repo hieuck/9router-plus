@@ -551,7 +551,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void MarkApiKeyPasteFailed(ProviderKind provider, string? details = null) =>
         StatusText = string.IsNullOrWhiteSpace(details)
             ? $"Clipboard không có API key cho {ProviderCatalog.Get(provider).DisplayName}."
-            : $"Không thể dán API key: {details}";
+            : $"Không thể dán API key cho {ProviderCatalog.Get(provider).DisplayName}. Kiểm tra quyền truy cập clipboard.";
 
     private void ApplyProfileFilter()
     {
@@ -1262,23 +1262,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
             }
 
-            var errors = new List<string>();
+            var failedConnectionCount = 0;
             foreach (var connection in matchingConnections)
             {
                 var result = await api.TestConnectionAsync(connection.Id);
                 if (!result.Valid)
                 {
-                    errors.Add(string.IsNullOrWhiteSpace(result.Error) ? "invalid" : result.Error.Trim());
+                    failedConnectionCount++;
                 }
             }
 
-            if (errors.Count == 0)
+            if (failedConnectionCount == 0)
             {
                 StatusText = $"Test connection succeeded for {definition.DisplayName} on profile {profile.Name}.";
             }
             else
             {
-                StatusText = $"Test connection failed for {definition.DisplayName}: {string.Join("; ", errors)}";
+                StatusText = $"Test connection failed for {definition.DisplayName} ({failedConnectionCount} connection(s)).";
             }
         }
         catch (Exception exception)
@@ -1357,10 +1357,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void SetError(Exception exception, [CallerMemberName] string? operation = null)
     {
         StatusText = SafeError(exception);
-        var details = string.IsNullOrWhiteSpace(operation)
-            ? exception.ToString()
-            : $"{operation}: {exception}";
-        AppendLog("ERROR", details);
+        var operationName = string.IsNullOrWhiteSpace(operation) ? "Thao tác" : operation;
+        AppendLog("ERROR", $"{operationName}: {SafeErrorLog(exception)}");
     }
 
     private void SetStatusText(string value, string level, bool forceLog)
@@ -1442,11 +1440,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private static string SafeError(Exception exception) => exception switch
     {
-        RouterApiException apiException => apiException.Message,
-        TimeoutException timeoutException => timeoutException.Message,
+        RouterApiException apiException => $"9Router từ chối yêu cầu (HTTP {(int)apiException.StatusCode}). Kiểm tra dashboard URL và trạng thái 9Router.",
+        TimeoutException => "Thao tác hết thời gian chờ. Hãy thử lại.",
         FileNotFoundException => "Không tìm thấy file cần thiết. Kiểm tra lại đường dẫn Chrome.",
         DirectoryNotFoundException => "Không tìm thấy thư mục Chrome profile.",
-        _ => $"Thao tác thất bại: {exception.Message}"
+        _ => "Thao tác thất bại. Kiểm tra cài đặt rồi thử lại."
+    };
+
+    private static string SafeErrorLog(Exception exception) => exception switch
+    {
+        RouterApiException apiException => $"yêu cầu 9Router thất bại (HTTP {(int)apiException.StatusCode}).",
+        TimeoutException => "thao tác hết thời gian chờ.",
+        FileNotFoundException => "không tìm thấy file cần thiết.",
+        DirectoryNotFoundException => "không tìm thấy thư mục Chrome profile.",
+        _ => "thao tác thất bại."
     };
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

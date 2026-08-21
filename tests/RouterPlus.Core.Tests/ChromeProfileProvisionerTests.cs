@@ -46,7 +46,7 @@ public sealed class ChromeProfileProvisionerTests
 
     [Theory]
     [InlineData("abc", "Profile abc")]
-    [InlineData("abc@gmail.com", "Profile abc@gmail.com")]
+    [InlineData("abc@example.com", "Profile abc@example.com")]
     public void Create_preserves_email_and_special_characters_in_directory_name(string name, string expectedDirectoryName)
     {
         var userDataDirectory = CreateTempDirectory();

@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        id: metadata
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $pattern = '^v(?<version>(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?)$'
+
+          if ($tag -notmatch $pattern) {
+            throw "Release tag '$tag' is invalid. Use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-IDENTIFIER."
+          }
+
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$($matches.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Public release preflight
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .\scripts\release-preflight.ps1 -RequireLicense -RequirePublicRepository
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore RouterPlus.sln --runtime win-x64
+
+      - name: Test
+        shell: pwsh
+        run: >-
+          dotnet test RouterPlus.sln
+          --configuration Release
+          --no-restore
+          --logger "trx;LogFileName=RouterPlus.Release.Tests.trx"
+          --results-directory "$env:RUNNER_TEMP\release-test-results"
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build RouterPlus.sln --configuration Release --no-restore
+
+      - name: Publish
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP 'routerplus-release-publish'
+          if (Test-Path -LiteralPath $publishDirectory) {
+            Remove-Item -LiteralPath $publishDirectory -Recurse -Force
+          }
+
+          dotnet publish src/RouterPlus.App/RouterPlus.App.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --no-restore `
+            --output $publishDirectory `
+            -p:Version=$env:RELEASE_VERSION `
+            -p:InformationalVersion=$env:RELEASE_TAG
+
+      - name: Add release documentation
+        shell: pwsh
+        run: .\scripts\package-release.ps1 -PublishDirectory "$env:RUNNER_TEMP\routerplus-release-publish"
+
+      - name: Package release
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP 'routerplus-release-publish'
+          $archiveName = "RouterPlus-$env:RELEASE_TAG-win-x64.zip"
+          $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
+          $checksumPath = "$archivePath.sha256"
+
+          Compress-Archive `
+            -Path (Join-Path $publishDirectory '*') `
+            -DestinationPath $archivePath `
+            -CompressionLevel Optimal
+
+          $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archiveName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+
+          "archive=$archivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "checksum=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+          ARCHIVE_PATH: ${{ steps.package.outputs.archive }}
+          CHECKSUM_PATH: ${{ steps.package.outputs.checksum }}
+        run: |
+          $arguments = @(
+            'release', 'create', $env:RELEASE_TAG,
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--title', "RouterPlus $env:RELEASE_TAG",
+            '--generate-notes',
+            '--verify-tag'
+          )
+
+          if ($env:RELEASE_VERSION.Contains('-')) {
+            $arguments += '--prerelease'
+          }
+
+          $arguments += @($env:ARCHIVE_PATH, $env:CHECKSUM_PATH)
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }

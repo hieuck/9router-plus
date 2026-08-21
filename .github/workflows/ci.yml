@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          global-json-file: global.json
+
+      - name: Release preflight
+        shell: pwsh
+        run: .\scripts\release-preflight.ps1
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore RouterPlus.sln --runtime win-x64
+
+      - name: Test
+        shell: pwsh
+        run: >-
+          dotnet test RouterPlus.sln
+          --configuration Release
+          --no-restore
+          --logger "trx;LogFileName=RouterPlus.Tests.trx"
+          --results-directory "$env:RUNNER_TEMP\test-results"
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build RouterPlus.sln --configuration Release --no-restore
+
+      - name: Publish
+        shell: pwsh
+        env:
+          CI_VERSION: 0.0.0-ci.${{ github.run_number }}
+          CI_COMMIT: ${{ github.sha }}
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP 'routerplus-ci-publish'
+          if (Test-Path -LiteralPath $publishDirectory) {
+            Remove-Item -LiteralPath $publishDirectory -Recurse -Force
+          }
+
+          dotnet publish src/RouterPlus.App/RouterPlus.App.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --no-restore `
+            --output $publishDirectory `
+            -p:Version=$env:CI_VERSION `
+            -p:InformationalVersion=$env:CI_COMMIT
+
+      - name: Add release documentation
+        shell: pwsh
+        run: .\scripts\package-release.ps1 -PublishDirectory "$env:RUNNER_TEMP\routerplus-ci-publish"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP 'routerplus-ci-publish'
+          $archiveName = "RouterPlus-$env:GITHUB_SHA-win-x64.zip"
+          $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
+
+          if (Test-Path -LiteralPath $archivePath) {
+            Remove-Item -LiteralPath $archivePath -Force
+          }
+
+          Compress-Archive `
+            -Path (Join-Path $publishDirectory '*') `
+            -DestinationPath $archivePath `
+            -CompressionLevel Optimal
+
+      - name: Upload packaged app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: RouterPlus-${{ github.sha }}-win-x64
+          path: ${{ runner.temp }}/RouterPlus-${{ github.sha }}-win-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: test-results-${{ github.run_id }}
+          path: ${{ runner.temp }}/test-results/*.trx
+          if-no-files-found: ignore
+          retention-days: 14

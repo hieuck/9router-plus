@@ -173,7 +173,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _healthState = healthState;
         _testStatus = testStatus;
         _errorCode = errorCode;
-        _lastError = lastError;
+        _lastError = SanitizeLastError(lastError);
         RaiseStatusChanged();
     }
 
@@ -195,6 +195,9 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         var message = string.IsNullOrWhiteSpace(LastError) ? null : $": {LastError.Trim()}";
         return $"{status}{code}{message}";
     }
+
+    private static string? SanitizeLastError(string? lastError) =>
+        string.IsNullOrWhiteSpace(lastError) ? null : "provider trả về lỗi";
 
     private void RaiseStatusChanged()
     {
