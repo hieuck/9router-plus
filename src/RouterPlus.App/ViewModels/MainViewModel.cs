@@ -87,6 +87,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         FilteredProfileRows = new ObservableCollection<ProfileRowViewModel>();
         Profiles.CollectionChanged += Profiles_CollectionChanged;
         Providers = ProviderCatalog.All;
+        _profileProviderFilter = ProviderFilterOptions[0];
         ProviderCards = Providers.Select(definition => new ProviderCardViewModel(definition)).ToArray();
         ApiKeyProviders = Providers.Where(provider => provider.Workflow == WorkflowKind.ApiKey).ToArray();
         RefreshCommand = new AsyncRelayCommand(InitializeAsync);
@@ -119,6 +120,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<ProfileRowViewModel> FilteredProfileRows { get; }
 
     public IReadOnlyList<ProviderDefinition> Providers { get; }
+
+    public IReadOnlyList<ProfileProviderFilterOption> ProviderFilterOptions { get; } =
+        new[] { new ProfileProviderFilterOption(null, "Tất cả provider") }
+            .Concat(ProviderCatalog.All.Select(definition => new ProfileProviderFilterOption(definition.Kind, definition.DisplayName)))
+            .ToArray();
 
     public IReadOnlyList<ProviderCardViewModel> ProviderCards { get; }
 
@@ -206,6 +212,39 @@ public sealed class MainViewModel : INotifyPropertyChanged
         : $"Thêm profile \"{ProfileSearchText.Trim()}\"";
 
     public bool CanClearProfileSearch => !string.IsNullOrEmpty(ProfileSearchText);
+
+    private ProfileProviderFilterOption _profileProviderFilter;
+
+    public ProfileProviderFilterOption ProfileProviderFilter
+    {
+        get => _profileProviderFilter;
+        set
+        {
+            value ??= ProviderFilterOptions[0];
+            if (ReferenceEquals(_profileProviderFilter, value))
+            {
+                return;
+            }
+
+            _profileProviderFilter = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(FilteredProfileCountLabel));
+            ApplyProfileFilter();
+        }
+    }
+
+    public int FilteredProfileCount => FilteredProfileRows.Count;
+
+    public string FilteredProfileCountLabel
+    {
+        get
+        {
+            var hasFilter = ProfileProviderFilter.Kind is not null || !string.IsNullOrWhiteSpace(ProfileSearchText);
+            return hasFilter
+                ? string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0} đang hiển thị", FilteredProfileCount)
+                : string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0} profile", FilteredProfileCount);
+        }
+    }
 
     public bool IsSettingsExpanded
     {
@@ -789,16 +828,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
         FilteredProfiles.Clear();
         FilteredProfileRows.Clear();
         var rowsByProfileId = ProfileRows.ToDictionary(row => row.Profile.Id, StringComparer.Ordinal);
+        var selectedProvider = ProfileProviderFilter.Kind;
         var displayIndex = 1;
         foreach (var profile in ChromeProfileFilter.Filter(Profiles, ProfileSearchText))
         {
-            FilteredProfiles.Add(profile);
-            if (rowsByProfileId.TryGetValue(profile.Id, out var row))
+            if (!rowsByProfileId.TryGetValue(profile.Id, out var row))
             {
-                row.SetDisplayIndex(displayIndex++);
-                FilteredProfileRows.Add(row);
+                continue;
             }
+            if (selectedProvider is not null && !row.ProviderStatuses.Any(status => status.Definition.Kind == selectedProvider && status.IsConnected))
+            {
+                continue;
+            }
+            FilteredProfiles.Add(profile);
+            row.SetDisplayIndex(displayIndex++);
+            FilteredProfileRows.Add(row);
         }
+        OnPropertyChanged(nameof(FilteredProfileCount));
+        OnPropertyChanged(nameof(FilteredProfileCountLabel));
     }
 
     private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
