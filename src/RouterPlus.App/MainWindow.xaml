@@ -1194,7 +1194,14 @@
                                    Foreground="{DynamicResource AccentContentBrush}"
                                    Margin="0" />
                     </ToggleButton>
-                    <Button Content="Lưu cài đặt"
+                    <Button Content="🔄 Khôi phục cài đặt gốc"
+                              Command="{Binding ResetSettingsCommand}"
+                              Style="{StaticResource UtilityButtonStyle}"
+                              HorizontalAlignment="Left"
+                              Padding="12,8"
+                              Margin="0,0,0,8"
+                              ToolTip="Đặt lại tất cả cài đặt về giá trị mặc định" />
+                      <Button Content="Lưu cài đặt"
                             Command="{Binding SaveSettingsCommand}"
                             Style="{StaticResource ProviderPrimaryActionButtonStyle}"
                             Margin="0,0,0,8" />
@@ -1559,6 +1566,7 @@
         </Border>
     </Grid>
 </Window>
+
 
 
 

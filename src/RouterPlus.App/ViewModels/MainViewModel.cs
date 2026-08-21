@@ -112,6 +112,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ClearDashboardUrlCommand = new AsyncRelayCommand(ClearDashboardUrl);
         ClearChromeExecutableCommand = new AsyncRelayCommand(ClearChromeExecutable);
         ClearChromeUserDataCommand = new AsyncRelayCommand(ClearChromeUserData);
+        ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -572,6 +573,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AsyncRelayCommand ClearDashboardUrlCommand { get; }
     public AsyncRelayCommand ClearChromeExecutableCommand { get; }
     public AsyncRelayCommand ClearChromeUserDataCommand { get; }
+
+    public AsyncRelayCommand ResetSettingsCommand { get; }
+
+    private async Task ResetSettingsAsync()
+    {
+        var result = System.Windows.MessageBox.Show(
+            "Bạn có chắc muốn khôi phục tất cả cài đặt về giá trị mặc định?\n\nDanh sách profile được quản lý sẽ được giữ lại.",
+            "Khôi phục cài đặt gốc",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question,
+            System.Windows.MessageBoxResult.No);
+        
+        if (result != System.Windows.MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        DashboardBaseUrl = "http://localhost:20128";
+        ChromeExecutablePath = string.Empty;
+        ChromeUserDataDirectory = string.Empty;
+        FontScale = 1.0d;
+        UseLightTheme = false;
+        
+        StatusText = "Đã khôi phục cài đặt về mặc định.";
+        await Task.CompletedTask;
+    }
 
     private async Task ClearDashboardUrl(){await Task.CompletedTask;
         DashboardBaseUrl = "http://localhost:20128";
@@ -1892,6 +1919,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
+
 
 
 
