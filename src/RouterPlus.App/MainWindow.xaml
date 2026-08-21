@@ -1594,6 +1594,7 @@
                                             Style="{StaticResource UtilityButtonStyle}"
                                             FontSize="9"
                                             Padding="8,4"
+                                            VerticalAlignment="Center"
                                             ToolTip="Tự động tìm Chrome installation" />
                                 </Grid>
                                 
@@ -1735,6 +1736,7 @@
         </Border>
     </Grid>
 </Window>
+
 
 
 
