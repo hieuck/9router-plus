@@ -467,7 +467,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="profiles" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
-                        <TextBlock Grid.Column="1" Text="{Binding Profiles.Count, StringFormat={}{0} total}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding FilteredProfileCountLabel}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
                     </Grid>
                     <Border Grid.Row="3" Style="{StaticResource SidebarSearchStyle}"
                             Padding="10,0"
@@ -517,6 +517,44 @@
                     </Border>
 
                     <StackPanel Grid.Row="4" Style="{StaticResource SidebarPanelStyle}" Margin="0,0,0,10">
+                        <ItemsControl ItemsSource="{Binding ProviderFilterOptions}" Margin="0,0,0,8">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ToggleButton Margin="0,0,6,6"
+                                                  Padding="8,5"
+                                                  MinWidth="0"
+                                                  MinHeight="0"
+                                                  Command="{Binding DataContext.ToggleProviderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  CommandParameter="{Binding Kind}"
+                                                  IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                                  ToolTip="{Binding Tooltip}">
+                                        <ToggleButton.Style>
+                                            <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                                <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ToggleButton.Style>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Glyph}" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="11" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <Button Content="{Binding ProfileAddButtonText}"
                                 Command="{Binding AddProfileCommand}"
                                 HorizontalContentAlignment="Left"

@@ -16,8 +16,10 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        InitializeComponent();
         DataContext = new MainViewModel(runStartupUpdateCheck: true);
+        ViewModel.LoadWindowPlacementSync();
+        ApplySavedWindowPlacement();
+        InitializeComponent();
     }
 
     private MainViewModel ViewModel => (MainViewModel)DataContext;
@@ -25,7 +27,6 @@ public partial class MainWindow : Window
     private async void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
         await ViewModel.InitializeAsync();
-        ApplySavedWindowPlacement();
     }
 
     private async void Window_OnClosing(object? sender, CancelEventArgs e)
@@ -333,3 +334,4 @@ public partial class MainWindow : Window
     }
 
 }
+

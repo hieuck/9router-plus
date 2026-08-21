@@ -27,6 +27,17 @@ public sealed class SettingsStore
             ?? new RouterSettings();
     }
 
+    public RouterSettings Load()
+    {
+        if (!File.Exists(_filePath))
+        {
+            return new RouterSettings();
+        }
+
+        var json = File.ReadAllText(_filePath);
+        return JsonSerializer.Deserialize<RouterSettings>(json, _jsonOptions) ?? new RouterSettings();
+    }
+
     public async Task SaveAsync(RouterSettings settings, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);

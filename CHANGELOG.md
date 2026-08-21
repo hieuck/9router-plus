@@ -2,6 +2,17 @@
 
 Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các release được tạo từ tag SemVer dạng `vMAJOR.MINOR.PATCH`.
 
+## [1.0.1] - 2026-08-21
+
+### Added
+
+- Bộ lọc provider trong sidebar cho phép lọc profile theo kết nối provider.
+- Toggle button với icon và tên ngắn cho từng provider (Codex, Kiro, OpenRouter, Ollama, Kimchi).
+
+### Fixed
+
+- Khắc phục hiện tượng cửa sổ nháy/thay đổi kích thước khi mở ứng dụng. Window placement được load và áp dụng trước khi window hiển thị.
+
 ## Unreleased
 
 ### Added
@@ -41,7 +52,7 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 
 Khi tạo phiên bản mới, thêm một mục trước `Unreleased`:
 
-```markdown
+``markdown
 ## [1.2.3] - YYYY-MM-DD
 
 ### Added
@@ -58,4 +69,4 @@ Khi tạo phiên bản mới, thêm một mục trước `Unreleased`:
 
 ### Known limitations
 - ...
-```
+``
