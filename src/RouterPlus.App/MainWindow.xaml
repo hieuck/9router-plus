@@ -467,7 +467,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="profiles" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
-                        <TextBlock Grid.Column="1" Text="{Binding FilteredProfileCountLabel}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Profiles.Count, StringFormat={}{0} total}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
                     </Grid>
                     <Border Grid.Row="3" Style="{StaticResource SidebarSearchStyle}"
                             Padding="10,0"
@@ -517,25 +517,6 @@
                     </Border>
 
                     <StackPanel Grid.Row="4" Style="{StaticResource SidebarPanelStyle}" Margin="0,0,0,10">
-                        <Border Style="{StaticResource SidebarSearchStyle}" Padding="10,0" Margin="0,0,0,8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="&#x2325;" FontSize="14" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding ProviderFilterOptions}"
-                                          SelectedItem="{Binding ProfileProviderFilter}"
-                                          DisplayMemberPath="DisplayName"
-                                          ToolTip="L&#x1ecb;c profile theo provider"
-                                          Background="Transparent"
-                                          BorderThickness="0"
-                                          Padding="8,5"
-                                          Margin="0"
-                                          Foreground="{DynamicResource TextBrush}" />
-                            </Grid>
-                        </Border>
                         <Button Content="{Binding ProfileAddButtonText}"
                                 Command="{Binding AddProfileCommand}"
                                 HorizontalContentAlignment="Left"
