@@ -15,6 +15,9 @@
         app:FontScaleBehavior.Scale="{Binding FontScale}"
         Loaded="Window_OnLoaded"
         Closing="Window_OnClosing">
+    <Window.InputBindings>
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveSettingsCommand}" />
+    </Window.InputBindings>
     <Window.Resources>
         <Style x:Key="SidebarTextStyle"
                TargetType="TextBlock"
@@ -1223,9 +1226,14 @@
                                        TextWrapping="Wrap" />
                         </Border>
 
+                        <!-- Improved Settings Section với icons và validation -->
                         <Border Style="{StaticResource SettingsSectionStyle}">
                             <StackPanel>
-                                <TextBlock Text="Giao diện" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                <!-- Section Header with Icon -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                    <TextBlock Text="🎨" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="Giao diện" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0" />
+                                </StackPanel>
                                 <TextBlock Text="Tùy chỉnh cách hiển thị của ứng dụng."
                                            Style="{StaticResource SettingsSectionDescriptionStyle}" />
                                 <TextBlock Text="Chủ đề" Style="{StaticResource SettingsFieldLabelStyle}" />
@@ -1245,57 +1253,217 @@
 
                         <Border Style="{StaticResource SettingsSectionStyle}">
                             <StackPanel>
-                                <TextBlock Text="Dashboard" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                <!-- Section Header with Icon -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                    <TextBlock Text="🌐" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="Dashboard" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0" />
+                                </StackPanel>
                                 <TextBlock Text="Địa chỉ 9Router mà ứng dụng sẽ mở."
                                            Style="{StaticResource SettingsSectionDescriptionStyle}" />
-                                <TextBlock Text="URL dashboard" Style="{StaticResource SettingsFieldLabelStyle}" />
-                                <TextBox Text="{Binding DashboardBaseUrl, UpdateSourceTrigger=PropertyChanged}"
-                                         Margin="0" />
-                                <TextBlock Text="Ví dụ: http://localhost:20128"
-                                           Style="{StaticResource SettingsFieldHintStyle}" />
+                                
+                                <!-- Dashboard URL with validation indicator -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                                               Text="URL dashboard" 
+                                               Style="{StaticResource SettingsFieldLabelStyle}" />
+                                    
+                                    <TextBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                             Text="{Binding DashboardBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                                             Margin="0" />
+                                    
+                                    <!-- Validation indicator -->
+                                    <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" 
+                                                Orientation="Horizontal" 
+                                                Margin="0,4,0,0">
+                                        <TextBlock FontSize="9" VerticalAlignment="Center" Margin="0,0,5,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="✓" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDashboardUrlValid}" Value="False">
+                                                            <Setter Property="Text" Value="✗" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Style="{StaticResource SettingsFieldHintStyle}" Margin="0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource SettingsFieldHintStyle}">
+                                                    <Setter Property="Text" Value="Ví dụ: http://localhost:20128" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDashboardUrlValid}" Value="False">
+                                                            <Setter Property="Text" Value="URL không hợp lệ" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
                         </Border>
 
                         <Border Style="{StaticResource SettingsSectionStyle}">
                             <StackPanel>
-                                <TextBlock Text="Chrome" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                <!-- Section Header with Icon and Auto-detect button -->
+                                <Grid Margin="0,0,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="🔗" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <TextBlock Text="Chrome" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            Content="⚡ Tự động phát hiện"
+                                            Command="{Binding AutoDetectChromeCommand}"
+                                            Style="{StaticResource UtilityButtonStyle}"
+                                            FontSize="9"
+                                            Padding="8,4"
+                                            ToolTip="Tự động tìm Chrome installation" />
+                                </Grid>
+                                
                                 <TextBlock Text="Đường dẫn dùng để đọc profile và mở dashboard đúng tài khoản."
                                            Style="{StaticResource SettingsSectionDescriptionStyle}" />
+                                
+                                <!-- Chrome Executable with validation -->
                                 <TextBlock Text="Chrome executable" Style="{StaticResource SettingsFieldLabelStyle}" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Text="{Binding ChromeExecutablePath, UpdateSourceTrigger=PropertyChanged}"
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    
+                                    <TextBox Grid.Row="0" Grid.Column="0"
+                                             Text="{Binding ChromeExecutablePath, UpdateSourceTrigger=PropertyChanged}"
                                              ToolTip="{Binding ChromeExecutablePath}"
                                              Margin="0" />
-                                    <Button Grid.Column="1"
+                                    <Button Grid.Row="0" Grid.Column="1"
                                             Content="Chọn file"
                                             Click="BrowseChrome_Click"
                                             Style="{StaticResource UtilityButtonStyle}"
                                             Margin="7,0,0,0" />
+                                    
+                                    <!-- Validation indicator -->
+                                    <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                                Orientation="Horizontal" 
+                                                Margin="0,4,0,0">
+                                        <TextBlock FontSize="9" VerticalAlignment="Center" Margin="0,0,5,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="✓" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsChromeExecutableValid}" Value="False">
+                                                            <Setter Property="Text" Value="✗" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Style="{StaticResource SettingsFieldHintStyle}" Margin="0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource SettingsFieldHintStyle}">
+                                                    <Setter Property="Text" Value="Đường dẫn hợp lệ" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsChromeExecutableValid}" Value="False">
+                                                            <Setter Property="Text" Value="File không tồn tại" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
                                 </Grid>
+                                
+                                <!-- Chrome User Data with validation -->
                                 <TextBlock Text="Chrome User Data" Style="{StaticResource SettingsFieldLabelStyle}" Margin="0,14,0,5" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Text="{Binding ChromeUserDataDirectory, UpdateSourceTrigger=PropertyChanged}"
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    
+                                    <TextBox Grid.Row="0" Grid.Column="0"
+                                             Text="{Binding ChromeUserDataDirectory, UpdateSourceTrigger=PropertyChanged}"
                                              ToolTip="{Binding ChromeUserDataDirectory}"
                                              Margin="0" />
-                                    <Button Grid.Column="1"
+                                    <Button Grid.Row="0" Grid.Column="1"
                                             Content="Chọn thư mục"
                                             Click="BrowseUserData_Click"
                                             Style="{StaticResource UtilityButtonStyle}"
                                             Margin="7,0,0,0" />
+                                    
+                                    <!-- Validation indicator -->
+                                    <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                                Orientation="Horizontal" 
+                                                Margin="0,4,0,0">
+                                        <TextBlock FontSize="9" VerticalAlignment="Center" Margin="0,0,5,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="✓" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsChromeUserDataValid}" Value="False">
+                                                            <Setter Property="Text" Value="✗" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Style="{StaticResource SettingsFieldHintStyle}" Margin="0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource SettingsFieldHintStyle}">
+                                                    <Setter Property="Text" Value="Đường dẫn hợp lệ" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsChromeUserDataValid}" Value="False">
+                                                            <Setter Property="Text" Value="Thư mục không tồn tại" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
                                 </Grid>
                             </StackPanel>
                         </Border>
+
                     </StackPanel>
                 </ScrollViewer>
             </DockPanel>
         </Border>
     </Grid>
 </Window>
+
+
+
