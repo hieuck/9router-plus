@@ -72,6 +72,15 @@ jobs:
             -p:Version=$env:CI_VERSION `
             -p:InformationalVersion=$env:CI_COMMIT
 
+          dotnet publish src/RouterPlus.Updater/RouterPlus.Updater.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --no-restore `
+            --output $publishDirectory `
+            -p:Version=$env:CI_VERSION `
+            -p:InformationalVersion=$env:CI_COMMIT
+
       - name: Add release documentation
         shell: pwsh
         run: .\scripts\package-release.ps1 -PublishDirectory "$env:RUNNER_TEMP\routerplus-ci-publish"
