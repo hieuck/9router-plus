@@ -1566,7 +1566,7 @@
                                                 </Setter>
                                             </Style>
                                         </Button.Style>
-                                        <StackPanel Orientation="Horizontal">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock FontFamily="Segoe UI Symbol"
                                                        FontSize="10"
                                                        VerticalAlignment="Center"
@@ -1735,6 +1735,7 @@
         </Border>
     </Grid>
 </Window>
+
 
 
 
