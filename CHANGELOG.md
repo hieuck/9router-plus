@@ -2,7 +2,7 @@
 
 Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các release được tạo từ tag SemVer dạng `vMAJOR.MINOR.PATCH`.
 
-## [1.0.1] - 2026-08-21
+## [personal-v1.0.1] - 2026-08-21
 
 ### Added
 
