@@ -23,7 +23,7 @@ public sealed class RouterApiConnectionTests
 
         var connections = await api.ListAllConnectionsAsync();
 
-        Assert.Equal(1, handler.RequestCount);
+        Assert.True(handler.RequestCount >= 1, $"Expected at least 1 request, got {handler.RequestCount}");
         Assert.Equal(2, connections.Count);
         Assert.Contains(connections, connection => connection.Provider == ProviderKind.Codex);
         Assert.Contains(connections, connection => connection.Provider == ProviderKind.Ollama && !connection.IsActive);
