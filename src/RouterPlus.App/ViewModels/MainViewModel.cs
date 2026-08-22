@@ -105,6 +105,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Providers = ProviderCatalog.All;
         InitializeProviderFilterOptions();
         ToggleProviderCommand = new AsyncRelayCommand<ProviderKind>(kind => { ToggleProvider(kind); return Task.CompletedTask; });
+        ToggleUnassignedProfilesCommand = new AsyncRelayCommand(() =>
+        {
+            ToggleUnassignedProfiles();
+            return Task.CompletedTask;
+        });
         ProviderCards = Providers.Select(definition => new ProviderCardViewModel(definition)).ToArray();
         ApiKeyProviders = Providers.Where(provider => provider.Workflow == WorkflowKind.ApiKey).ToArray();
         RefreshCommand = new AsyncRelayCommand(InitializeAsync);
@@ -317,45 +322,58 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand<ProviderKind> ToggleProviderCommand { get; }
 
+    public AsyncRelayCommand ToggleUnassignedProfilesCommand { get; }
+
+    public bool IsUnassignedProfileFilterActive { get; private set; }
+
     public void ToggleProvider(ProviderKind kind)
     {
-        if (SelectedProviderKinds.Contains(kind))
+        if (!SelectedProviderKinds.Add(kind))
         {
             SelectedProviderKinds.Remove(kind);
         }
-        else
-        {
-            SelectedProviderKinds.Add(kind);
-        }
+
+        IsUnassignedProfileFilterActive = false;
         if (_providerOptionByKind.TryGetValue(kind, out var option))
         {
             option.IsSelected = SelectedProviderKinds.Contains(kind);
         }
-        OnPropertyChanged(nameof(SelectedProviderKinds));
-        OnPropertyChanged(nameof(IsProviderFilterActive));
-        OnPropertyChanged(nameof(FilteredProfileCountLabel));
-        ApplyProfileFilter();
+        NotifyProviderFilterChanged();
+    }
+
+    public void ToggleUnassignedProfiles()
+    {
+        IsUnassignedProfileFilterActive = !IsUnassignedProfileFilterActive;
+        if (IsUnassignedProfileFilterActive)
+        {
+            SelectedProviderKinds.Clear();
+            foreach (var option in ProviderFilterOptions)
+            {
+                option.IsSelected = false;
+            }
+        }
+
+        NotifyProviderFilterChanged();
     }
 
     public void ClearProviderFilter()
     {
-        if (SelectedProviderKinds.Count == 0)
+        if (SelectedProviderKinds.Count == 0 && !IsUnassignedProfileFilterActive)
         {
             return;
         }
 
         SelectedProviderKinds.Clear();
+        IsUnassignedProfileFilterActive = false;
         foreach (var option in ProviderFilterOptions)
         {
             option.IsSelected = false;
         }
-        OnPropertyChanged(nameof(SelectedProviderKinds));
-        OnPropertyChanged(nameof(IsProviderFilterActive));
-        OnPropertyChanged(nameof(FilteredProfileCountLabel));
-        ApplyProfileFilter();
+
+        NotifyProviderFilterChanged();
     }
 
-    public bool IsProviderFilterActive => SelectedProviderKinds.Count > 0;
+    public bool IsProviderFilterActive => SelectedProviderKinds.Count > 0 || IsUnassignedProfileFilterActive;
 
     public int FilteredProfileCount => FilteredProfileRows.Count;
 
@@ -368,6 +386,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ? string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0} đang hiển thị", FilteredProfileCount)
                 : string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0} profile", FilteredProfileCount);
         }
+    }
+
+    private void NotifyProviderFilterChanged()
+    {
+        OnPropertyChanged(nameof(SelectedProviderKinds));
+        OnPropertyChanged(nameof(IsProviderFilterActive));
+        OnPropertyChanged(nameof(IsUnassignedProfileFilterActive));
+        OnPropertyChanged(nameof(FilteredProfileCountLabel));
+        ApplyProfileFilter();
     }
 
     public bool IsAppearanceSectionExpanded
@@ -1276,6 +1303,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 continue;
             }
+            if (IsUnassignedProfileFilterActive &&
+                (row.ProviderStatuses.Any(status => !status.IsKnown) || row.ConnectedProviderCount > 0))
+            {
+                continue;
+            }
             if (hasProviderFilter && !row.ProviderStatuses.Any(status => selectedProviders.Contains(status.Definition.Kind) && status.IsConnected))
             {
                 continue;
@@ -1372,6 +1404,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             OnPropertyChanged(nameof(SelectedProfileRow));
             UpdateProviderCardStatuses();
+            ApplyProfileFilter();
 
             var matchedProfiles = ProfileRows.Count(row => row.ConnectedProviderCount > 0);
             ConnectionStatusText =
@@ -1395,6 +1428,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 row.MarkStatusUnknown();
             }
             UpdateProviderCardStatuses();
+            ApplyProfileFilter();
 
             ConnectionStatusText = $"Chưa đồng bộ provider: {SafeError(exception)}";
             if (showStatus)
@@ -1568,6 +1602,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         using var workflowCancellation = new CancellationTokenSource();
         _workflowCancellation = workflowCancellation;
         _workflowInProgress = true;
+        GetProviderCard(provider).SetWorkflowInProgress(true);
         OnPropertyChanged(nameof(IsWorkflowInProgress));
         CancelWorkflowCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
@@ -1617,6 +1652,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             _workflowInProgress = false;
+            GetProviderCard(provider).SetWorkflowInProgress(false);
             OnPropertyChanged(nameof(IsWorkflowInProgress));
             CancelWorkflowCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();

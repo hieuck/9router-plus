@@ -106,6 +106,18 @@ public sealed class ProviderCardQuotaTests
         Assert.Equal(500m, status.QuotaRows[1].Total);
     }
 
+    [Fact]
+    public void Provider_card_workflow_state_is_scoped_to_each_card()
+    {
+        var codexCard = new ProviderCardViewModel(ProviderCatalog.Get(ProviderKind.Codex));
+        var kiroCard = new ProviderCardViewModel(ProviderCatalog.Get(ProviderKind.Kiro));
+
+        codexCard.SetWorkflowInProgress(true);
+
+        Assert.True(codexCard.IsWorkflowInProgress);
+        Assert.False(kiroCard.IsWorkflowInProgress);
+    }
+
     private sealed class QuotaApiHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(

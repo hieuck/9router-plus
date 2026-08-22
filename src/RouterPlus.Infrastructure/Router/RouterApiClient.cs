@@ -10,7 +10,6 @@ public sealed class RouterApiClient : IRouterApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly Uri _baseUri;
-    private readonly UsageDatabaseReader _usageReader;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -21,7 +20,6 @@ public sealed class RouterApiClient : IRouterApiClient
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         ArgumentException.ThrowIfNullOrWhiteSpace(dashboardBaseUrl);
         _baseUri = new Uri(dashboardBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
-        _usageReader = new UsageDatabaseReader();
     }
 
     public async Task<IReadOnlyList<ProviderConnection>> ListAllConnectionsAsync(
@@ -35,16 +33,11 @@ public sealed class RouterApiClient : IRouterApiClient
             return Array.Empty<ProviderConnection>();
         }
 
-        
-        // Get usage data from database
-        var usageByConnection = _usageReader.GetTodayUsageByConnection();
-        var tokenExpirationByConnection = _usageReader.GetTokenExpirationByConnection();
-
         // Fetch real quota data from 9Router API (same as Quota Tracker dashboard)
         var quotaByConnection = await FetchAllQuotasAsync(connections, cancellationToken);
 
         return connections.EnumerateArray()
-            .Select(element => ParseConnection(element, usageByConnection, tokenExpirationByConnection, quotaByConnection))
+            .Select(element => ParseConnection(element, quotaByConnection))
             .Where(connection => connection is not null)
             .Cast<ProviderConnection>()
             .OrderBy(connection => connection.Provider)
@@ -395,13 +388,13 @@ public sealed class RouterApiClient : IRouterApiClient
 
         if (root.TryGetProperty("connection", out var connection))
         {
-            return ParseConnection(connection, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>(), new Dictionary<string, QuotaData>());
+            return ParseConnection(connection, new Dictionary<string, QuotaData>());
         }
 
-        return root.TryGetProperty("id", out _) ? ParseConnection(root, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>(), new Dictionary<string, QuotaData>()) : null;
+        return root.TryGetProperty("id", out _) ? ParseConnection(root, new Dictionary<string, QuotaData>()) : null;
     }
 
-    private static ProviderConnection? ParseConnection(JsonElement element, Dictionary<string, UsageData> usageByConnection, Dictionary<string, TokenExpirationData> tokenExpirationByConnection, Dictionary<string, QuotaData> quotaByConnection)
+    private static ProviderConnection? ParseConnection(JsonElement element, Dictionary<string, QuotaData> quotaByConnection)
     {
         if (!element.TryGetProperty("id", out var idElement) ||
             !element.TryGetProperty("provider", out var providerElement))
@@ -455,46 +448,21 @@ public sealed class RouterApiClient : IRouterApiClient
             : (DateTimeOffset?)null;
 
 
-        // ALWAYS prefer database for OAuth token expiration (most accurate, from local database)
-        // Database is the source of truth when 9Router is not running
-        DateTimeOffset? expiresAt = null;
-        int? expiresIn = null;
-        DateTimeOffset? lastRefreshAt = null;
-        
-        if (tokenExpirationByConnection.TryGetValue(id, out var dbToken))
-        {
-            expiresAt = dbToken.ExpiresAt;
-            expiresIn = dbToken.ExpiresIn;
-            lastRefreshAt = dbToken.LastRefreshAt;
-        }
-        
-        // Fallback to API response if database doesn't have token data
-        if (!expiresAt.HasValue)
-        {
-            expiresAt = element.TryGetProperty("expiresAt", out var expiresAtElement) &&
-                            expiresAtElement.ValueKind == JsonValueKind.String &&
-                            expiresAtElement.TryGetDateTimeOffset(out var parsedExpiresAt)
-                ? parsedExpiresAt
-                : (DateTimeOffset?)null;
-        }
-        
-        if (!expiresIn.HasValue)
-        {
-            expiresIn = element.TryGetProperty("expiresIn", out var expiresInElement) &&
-                            expiresInElement.ValueKind == JsonValueKind.Number &&
-                            expiresInElement.TryGetInt32(out var parsedExpiresIn)
-                ? parsedExpiresIn
-                : (int?)null;
-        }
-        
-        if (!lastRefreshAt.HasValue)
-        {
-            lastRefreshAt = element.TryGetProperty("lastRefreshAt", out var lastRefreshAtElement) &&
-                                lastRefreshAtElement.ValueKind == JsonValueKind.String &&
-                                lastRefreshAtElement.TryGetDateTimeOffset(out var parsedLastRefreshAt)
-                ? parsedLastRefreshAt
-                : (DateTimeOffset?)null;
-        }
+        var expiresAt = element.TryGetProperty("expiresAt", out var expiresAtElement) &&
+                        expiresAtElement.ValueKind == JsonValueKind.String &&
+                        expiresAtElement.TryGetDateTimeOffset(out var parsedExpiresAt)
+            ? parsedExpiresAt
+            : (DateTimeOffset?)null;
+        var expiresIn = element.TryGetProperty("expiresIn", out var expiresInElement) &&
+                        expiresInElement.ValueKind == JsonValueKind.Number &&
+                        expiresInElement.TryGetInt32(out var parsedExpiresIn)
+            ? parsedExpiresIn
+            : (int?)null;
+        var lastRefreshAt = element.TryGetProperty("lastRefreshAt", out var lastRefreshAtElement) &&
+                            lastRefreshAtElement.ValueKind == JsonValueKind.String &&
+                            lastRefreshAtElement.TryGetDateTimeOffset(out var parsedLastRefreshAt)
+            ? parsedLastRefreshAt
+            : (DateTimeOffset?)null;
 
         // Use expiresAt for OAuth providers to show token expiration time
         // This is different from usage quota - it's when the OAuth token expires
@@ -502,25 +470,8 @@ public sealed class RouterApiClient : IRouterApiClient
         {
             usageResetAt = expiresAt.Value;
         }
-        
-        // ALWAYS prefer database for usageCount (most accurate, real-time local data)
-        // Database is the source of truth for usage tracking, NOT API response
-        if (usageByConnection.TryGetValue(id, out var dbUsage))
-        {
-            // Override API usageCount with real database value (accurate, real-time)
-            usageCount = dbUsage.Requests;
-            
-            // Database doesn't have limit, so we leave limitCount null
-            // (API limitCount is preserved if available)
-            
-            // Set reset time to end of today ONLY if not already set from expiresAt
-            if (!usageResetAt.HasValue)
-            {
-                usageResetAt = DateTimeOffset.UtcNow.Date.AddDays(1);
-            }
-        }
-        
-        // If backend doesn't provide usage data and database doesn't have it, try to infer from error messages
+
+        // If backend doesn't provide usage data, try to infer it from error messages
         if (!usageCount.HasValue && !limitCount.HasValue)
         {
             var inferred = UsageInferenceService.InferUsageFromError(provider, errorCode, lastError, lastErrorAt);
