@@ -418,6 +418,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <Grid Grid.Row="0" Margin="0,0,0,28">
@@ -620,7 +621,7 @@
 
                     
 
-                    <StackPanel Grid.Row="4" Style="{StaticResource SidebarPanelStyle}" Margin="0,0,0,10">
+                    <StackPanel Grid.Row="5" Style="{StaticResource SidebarPanelStyle}" Margin="0,0,0,10">
                         <ItemsControl ItemsSource="{Binding ProviderFilterOptions}" Margin="0,0,0,8">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -678,7 +679,7 @@
 
 
                     <!-- Profile Search Box -->
-                    <Border Grid.Row="5" 
+                    <Border Grid.Row="4" 
                             Style="{StaticResource SidebarSearchStyle}"
                             Padding="10,0"
                             Margin="0,0,0,10">
