@@ -17,6 +17,15 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 
 ### Added
 
+- Recent Profiles and Quick Launch: sidebar tracks mười Chrome profile dùng gần đây nhất (ghim trước, sau đó đến lần cuối) cùng số lần mở và thời gian dùng.
+- RecentProfileRowViewModel với hint phím tắt (Ctrl+1..9, Ctrl+0) hiển thị ngay trong sidebar.
+- Quick Launch palette (Ctrl+Shift+K) cho phép gõ tên profile để mở nhanh; hỗ trợ phím mũi tên, Esc đóng, Enter mở.
+- Phím tắt mới: Ctrl+6..9, Ctrl+0 (slot 10), Ctrl+Shift+K (Quick Launch), Ctrl+Shift+R (xoá recent), F5 (làm mới), Escape đóng palette.
+- Nút xoá danh sách recent ngay trong sidebar (Ctrl+Shift+R) kèm bộ đếm N/10.
+- BooleanToVisibilityConverter để overlay Quick Launch điều khiển Visibility.
+- Unit test mới: MainViewModelRecentProfilesTests (8 ca) bao phủ slot indexing, filter, wrap selection, clear recents, render row.
+- Keyboard Shortcuts có thể bật/tắt trong Settings (mặc định tắt), cho phép gán lại từng phím tắt và khôi phục mặc định; phím tắt toàn cục chỉ được kích hoạt khi bật.
+
 - Windows GitHub Actions CI với test, build và self-contained artifact.
 - Tag-triggered release với zip `win-x64` và SHA-256 checksum.
 - User guide, privacy, troubleshooting, security policy và release checklist.

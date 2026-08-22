@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Security;
@@ -20,6 +21,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private const int MaxLogEntries = 200;
     private static readonly TimeSpan StartupUpdateCheckCooldown = TimeSpan.FromHours(12);
+    public const int MaxRecentSlots = 10;
+    public const int MaxQuickLaunchResults = 8;
     private readonly ChromeLocator _chromeLocator = new();
     private readonly ChromeProfileReader _profileReader = new();
     private readonly ChromeProfileProvisioner _profileProvisioner;
@@ -45,6 +48,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly List<ManagedChromeProfile> _managedProfiles = new();
     private readonly List<RecentProfile> _recentProfiles = new();
     private ChromeProfile? _selectedProfile;
+    private string _quickLaunchFilterText = string.Empty;
+    private bool _isQuickLaunchOpen;
+    private ChromeProfile? _selectedQuickLaunchProfile;
     private ProviderKind _selectedApiKeyProvider = ProviderKind.OpenRouter;
     private int _apiKeyLoadVersion;
     private string _dashboardBaseUrl = "http://localhost:20128";
@@ -55,6 +61,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _isAppearanceSectionExpanded = true;
     private bool _isDashboardSectionExpanded = true;
     private bool _isChromeSectionExpanded = true;
+    private bool _isKeyboardShortcutsSectionExpanded = true;
     private bool _isProfileSidebarCollapsed;
     private double _fontScale = 1d;
     private bool _useLightTheme;
@@ -63,6 +70,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _savedChromeUserDataDirectory = string.Empty;
     private double _savedFontScale = 1d;
     private bool _savedUseLightTheme;
+    private bool _enableKeyboardShortcuts;
+    private bool _savedEnableKeyboardShortcuts;
+    private readonly ShortcutBindingsViewModel _shortcutBindings = new();
     private WindowPlacement? _savedWindowPlacement;
     private string _connectionStatusText = "Chưa đồng bộ trạng thái provider.";
     private string _statusText = "Đang khởi tạo…";
@@ -101,6 +111,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         AddProfileCommand = new AsyncRelayCommand(AddProfileAsync, () => CanAddProfile);
         ClearProfileSearchCommand = new AsyncRelayCommand(ClearProfileSearchAsync, () => CanClearProfileSearch);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
+        LaunchProfileCommand = new AsyncRelayCommand<ChromeProfile>(LaunchProfileAsync);
+        ApplyShortcutCommand = new AsyncRelayCommand<string>(ApplyShortcutAsync);
+        ResetShortcutsCommand = new AsyncRelayCommand(ResetAllShortcuts);
+        LaunchRecentCommand = new AsyncRelayCommand<object>(LaunchRecentAsync);
+        TogglePinProfileCommand = new AsyncRelayCommand<ChromeProfile>(TogglePinProfileAsync);
+        ClearRecentProfilesCommand = new AsyncRelayCommand(ClearRecentProfilesAsync, () => RecentProfileRows.Count > 0);
+        OpenQuickLaunchPaletteCommand = new AsyncRelayCommand(OpenQuickLaunchPalette);
+        CloseQuickLaunchPaletteCommand = new AsyncRelayCommand(CloseQuickLaunchPalette);
+        ConfirmQuickLaunchSelectionCommand = new AsyncRelayCommand<ChromeProfile?>(ConfirmQuickLaunchSelectionAsync);
+        MoveQuickLaunchSelectionCommand = new AsyncRelayCommand<int>(MoveQuickLaunchSelection);
         OpenProviderCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderAsync);
         OpenProviderDashboardCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderDashboardAsync, _ => SelectedProfile is not null);
         TestConnectionCommand = new AsyncRelayCommand<ProviderKind>(TestConnectionAsync, _ => SelectedProfile is not null);
@@ -120,6 +140,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ToggleAppearanceSectionCommand = new RelayCommand(ToggleAppearanceSection);
         ToggleDashboardSectionCommand = new RelayCommand(ToggleDashboardSection);
         ToggleChromeSectionCommand = new RelayCommand(ToggleChromeSection);
+        ToggleKeyboardShortcutsSectionCommand = new RelayCommand(ToggleKeyboardShortcutsSection);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -133,6 +154,51 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<ProfileRowViewModel> FilteredProfileRows { get; }
 
     public ObservableCollection<ChromeProfile> RecentProfilesList { get; } = new();
+
+    public ObservableCollection<RecentProfileRowViewModel> RecentProfileRows { get; } = new();
+
+    public ObservableCollection<ChromeProfile> FilteredQuickLaunchProfiles { get; } = new();
+
+    public bool IsQuickLaunchOpen
+    {
+        get => _isQuickLaunchOpen;
+        private set
+        {
+            if (_isQuickLaunchOpen == value) return;
+            _isQuickLaunchOpen = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string QuickLaunchFilterText
+    {
+        get => _quickLaunchFilterText;
+        set
+        {
+            if (string.Equals(_quickLaunchFilterText, value, StringComparison.Ordinal)) return;
+            _quickLaunchFilterText = value ?? string.Empty;
+            OnPropertyChanged();
+            RebuildQuickLaunchProfiles();
+        }
+    }
+
+    public ChromeProfile? SelectedQuickLaunchProfile
+    {
+        get => _selectedQuickLaunchProfile;
+        set
+        {
+            if (Equals(_selectedQuickLaunchProfile, value)) return;
+            _selectedQuickLaunchProfile = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public AsyncRelayCommand ClearRecentProfilesCommand { get; }
+    public AsyncRelayCommand OpenQuickLaunchPaletteCommand { get; }
+    public AsyncRelayCommand CloseQuickLaunchPaletteCommand { get; }
+    public AsyncRelayCommand<ChromeProfile?> ConfirmQuickLaunchSelectionCommand { get; }
+    public AsyncRelayCommand<int> MoveQuickLaunchSelectionCommand { get; }
+
 
     public IReadOnlyList<ProviderDefinition> Providers { get; }
 
@@ -335,6 +401,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool IsKeyboardShortcutsSectionExpanded
+    {
+        get => _isKeyboardShortcutsSectionExpanded;
+        set
+        {
+            if (_isKeyboardShortcutsSectionExpanded == value) return;
+            _isKeyboardShortcutsSectionExpanded = value;
+            OnPropertyChanged();
+        }
+    }
+
     public bool IsSettingsExpanded
     {
         get => _isSettingsExpanded;
@@ -480,6 +557,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool IsKeyboardShortcutsEnabled
+    {
+        get => _enableKeyboardShortcuts;
+        set
+        {
+            if (_enableKeyboardShortcuts == value)
+            {
+                return;
+            }
+
+            _enableKeyboardShortcuts = value;
+            OnPropertyChanged();
+            NotifySettingsStateChanged();
+        }
+    }
+
+    public ObservableCollection<ShortcutBindingRowViewModel> ShortcutRows => _shortcutBindings.Rows;
+
     public sealed record FontScaleOption(double Value, string Label)
     {
         public override string ToString() => Label;
@@ -617,10 +712,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AsyncRelayCommand ClearChromeUserDataCommand { get; }
 
     public AsyncRelayCommand ResetSettingsCommand { get; }
+    public AsyncRelayCommand<string> ApplyShortcutCommand { get; }
+    public AsyncRelayCommand ResetShortcutsCommand { get; }
 
     public RelayCommand ToggleAppearanceSectionCommand { get; }
     public RelayCommand ToggleDashboardSectionCommand { get; }
     public RelayCommand ToggleChromeSectionCommand { get; }
+    public RelayCommand ToggleKeyboardShortcutsSectionCommand { get; }
 
     private void ToggleAppearanceSection()
     {
@@ -635,6 +733,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void ToggleChromeSection()
     {
         IsChromeSectionExpanded = !IsChromeSectionExpanded;
+    }
+
+    private void ToggleKeyboardShortcutsSection()
+    {
+        IsKeyboardShortcutsSectionExpanded = !IsKeyboardShortcutsSectionExpanded;
     }
 
     private async Task ResetSettingsAsync()
@@ -735,6 +838,48 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AsyncRelayCommand ClearProfileSearchCommand { get; }
 
     public AsyncRelayCommand LaunchSelectedCommand { get; }
+    public AsyncRelayCommand<ChromeProfile> LaunchProfileCommand { get; }
+    public AsyncRelayCommand<object> LaunchRecentCommand { get; }
+
+    private async Task LaunchRecentAsync(object? parameter)
+    {
+        if (parameter is not int index || index < 0 || index >= MaxRecentSlots)
+        {
+            return;
+        }
+
+        if (index >= RecentProfileRows.Count)
+        {
+            StatusText = index == 0
+                ? "Chưa có profile nào trong Quick Launch."
+                : $"Chưa có profile nào ở vị trí Ctrl+{index}.";
+            return;
+        }
+
+        await LaunchProfileAsync(RecentProfileRows[index].Profile);
+    }
+
+    private async Task LaunchProfileAsync(ChromeProfile? profile)
+    {
+        if (profile is null)
+        {
+            StatusText = "Profile không hợp lệ.";
+            return;
+        }
+
+        try
+        {
+            // Set as selected and track
+            SelectedProfile = profile;
+            TrackProfileLaunch(profile);
+            await LaunchUrlAsync(DashboardBaseUrl);
+            StatusText = $"Đã mở 9Router bằng profile {profile.Name}.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
 
     public AsyncRelayCommand<ProviderKind> OpenProviderCommand { get; }
 
@@ -768,6 +913,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ChromeUserDataDirectory = settings.ChromeUserDataDirectory ?? string.Empty;
             FontScale = settings.FontScale;
             UseLightTheme = settings.UseLightTheme;
+            _enableKeyboardShortcuts = settings.EnableKeyboardShortcuts;
+        _savedEnableKeyboardShortcuts = _enableKeyboardShortcuts;
+            _shortcutBindings.Load(settings.KeyboardShortcuts);
+            OnPropertyChanged(nameof(IsKeyboardShortcutsEnabled));
+            OnPropertyChanged(nameof(ShortcutRows));
             _savedWindowPlacement = TryCreateWindowPlacement(
                 settings.WindowLeft,
                 settings.WindowTop,
@@ -1079,6 +1229,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanAddProfile));
         OnPropertyChanged(nameof(ProfileAddButtonText));
         AddProfileCommand.RaiseCanExecuteChanged();
+        UpdateRecentProfilesList();
     }
 
     public async Task RefreshConnectionStatusesAsync() =>
@@ -1742,8 +1893,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 false));
         }
 
-        // Keep only top 10 recent profiles
-        while (_recentProfiles.Count > 10)
+        // Keep only top MaxRecentSlots recent profiles
+        while (_recentProfiles.Count > MaxRecentSlots)
         {
             _recentProfiles.RemoveAt(_recentProfiles.Count - 1);
         }
@@ -1751,20 +1902,128 @@ public sealed class MainViewModel : INotifyPropertyChanged
         UpdateRecentProfilesList();
     }
 
+    public AsyncRelayCommand<ChromeProfile> TogglePinProfileCommand { get; }
+
+    private async Task TogglePinProfileAsync(ChromeProfile? profile)
+    {
+        if (profile is null) return;
+
+        var recent = _recentProfiles.FirstOrDefault(r => 
+            r.ProfileId == profile.Id && 
+            r.UserDataDirectory.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
+
+        if (recent != null)
+        {
+            var index = _recentProfiles.IndexOf(recent);
+            _recentProfiles[index] = recent with { IsPinned = !recent.IsPinned };
+            
+            // Sort: pinned first, then by last used
+            var sorted = _recentProfiles
+                .OrderByDescending(r => r.IsPinned)
+                .ThenByDescending(r => r.LastUsedUtc)
+                .ToList();
+            _recentProfiles.Clear();
+            _recentProfiles.AddRange(sorted);
+            
+            UpdateRecentProfilesList();
+            await SaveSettingsAsync();
+        }
+    }
+
     private void UpdateRecentProfilesList()
     {
-        RecentProfilesList.Clear();
-        foreach (var recent in _recentProfiles.Take(5))
+        RecentProfileRows.Clear();
+        var slot = 0;
+        foreach (var recent in _recentProfiles.Take(MaxRecentSlots))
         {
-            var profile = Profiles.FirstOrDefault(p => 
-                p.Id == recent.ProfileId && 
+            var profile = Profiles.FirstOrDefault(p =>
+                p.Id == recent.ProfileId &&
                 p.UserDataDirectory.Equals(recent.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
-            
-            if (profile != null)
+            if (profile is null)
             {
-                RecentProfilesList.Add(profile);
+                continue;
             }
+            RecentProfileRows.Add(new RecentProfileRowViewModel(recent, profile, slot));
+            slot++;
         }
+        ClearRecentProfilesCommand.RaiseCanExecuteChanged();
+        RebuildQuickLaunchProfiles();
+    }
+
+    internal async Task ClearRecentProfilesAsync()
+    {
+        if (_recentProfiles.Count == 0) return;
+        _recentProfiles.Clear();
+        UpdateRecentProfilesList();
+        StatusText = "Đã xoá danh sách profile dùng gần đây.";
+        await SaveSettingsAsync();
+    }
+
+    internal Task OpenQuickLaunchPalette()
+    {
+        if (Profiles.Count == 0)
+        {
+            StatusText = "Chưa có Chrome profile để hiển thị Quick Launch.";
+            return Task.CompletedTask;
+        }
+        QuickLaunchFilterText = string.Empty;
+        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles.FirstOrDefault();
+        IsQuickLaunchOpen = true;
+        QuickLaunchVisibilityRequested?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
+    internal Task CloseQuickLaunchPalette()
+    {
+        IsQuickLaunchOpen = false;
+        QuickLaunchFilterText = string.Empty;
+        return Task.CompletedTask;
+    }
+
+    public event EventHandler? QuickLaunchVisibilityRequested;
+
+    private void RebuildQuickLaunchProfiles()
+    {
+        FilteredQuickLaunchProfiles.Clear();
+        var filter = QuickLaunchFilterText?.Trim() ?? string.Empty;
+        IEnumerable<ChromeProfile> source = Profiles;
+        if (!string.IsNullOrEmpty(filter))
+        {
+            source = source.Where(p => p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+        }
+        foreach (var profile in source.Take(MaxQuickLaunchResults))
+        {
+            FilteredQuickLaunchProfiles.Add(profile);
+        }
+        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles.FirstOrDefault();
+    }
+
+    internal Task MoveQuickLaunchSelection(int delta)
+    {
+        if (FilteredQuickLaunchProfiles.Count == 0)
+        {
+            SelectedQuickLaunchProfile = null;
+            return Task.CompletedTask;
+        }
+        var currentIndex = SelectedQuickLaunchProfile is null
+            ? -1
+            : FilteredQuickLaunchProfiles.IndexOf(SelectedQuickLaunchProfile);
+        var count = FilteredQuickLaunchProfiles.Count;
+        var nextIndex = ((currentIndex + delta) % count + count) % count;
+        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles[nextIndex];
+        return Task.CompletedTask;
+    }
+
+    private async Task ConfirmQuickLaunchSelectionAsync(ChromeProfile? profile)
+    {
+        var target = profile ?? SelectedQuickLaunchProfile;
+        if (target is null)
+        {
+            await CloseQuickLaunchPalette();
+            return;
+        }
+        await LaunchProfileAsync(target);
+        await CloseQuickLaunchPalette();
     }
 
     private async Task LaunchSelectedProfileAsync()
@@ -1888,6 +2147,60 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return string.Equals(leftPath, rightPath, StringComparison.OrdinalIgnoreCase);
     }
 
+    public ICommand? ResolveShortcutCommand(string actionId) => actionId switch
+    {
+        "SaveSettings" => SaveSettingsCommand,
+        "OpenQuickLaunch" => OpenQuickLaunchPaletteCommand,
+        "ClearRecent" => ClearRecentProfilesCommand,
+        "RefreshProfiles" => RefreshCommand,
+        "OpenProviderCodex" => OpenProviderDashboardCommand,
+        "OpenProviderKiro" => OpenProviderDashboardCommand,
+        "OpenProviderOpenRouter" => OpenProviderDashboardCommand,
+        "OpenProviderOllama" => OpenProviderDashboardCommand,
+        "OpenProviderKimchi" => OpenProviderDashboardCommand,
+        _ => null
+    };
+
+    public object? ResolveShortcutParameter(string actionId) => actionId switch
+    {
+        "SaveSettings" or "OpenQuickLaunch" or "ClearRecent" or "RefreshProfiles" => null,
+        "OpenProviderCodex" => ProviderKind.Codex,
+        "OpenProviderKiro" => ProviderKind.Kiro,
+        "OpenProviderOpenRouter" => ProviderKind.OpenRouter,
+        "OpenProviderOllama" => ProviderKind.Ollama,
+        "OpenProviderKimchi" => ProviderKind.Kimchi,
+        _ => null
+    };
+
+    private async Task ApplyShortcutAsync(string actionId)
+    {
+        if (string.IsNullOrWhiteSpace(actionId)) return;
+
+        var row = _shortcutBindings.Rows.FirstOrDefault(r => r.ActionId == actionId);
+        if (row is null) return;
+
+        var error = _shortcutBindings.ValidateAndApply(actionId, row.Gesture);
+        if (error is not null)
+        {
+            row.ErrorMessage = error;
+            StatusText = error;
+            return;
+        }
+
+        row.ErrorMessage = null;
+        StatusText = $"Đã cập nhật phím tắt cho \"{row.DisplayName}\": {row.Gesture}.";
+        OnPropertyChanged(nameof(ShortcutRows));
+        await SaveSettingsAsync();
+    }
+
+    private async Task ResetAllShortcuts()
+    {
+        _shortcutBindings.ResetAll();
+        StatusText = "Đã khôi phục phím tắt mặc định.";
+        OnPropertyChanged(nameof(ShortcutRows));
+        await SaveSettingsAsync();
+    }
+
     private RouterSettings BuildSettings(WindowPlacement? windowPlacement = null)
     {
         var placement = windowPlacement ?? _savedWindowPlacement;
@@ -1902,8 +2215,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         placement?.Top,
         placement?.Width,
         placement?.Height,
-        _recentProfiles.ToArray());
-    }
+        _recentProfiles.ToArray(),
+        _enableKeyboardShortcuts,
+        _shortcutBindings.BuildSettingsDictionary());    }
 
     private static WindowPlacement? TryCreateWindowPlacement(
         double? left,
@@ -1952,7 +2266,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         && string.Equals(ChromeExecutablePath.Trim(), _savedChromeExecutablePath, StringComparison.Ordinal)
         && string.Equals(ChromeUserDataDirectory.Trim(), _savedChromeUserDataDirectory, StringComparison.Ordinal)
         && Math.Abs(FontScale - _savedFontScale) < 0.001d
-        && UseLightTheme == _savedUseLightTheme;
+        && UseLightTheme == _savedUseLightTheme
+        && IsKeyboardShortcutsEnabled == _savedEnableKeyboardShortcuts;
 
     private string GetSettingsValidationMessage()
     {
@@ -1987,6 +2302,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _savedChromeUserDataDirectory = ChromeUserDataDirectory.Trim();
         _savedFontScale = FontScale;
         _savedUseLightTheme = UseLightTheme;
+        _savedEnableKeyboardShortcuts = IsKeyboardShortcutsEnabled;
         NotifySettingsStateChanged();
     }
 
@@ -2035,6 +2351,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
+
+
 
 
 

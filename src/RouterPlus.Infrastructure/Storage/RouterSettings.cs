@@ -13,4 +13,6 @@ public sealed record RouterSettings(
     double? WindowTop = null,
     double? WindowWidth = null,
     double? WindowHeight = null,
-    IReadOnlyList<RecentProfile>? RecentProfiles = null);
+    IReadOnlyList<RecentProfile>? RecentProfiles = null,
+    bool EnableKeyboardShortcuts = false,
+    Dictionary<string, string>? KeyboardShortcuts = null);
