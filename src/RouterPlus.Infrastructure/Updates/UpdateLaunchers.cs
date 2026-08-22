@@ -64,12 +64,3 @@ public sealed class WindowsUpdaterProcessLauncher : IUpdaterProcessLauncher
     }
 
 }
-
-public sealed class DisabledUpdateSignatureVerifier : IUpdateSignatureVerifier
-{
-    public bool IsAvailable => false;
-
-    public bool VerifyManifest(string manifestPath, RouterPlus.Core.Updates.ReleaseManifest manifest, string expectedPublisher) => false;
-
-    public bool VerifyExecutable(string executablePath, string expectedPublisher) => false;
-}

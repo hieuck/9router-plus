@@ -9,28 +9,20 @@ public sealed class SelfUpdateService : IUpdateService
     private readonly HttpClient _httpClient;
     private readonly GitHubReleaseClient _releaseClient;
     private readonly UpdatePackageVerifier _packageVerifier;
-    private readonly IUpdateSignatureVerifier _signatureVerifier;
     private readonly IUpdaterProcessLauncher _updaterLauncher;
     private readonly ReleaseVersion _currentVersion;
-    private readonly string _publisher;
     private readonly bool _isInstallSupported;
 
     public SelfUpdateService(
         HttpClient httpClient,
         ReleaseVersion currentVersion,
-        IUpdateSignatureVerifier? signatureVerifier = null,
-        IUpdaterProcessLauncher? updaterLauncher = null,
-        string publisher = "9Router Project")
+        IUpdaterProcessLauncher? updaterLauncher = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _currentVersion = currentVersion ?? throw new ArgumentNullException(nameof(currentVersion));
-        var usesDefaultVerifier = signatureVerifier is null;
-        _signatureVerifier = signatureVerifier ?? new WindowsReleaseSignatureVerifier();
-        _packageVerifier = new UpdatePackageVerifier(_signatureVerifier);
+        _packageVerifier = new UpdatePackageVerifier();
         _updaterLauncher = updaterLauncher ?? new WindowsUpdaterProcessLauncher();
-        _publisher = string.IsNullOrWhiteSpace(publisher) ? throw new ArgumentException("Publisher is required.", nameof(publisher)) : publisher;
-        _isInstallSupported = _signatureVerifier.IsAvailable
-            && (!usesDefaultVerifier || IsCurrentExecutableTrusted(_publisher));
+        _isInstallSupported = OperatingSystem.IsWindows();
         _releaseClient = new GitHubReleaseClient(_httpClient, _currentVersion);
     }
 
@@ -46,10 +38,10 @@ public sealed class SelfUpdateService : IUpdateService
         ArgumentNullException.ThrowIfNull(release);
         if (!IsInstallSupported)
         {
-            throw new InvalidOperationException("Signed update verification is unavailable.");
+            throw new InvalidOperationException("Self-update is only supported on Windows.");
         }
 
-        if (!release.IsUpdateAvailable || release.AvailableVersion is null || release.Archive is null || release.Checksum is null || release.Manifest is null)
+        if (!release.IsUpdateAvailable || release.AvailableVersion is null || release.Archive is null || release.Checksum is null)
         {
             throw new InvalidDataException("No verified update is available.");
         }
@@ -63,22 +55,18 @@ public sealed class SelfUpdateService : IUpdateService
         Directory.CreateDirectory(versionRoot);
         var archivePath = UpdatePaths.ResolveUnderRoot(versionRoot, release.Archive.Name);
         var checksumPath = UpdatePaths.ResolveUnderRoot(versionRoot, release.Checksum.Name);
-        var manifestPath = UpdatePaths.ResolveUnderRoot(versionRoot, release.Manifest.Name);
         var stagingPath = UpdatePaths.ResolveUnderRoot(versionRoot, "staging");
 
         try
         {
             await DownloadAssetAsync(release.Archive, archivePath, cancellationToken);
             await DownloadAssetAsync(release.Checksum, checksumPath, cancellationToken);
-            await DownloadAssetAsync(release.Manifest, manifestPath, cancellationToken);
 
             return await _packageVerifier.VerifyAsync(
                 archivePath,
                 checksumPath,
-                manifestPath,
                 stagingPath,
                 release.AvailableVersion,
-                _publisher,
                 cancellationToken);
         }
         catch
@@ -113,16 +101,8 @@ public sealed class SelfUpdateService : IUpdateService
             package.StagingPath,
             backupPath,
             Environment.ProcessId,
-            package.Manifest.Version,
+            package.Version,
             cancellationToken);
-    }
-
-    private static bool IsCurrentExecutableTrusted(string publisher)
-    {
-        var executablePath = Environment.ProcessPath;
-        return !string.IsNullOrWhiteSpace(executablePath)
-            && File.Exists(executablePath)
-            && new WindowsAuthenticodeVerifier().Verify(executablePath, publisher);
     }
 
     private async Task DownloadAssetAsync(

@@ -1,7 +1,5 @@
-using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Text.Json;
 using RouterPlus.Core.Updates;
 
 namespace RouterPlus.Infrastructure.Updates;
@@ -10,36 +8,20 @@ public sealed class UpdatePackageVerifier
 {
     private const long MaxExtractedBytes = 512L * 1024 * 1024;
     private static readonly string[] RequiredFiles = ["RouterPlus.exe", "RouterPlus.Updater.exe"];
-    private readonly IUpdateSignatureVerifier _signatureVerifier;
-
-    public UpdatePackageVerifier(IUpdateSignatureVerifier signatureVerifier)
-    {
-        _signatureVerifier = signatureVerifier ?? throw new ArgumentNullException(nameof(signatureVerifier));
-    }
 
     public async Task<VerifiedUpdatePackage> VerifyAsync(
         string archivePath,
         string checksumPath,
-        string manifestPath,
         string stagingPath,
         ReleaseVersion expectedVersion,
-        string expectedPublisher,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(archivePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(checksumPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(stagingPath);
         ArgumentNullException.ThrowIfNull(expectedVersion);
-        ArgumentException.ThrowIfNullOrWhiteSpace(expectedPublisher);
         RequireFile(archivePath);
         RequireFile(checksumPath);
-        RequireFile(manifestPath);
-
-        if (!_signatureVerifier.IsAvailable)
-        {
-            throw new InvalidDataException("Signed update verification is unavailable.");
-        }
 
         if (Directory.Exists(stagingPath) && Directory.EnumerateFileSystemEntries(stagingPath).Any())
         {
@@ -53,23 +35,6 @@ public sealed class UpdatePackageVerifier
             throw new InvalidDataException("Update archive checksum does not match the release checksum.");
         }
 
-        var manifest = await ParseManifestAsync(manifestPath, cancellationToken);
-        if (manifest.Version.CompareTo(expectedVersion) != 0 ||
-            manifest.Version.IsPrerelease ||
-            !string.Equals(manifest.Channel, "stable", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(manifest.AssetName, Path.GetFileName(archivePath), StringComparison.Ordinal) ||
-            !string.Equals(manifest.Sha256, Convert.ToHexString(archiveHash).ToLowerInvariant(), StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(manifest.Publisher, expectedPublisher, StringComparison.Ordinal) ||
-            string.IsNullOrWhiteSpace(manifest.Signature))
-        {
-            throw new InvalidDataException("Update manifest does not match the verified package.");
-        }
-
-        if (!_signatureVerifier.VerifyManifest(manifestPath, manifest, expectedPublisher))
-        {
-            throw new InvalidDataException("Update manifest signature is not trusted.");
-        }
-
         Directory.CreateDirectory(stagingPath);
         var extractedFiles = await ExtractArchiveAsync(archivePath, stagingPath, cancellationToken);
         foreach (var requiredFile in RequiredFiles)
@@ -79,14 +44,10 @@ public sealed class UpdatePackageVerifier
                 throw new InvalidDataException($"Update package is missing required file '{requiredFile}'.");
             }
 
-            var executablePath = UpdatePaths.ResolveUnderRoot(stagingPath, requiredFile);
-            if (!_signatureVerifier.VerifyExecutable(executablePath, expectedPublisher))
-            {
-                throw new InvalidDataException($"Update executable signature is not trusted: {requiredFile}");
-            }
+            UpdatePaths.ResolveUnderRoot(stagingPath, requiredFile);
         }
 
-        return new VerifiedUpdatePackage(manifest, archivePath, stagingPath);
+        return new VerifiedUpdatePackage(expectedVersion, archivePath, stagingPath);
     }
 
     private static async Task<HashSet<string>> ExtractArchiveAsync(
@@ -172,30 +133,6 @@ public sealed class UpdatePackageVerifier
 
         return Convert.FromHexString(parts[0]);
     }
-
-    private static async Task<ReleaseManifest> ParseManifestAsync(
-        string manifestPath,
-        CancellationToken cancellationToken)
-    {
-        await using var stream = File.OpenRead(manifestPath);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        var root = document.RootElement;
-        var version = ReleaseVersion.Parse(GetRequiredString(root, "version"));
-        return new ReleaseManifest(
-            version,
-            GetRequiredString(root, "channel"),
-            GetRequiredString(root, "assetName"),
-            GetRequiredString(root, "sha256"),
-            GetRequiredString(root, "publisher"),
-            GetRequiredString(root, "signature"));
-    }
-
-    private static string GetRequiredString(JsonElement root, string propertyName) =>
-        root.TryGetProperty(propertyName, out var value) &&
-        value.ValueKind == JsonValueKind.String &&
-        !string.IsNullOrWhiteSpace(value.GetString())
-            ? value.GetString()!
-            : throw new InvalidDataException($"Update manifest is missing '{propertyName}'.");
 
     private static void RequireFile(string path)
     {

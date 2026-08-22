@@ -6,7 +6,7 @@ namespace RouterPlus.Infrastructure.Updates;
 
 public sealed class GitHubReleaseClient
 {
-    private static readonly Uri LatestReleaseUri = new("https://api.github.com/repos/hieuck/9router-plus/releases/latest");
+    private static readonly Uri ReleasesUri = new("https://api.github.com/repos/hieuck/9router-plus/releases?per_page=100");
     private static readonly HashSet<string> AllowedHosts = new(StringComparer.OrdinalIgnoreCase)
     {
         "github.com",
@@ -27,7 +27,7 @@ public sealed class GitHubReleaseClient
 
     public async Task<ReleaseCheckResult> GetLatestReleaseAsync(CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseUri);
+        using var request = new HttpRequestMessage(HttpMethod.Get, ReleasesUri);
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("RouterPlus", _currentVersion.ToString()));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
 
@@ -39,7 +39,7 @@ public sealed class GitHubReleaseClient
         if (finalUri is null
             || !string.Equals(finalUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(finalUri.Host, "api.github.com", StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(finalUri.AbsolutePath, LatestReleaseUri.AbsolutePath, StringComparison.Ordinal))
+            || !string.Equals(finalUri.AbsolutePath, ReleasesUri.AbsolutePath, StringComparison.Ordinal))
         {
             throw new InvalidDataException("GitHub release metadata redirect is not allowed.");
         }
@@ -54,35 +54,73 @@ public sealed class GitHubReleaseClient
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        var root = document.RootElement;
-        var tag = GetRequiredString(root, "tag_name");
-        if (!tag.StartsWith('v'))
+        var selectedRelease = SelectStableRelease(document.RootElement);
+        if (selectedRelease is null || selectedRelease.Value.Version.CompareTo(_currentVersion) <= 0)
         {
-            throw new InvalidDataException("GitHub release tag must use the vMAJOR.MINOR.PATCH format.");
+            return new ReleaseCheckResult(_currentVersion, null, null, null, null);
         }
 
-        var version = ReleaseVersion.Parse(tag[1..]);
-        var prerelease = GetRequiredBoolean(root, "prerelease");
-        if (prerelease || version.CompareTo(_currentVersion) <= 0)
-        {
-            return new ReleaseCheckResult(_currentVersion, null, null, null, null, null);
-        }
-
-        var assets = ParseAssets(root);
-        var archive = RequireAsset(assets, $"RouterPlus-{tag}-win-x64.zip");
-        var checksum = RequireAsset(assets, $"RouterPlus-{tag}-win-x64.zip.sha256");
-        var manifest = RequireAsset(assets, $"RouterPlus-{tag}-manifest.json");
+        var release = selectedRelease.Value;
+        var assets = ParseAssets(release.Metadata);
+        var archive = RequireAsset(assets, $"RouterPlus-{release.Tag}-win-x64.zip");
+        var checksum = RequireAsset(assets, $"RouterPlus-{release.Tag}-win-x64.zip.sha256");
         ValidateAssetUri(archive.DownloadUri);
         ValidateAssetUri(checksum.DownloadUri);
-        ValidateAssetUri(manifest.DownloadUri);
 
         return new ReleaseCheckResult(
             _currentVersion,
-            version,
-            GetString(root, "body"),
+            release.Version,
+            GetString(release.Metadata, "body"),
             archive,
-            checksum,
-            manifest);
+            checksum);
+    }
+
+    private static (JsonElement Metadata, ReleaseVersion Version, string Tag)? SelectStableRelease(JsonElement root)
+    {
+        IEnumerable<JsonElement> releases = root.ValueKind switch
+        {
+            JsonValueKind.Array => root.EnumerateArray(),
+            JsonValueKind.Object => [root],
+            _ => throw new InvalidDataException("GitHub release metadata must contain a releases array.")
+        };
+
+        (JsonElement Metadata, ReleaseVersion Version, string Tag)? selectedRelease = null;
+        foreach (var release in releases)
+        {
+            if (release.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException("GitHub release metadata contains a non-object release.");
+            }
+
+            var tag = GetString(release, "tag_name");
+            if (string.IsNullOrWhiteSpace(tag)
+                || !tag.StartsWith('v')
+                || GetBooleanOrDefault(release, "draft")
+                || GetBooleanOrDefault(release, "prerelease"))
+            {
+                continue;
+            }
+
+            ReleaseVersion version;
+            try
+            {
+                version = ReleaseVersion.Parse(tag[1..]);
+            }
+            catch (FormatException)
+            {
+                continue;
+            }
+
+            if (version.IsPrerelease
+                || selectedRelease is not null && version.CompareTo(selectedRelease.Value.Version) <= 0)
+            {
+                continue;
+            }
+
+            selectedRelease = (release, version, tag);
+        }
+
+        return selectedRelease;
     }
 
     private static IReadOnlyDictionary<string, ReleaseAsset> ParseAssets(JsonElement root)
@@ -151,12 +189,17 @@ public sealed class GitHubReleaseClient
             ? value.GetString()
             : null;
 
-    private static bool GetRequiredBoolean(JsonElement root, string propertyName) =>
-        root.TryGetProperty(propertyName, out var value) &&
-        value.ValueKind == JsonValueKind.True ||
-        root.TryGetProperty(propertyName, out value) && value.ValueKind == JsonValueKind.False
-            ? value.GetBoolean()
-            : throw new InvalidDataException($"GitHub release metadata is missing '{propertyName}'.");
+    private static bool GetBooleanOrDefault(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var value) || value.ValueKind == JsonValueKind.False)
+        {
+            return false;
+        }
+
+        return value.ValueKind == JsonValueKind.True
+            ? true
+            : throw new InvalidDataException($"GitHub release metadata contains an invalid '{propertyName}' value.");
+    }
 
     private static Uri GetRequiredUri(JsonElement root, string propertyName)
     {

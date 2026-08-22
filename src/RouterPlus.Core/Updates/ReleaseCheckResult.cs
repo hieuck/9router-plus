@@ -5,8 +5,7 @@ public sealed record ReleaseCheckResult(
     ReleaseVersion? AvailableVersion,
     string? ReleaseNotes,
     ReleaseAsset? Archive,
-    ReleaseAsset? Checksum,
-    ReleaseAsset? Manifest)
+    ReleaseAsset? Checksum)
 {
     public bool IsUpdateAvailable => AvailableVersion is not null;
 }

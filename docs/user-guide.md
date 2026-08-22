@@ -15,7 +15,7 @@ RouterPlus giúp mở Chrome profile đúng ngữ cảnh và quản lý connecti
 
 ## 2. Tải và chạy lần đầu
 
-1. Mở [Latest Releases](https://github.com/hieuck/9router-plus/releases/latest).
+1. Mở [GitHub Releases](https://github.com/hieuck/9router-plus/releases) và chọn release stable có tag `vX.Y.Z`; không chọn release có tag `personal-v...` nếu muốn dùng kênh stable.
 2. Tải file `RouterPlus-vX.Y.Z-win-x64.zip`.
 3. Tùy chọn: tải file `.sha256` cạnh zip và kiểm tra checksum bằng PowerShell:
 
@@ -125,8 +125,8 @@ Không gửi API key vào issue, chat, screenshot, clipboard log hoặc file bac
 
 - Mở menu `Trợ giúp` để xem `Giới thiệu`, hướng dẫn, chính sách bảo mật hoặc trang release cố định của dự án. About chỉ hiển thị tên app, version, MIT License và link công khai; không bind vào profile, log, settings hay secret.
 - Chọn `Kiểm tra cập nhật` để đọc release stable từ repository cố định. Request này không gửi profile, email, API key, OAuth state, Chrome path hoặc machine identifier.
-- Nếu có bản mới, app chỉ cho cài khi executable hiện tại và package mới được xác minh bằng Authenticode, manifest signature, checksum và archive layout. Người dùng phải xác nhận trước khi app đóng.
-- Build unsigned, personal release hoặc release thiếu chữ ký sẽ hiển thị self-update bị vô hiệu hóa; không có fallback tải executable từ URL tùy ý.
+- Nếu có bản mới, app chỉ cho cài sau khi metadata release stable `v...`, host HTTPS được allow, checksum SHA-256 và archive layout được xác minh. Người dùng phải xác nhận trước khi app đóng.
+- Build unsigned vẫn hỗ trợ self-update; personal/prerelease/draft release không được chọn làm bản cập nhật stable và không có fallback tải executable từ URL tùy ý.
 - Updater riêng đổi live directory sang backup, đưa staging vào vị trí live và rollback nếu bản mới không khởi động được. Settings và DPAPI secrets nằm ngoài package update.
 ## 9. Theme, font và settings
 

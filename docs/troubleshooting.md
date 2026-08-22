@@ -77,8 +77,8 @@ Làm theo từng mục từ trên xuống dưới. Khi cần báo lỗi, hãy x�
 
 ## Tự cập nhật bị vô hiệu hóa hoặc thất bại
 
-- Build unsigned không tự cài update. Hãy tải asset chính thức từ GitHub Release và kiểm tra `.sha256`.
-- Nếu package có hash sai, manifest sai version/publisher, signature không hợp lệ, executable không được Authenticode tin cậy hoặc ZIP có path traversal, app giữ nguyên bản đang chạy và không swap.
+- Build unsigned vẫn có thể kiểm tra/cài update sau khi người dùng xác nhận. Updater chỉ chọn stable tag `v...` từ GitHub Release và yêu cầu file `.sha256` cạnh ZIP.
+- Nếu package có hash sai, thiếu asset, host không được allow hoặc ZIP có path traversal, app giữ nguyên bản đang chạy và không swap.
 - Nếu updater health-check thất bại, helper khôi phục bản backup; không xóa `%LOCALAPPDATA%\9RouterPlus\secrets.json`.
 - Không chạy `RouterPlus.Updater.exe` bằng tay với đường dẫn tự chế. Hãy dùng menu `Trợ giúp` hoặc release chính thức.
 - Khi gửi báo lỗi, chỉ gửi version và bước tái hiện đã sanitized; không gửi URL response, profile, key, email hay OAuth value.
