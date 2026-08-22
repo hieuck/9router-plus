@@ -63,8 +63,8 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 
 Khi tạo phiên bản mới, thêm một mục trước `Unreleased`:
 
-``markdown
-## [1.2.3] - YYYY-MM-DD
+```markdown
+## [0.2.0] - YYYY-MM-DD
 
 ### Added
 - ...
@@ -80,4 +80,4 @@ Khi tạo phiên bản mới, thêm một mục trước `Unreleased`:
 
 ### Known limitations
 - ...
-``
+```

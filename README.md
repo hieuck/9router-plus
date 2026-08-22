@@ -86,14 +86,14 @@ Build script sẽ restore, test, build và publish vào `artifacts\publish`.
 
   Build và release đều unsigned; không cần certificate, Authenticode hoặc manifest signing key.
 - Personal release trên GitHub Actions: mở `Actions` → `Personal Release` → `Run workflow`, nhập version như `0.1.0`. Workflow tạo release tag `personal-v...` với ZIP unsigned và `.sha256`; checksum là lớp kiểm tra toàn vẹn duy nhất của package.
-- Production release dùng tag SemVer, ví dụ:
+- Production release hiện dùng series `v0`; với release minor tiếp theo, ví dụ:
 
   ```powershell
-  git tag v1.0.0
-  git push origin v1.0.0
+  git tag v0.2.0
+  git push origin v0.2.0
   ```
 
-- Tag `v1.0.0-rc.1` tạo prerelease; tag `v1.0.0` tạo release ổn định.
+- Tag `v0.2.0-rc.1` tạo prerelease; tag `v0.2.0` tạo release ổn định.
 - Project sử dụng MIT License. Stable release chỉ được tạo khi repository public và có kênh báo cáo bảo mật private thực tế; workflow production sẽ chặn nếu thiếu một trong hai điều kiện này.
 - Production release tự động đính kèm ZIP `win-x64` và `.sha256`; workflow chỉ còn các gate public repository, kênh security private và kiểm tra nội dung release.
 - Bản phát hành self-contained không yêu cầu cài .NET 8 Runtime.
