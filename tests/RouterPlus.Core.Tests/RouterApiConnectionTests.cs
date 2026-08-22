@@ -30,6 +30,16 @@ public sealed class RouterApiConnectionTests
     }
 
     [Fact]
+    public void RouterApiClient_does_not_retain_a_local_usage_database_reader()
+    {
+        var readerFields = typeof(RouterApiClient)
+            .GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .Where(field => field.FieldType.Name == "UsageDatabaseReader");
+
+        Assert.Empty(readerFields);
+    }
+
+    [Fact]
     public async Task ListAllConnections_marks_connections_with_provider_errors()
     {
         var handler = new JsonHandler("""

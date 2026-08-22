@@ -1,5 +1,6 @@
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Storage;
 
 namespace RouterPlus.Core.Tests;
@@ -86,6 +87,80 @@ public sealed class MainViewModelProfileSearchTests
         Assert.Contains(nameof(MainViewModel.CanClearProfileSearch), changedProperties);
         Assert.Contains(nameof(MainViewModel.ProfileAddButtonText), changedProperties);
     }
+
+    [Fact]
+    public void Selecting_unassigned_filter_shows_only_profiles_without_connections()
+    {
+        var viewModel = new MainViewModel();
+        var unassigned = CreateProfile("Unassigned");
+        var assigned = CreateProfile("Assigned");
+        viewModel.Profiles.Add(unassigned);
+        viewModel.Profiles.Add(assigned);
+        var unassignedRow = new ProfileRowViewModel(unassigned, viewModel.Providers);
+        var assignedRow = new ProfileRowViewModel(assigned, viewModel.Providers);
+        unassignedRow.UpdateConnections(Array.Empty<ProviderConnection>());
+        assignedRow.UpdateConnections(new[]
+        {
+            new ProviderConnection("codex-1", ProviderKind.Codex, "Assigned", 1, true)
+        });
+        viewModel.ProfileRows.Add(unassignedRow);
+        viewModel.ProfileRows.Add(assignedRow);
+
+        viewModel.ToggleUnassignedProfiles();
+
+        Assert.Equal(new[] { unassigned }, viewModel.FilteredProfiles);
+        Assert.True(viewModel.IsUnassignedProfileFilterActive);
+    }
+
+    [Fact]
+    public void Unassigned_filter_excludes_profiles_with_unknown_provider_status()
+    {
+        var viewModel = new MainViewModel();
+        var unknown = CreateProfile("Unknown");
+        var unassigned = CreateProfile("Unassigned");
+        viewModel.Profiles.Add(unknown);
+        viewModel.Profiles.Add(unassigned);
+        viewModel.ProfileRows.Add(new ProfileRowViewModel(unknown, viewModel.Providers));
+        var unassignedRow = new ProfileRowViewModel(unassigned, viewModel.Providers);
+        unassignedRow.UpdateConnections(Array.Empty<ProviderConnection>());
+        viewModel.ProfileRows.Add(unassignedRow);
+
+        viewModel.ToggleUnassignedProfiles();
+
+        Assert.Equal(new[] { unassigned }, viewModel.FilteredProfiles);
+    }
+
+    [Fact]
+    public void Selecting_provider_filter_clears_unassigned_filter()
+    {
+        var viewModel = new MainViewModel();
+        var unassigned = CreateProfile("Unassigned");
+        var assigned = CreateProfile("Assigned");
+        viewModel.Profiles.Add(unassigned);
+        viewModel.Profiles.Add(assigned);
+        var unassignedRow = new ProfileRowViewModel(unassigned, viewModel.Providers);
+        var assignedRow = new ProfileRowViewModel(assigned, viewModel.Providers);
+        unassignedRow.UpdateConnections(Array.Empty<ProviderConnection>());
+        assignedRow.UpdateConnections(new[]
+        {
+            new ProviderConnection("codex-1", ProviderKind.Codex, "Assigned", 1, true)
+        });
+        viewModel.ProfileRows.Add(unassignedRow);
+        viewModel.ProfileRows.Add(assignedRow);
+
+        viewModel.ToggleUnassignedProfiles();
+        viewModel.ToggleProvider(ProviderKind.Codex);
+
+        Assert.Equal(new[] { assigned }, viewModel.FilteredProfiles);
+        Assert.False(viewModel.IsUnassignedProfileFilterActive);
+    }
+
+    private static ChromeProfile CreateProfile(string name) => new(
+        ChromeProfile.CreateId("C:\\Chrome\\User Data", name),
+        name,
+        name,
+        "C:\\Chrome\\User Data",
+        false);
 
     [Fact]
     public async Task AddProfile_provisions_persists_reloads_and_selects_the_new_profile()

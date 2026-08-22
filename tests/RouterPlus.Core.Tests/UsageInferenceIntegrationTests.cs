@@ -209,6 +209,6 @@ public sealed class UsageInferenceIntegrationTests
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
         Assert.NotNull(method);
-        return method.Invoke(null, new object[] { element, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>(), new Dictionary<string, RouterApiClient.QuotaData>() }) as ProviderConnection;
+        return method.Invoke(null, new object[] { element, new Dictionary<string, RouterApiClient.QuotaData>() }) as ProviderConnection;
     }
 }
