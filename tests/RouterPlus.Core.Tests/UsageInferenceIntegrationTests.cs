@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json;
 using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Router;
@@ -208,6 +209,6 @@ public sealed class UsageInferenceIntegrationTests
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
         Assert.NotNull(method);
-        return method.Invoke(null, new object[] { element }) as ProviderConnection;
+        return method.Invoke(null, new object[] { element, new Dictionary<string, UsageData>() }) as ProviderConnection;
     }
 }
