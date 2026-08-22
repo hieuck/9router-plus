@@ -19,7 +19,7 @@ public sealed class SettingsStore
     {
         if (!File.Exists(_filePath))
         {
-            return new RouterSettings();
+            return new RouterSettings { UseLightTheme = true };
         }
 
         try
@@ -39,7 +39,7 @@ public sealed class SettingsStore
     {
         if (!File.Exists(_filePath))
         {
-            return new RouterSettings();
+            return new RouterSettings { UseLightTheme = true };
         }
 
         try
