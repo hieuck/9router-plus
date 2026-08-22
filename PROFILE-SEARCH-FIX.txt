@@ -1,0 +1,36 @@
+# Bug Fix: Profile Search Box Missing in UI
+
+## Problem
+The profile search functionality was not visible in the UI even though the backend logic was fully implemented.
+
+## Root Cause
+The MainWindow.xaml was missing the search TextBox UI element. The ViewModel had:
+- ProfileSearchText property with filtering logic
+- ApplyProfileFilter() method that filters profiles
+- ClearProfileSearchCommand for clearing search
+- All property change notifications
+
+However, the XAML sidebar grid layout went directly from Grid.Row="4" (provider filters) to Grid.Row="6" (profile list), skipping Grid.Row="5" where the search box should be.
+
+## Solution
+Added a search TextBox at Grid.Row="5" in MainWindow.xaml with:
+- Two-way binding to ProfileSearchText with UpdateSourceTrigger=PropertyChanged
+- Clear button bound to ClearProfileSearchCommand
+- Placeholder text "Tìm profile..."
+- Consistent styling using SidebarSearchStyle
+- Proper grid layout with text input and clear button
+
+## Changes Made
+File: src/RouterPlus.App/MainWindow.xaml
+- Added Grid.Row="5" Border containing search TextBox and clear button
+- Positioned between provider filter section and profile list
+
+## Testing
+The search should now:
+1. Display a search box above the profile list
+2. Filter profiles in real-time as you type
+3. Support case-insensitive search by profile name or directory name
+4. Show a clear (✕) button to reset the search
+5. Update the filtered profile count label
+
+2026-08-22 21:28:26

@@ -781,17 +781,41 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         try
         {
-            var installation = _chromeLocator.Find(null, null);
-            if (installation != null)
+            var installations = _chromeLocator.FindAll();
+
+            if (installations.Count == 0)
             {
+                StatusText = "Không tìm thấy Chrome. Vui lòng chọn thủ công.";
+                return;
+            }
+
+            if (installations.Count == 1)
+            {
+                // Only one found - apply directly
+                var installation = installations[0];
                 ChromeExecutablePath = installation.ExecutablePath;
                 ChromeUserDataDirectory = installation.UserDataDirectory;
                 StatusText = "Đã tự động phát hiện Chrome.";
                 RefreshProfiles();
+                return;
+            }
+
+            // Multiple installations found - show selection dialog
+            var dialog = new Views.ChromeSelectionDialog(installations)
+            {
+                Owner = System.Windows.Application.Current.MainWindow
+            };
+
+            if (dialog.ShowDialog() == true && dialog.Result != null)
+            {
+                ChromeExecutablePath = dialog.Result.ExecutablePath;
+                ChromeUserDataDirectory = dialog.Result.UserDataDirectory;
+                StatusText = $"Đã chọn Chrome: {dialog.Result.ExecutablePath}";
+                RefreshProfiles();
             }
             else
             {
-                StatusText = "Không tìm thấy Chrome. Vui lòng chọn thủ công.";
+                StatusText = "Đã hủy chọn Chrome.";
             }
         }
         catch (Exception ex)
