@@ -14,13 +14,25 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="Chọn Chrome Installation" FontSize="18" FontWeight="SemiBold" />
-            <TextBlock Text="Tìm thấy nhiều Chrome trên máy. Vui lòng chọn một."
-                       FontSize="11"
-                       Foreground="{DynamicResource MutedTextBrush}"
-                       Margin="0,5,0,0" />
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Chọn Chrome Installation" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Text="Tìm thấy nhiều Chrome trên máy. Vui lòng chọn một."
+                           FontSize="11"
+                           Foreground="{DynamicResource MutedTextBrush}"
+                           Margin="0,5,0,0" />
+            </StackPanel>
+            <Button Grid.Column="1"
+                    Content="🔄 Scan lại"
+                    Click="Rescan_Click"
+                    VerticalAlignment="Center"
+                    Padding="12,6"
+                    ToolTip="Tìm lại tất cả Chrome installations" />
+        </Grid>
 
         <ListBox Grid.Row="1"
                  x:Name="InstallationListBox"
@@ -72,13 +84,14 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
+                        <Border Grid.Row="0" Grid.RowSpan="4" Grid.Column="0"
                                 Width="40" Height="40"
                                 CornerRadius="8"
                                 Background="{DynamicResource AccentDarkBrush}"
@@ -96,18 +109,91 @@
                                    Text="{Binding DisplayName}"
                                    FontSize="13"
                                    FontWeight="SemiBold" />
-                        <TextBlock Grid.Row="1" Grid.Column="1"
-                                   Text="{Binding ExecutablePath}"
-                                   FontSize="10"
-                                   Foreground="{DynamicResource MutedTextBrush}"
-                                   TextWrapping="Wrap"
-                                   Margin="0,2,0,0" />
-                        <TextBlock Grid.Row="2" Grid.Column="1"
-                                   Text="{Binding UserDataDirectory}"
-                                   FontSize="10"
-                                   Foreground="{DynamicResource MutedTextBrush}"
-                                   TextWrapping="Wrap"
-                                   Margin="0,2,0,0" />
+
+                        <Grid Grid.Row="1" Grid.Column="1" Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding ExecutablePath}"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Content="📁"
+                                    FontSize="12"
+                                    Padding="6,2"
+                                    Margin="6,0,0,0"
+                                    ToolTip="Mở vị trí Chrome"
+                                    Click="OpenChromeLocation_Click"
+                                    Tag="{Binding ExecutablePath}"
+                                    Background="Transparent"
+                                    BorderThickness="1" />
+                        </Grid>
+
+                        <Grid Grid.Row="2" Grid.Column="1" Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding UserDataDirectory}"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Content="📁"
+                                    FontSize="12"
+                                    Padding="6,2"
+                                    Margin="6,0,0,0"
+                                    ToolTip="Mở vị trí User Data"
+                                    Click="OpenUserDataLocation_Click"
+                                    Tag="{Binding UserDataDirectory}"
+                                    Background="Transparent"
+                                    BorderThickness="1" />
+                        </Grid>
+
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,6,0,0">
+                            <Border Background="{DynamicResource SuccessBrush}"
+                                    CornerRadius="4"
+                                    Padding="6,2">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsValid}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="✓ Hợp lệ"
+                                           FontSize="9"
+                                           Foreground="White"
+                                           FontWeight="SemiBold" />
+                            </Border>
+                            <Border Background="{DynamicResource DangerBrush}"
+                                    CornerRadius="4"
+                                    Padding="6,2">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsValid}" Value="False">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="✗ Không hợp lệ"
+                                           FontSize="9"
+                                           Foreground="White"
+                                           FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
