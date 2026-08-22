@@ -16,6 +16,8 @@ ui-*.png
 *.patch
 *.csx
 temp_db_query/
+temp_*/
+*_query/
 
 # Session reports and temporary scripts (development artifacts)
 *-COMPLETE.txt
