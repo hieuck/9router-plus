@@ -38,9 +38,10 @@ public sealed class RouterApiClient : IRouterApiClient
         
         // Get usage data from database
         var usageByConnection = _usageReader.GetTodayUsageByConnection();
+        var tokenExpirationByConnection = _usageReader.GetTokenExpirationByConnection();
 
         return connections.EnumerateArray()
-            .Select(element => ParseConnection(element, usageByConnection))
+            .Select(element => ParseConnection(element, usageByConnection, tokenExpirationByConnection))
             .Where(connection => connection is not null)
             .Cast<ProviderConnection>()
             .OrderBy(connection => connection.Provider)
@@ -391,13 +392,13 @@ public sealed class RouterApiClient : IRouterApiClient
 
         if (root.TryGetProperty("connection", out var connection))
         {
-            return ParseConnection(connection, new Dictionary<string, UsageData>());
+            return ParseConnection(connection, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>());
         }
 
-        return root.TryGetProperty("id", out _) ? ParseConnection(root, new Dictionary<string, UsageData>()) : null;
+        return root.TryGetProperty("id", out _) ? ParseConnection(root, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>()) : null;
     }
 
-    private static ProviderConnection? ParseConnection(JsonElement element, Dictionary<string, UsageData> usageByConnection)
+    private static ProviderConnection? ParseConnection(JsonElement element, Dictionary<string, UsageData> usageByConnection, Dictionary<string, TokenExpirationData> tokenExpirationByConnection)
     {
         if (!element.TryGetProperty("id", out var idElement) ||
             !element.TryGetProperty("provider", out var providerElement))
@@ -487,7 +488,7 @@ public sealed class RouterApiClient : IRouterApiClient
             // (API limitCount is preserved if available)
             
             // Set reset time to end of today ONLY if not already set from expiresAt
-            if (!usageResetAt.HasValue || usageResetAt.Value.Date != DateTimeOffset.UtcNow.Date.AddDays(1).Date)
+            if (!usageResetAt.HasValue)
             {
                 usageResetAt = DateTimeOffset.UtcNow.Date.AddDays(1);
             }
