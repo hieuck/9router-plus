@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using RouterPlus.Core.Updates;
 using RouterPlus.Infrastructure.Updates;
 using Xunit.Sdk;
@@ -12,20 +11,18 @@ namespace RouterPlus.Core.Tests;
 public sealed class UpdatePackageValidationTests
 {
     [Fact]
-    public async Task VerifyAsync_accepts_matching_checksum_manifest_signature_and_required_files()
+    public async Task VerifyAsync_accepts_unsigned_archive_with_matching_checksum_and_required_files()
     {
         var package = await CreatePackageAsync(includeTraversalEntry: false);
-        var verifier = new UpdatePackageVerifier(new TestSignatureVerifier());
+        var verifier = new UpdatePackageVerifier();
 
         var result = await verifier.VerifyAsync(
             package.ArchivePath,
             package.ChecksumPath,
-            package.ManifestPath,
             package.StagingPath,
-            ReleaseVersion.Parse("1.3.0"),
-            "Test Publisher");
+            ReleaseVersion.Parse("1.3.0"));
 
-        Assert.Equal("1.3.0", result.Manifest.Version.ToString());
+        Assert.Equal("1.3.0", result.Version.ToString());
         Assert.True(File.Exists(Path.Combine(package.StagingPath, "RouterPlus.exe")));
         Assert.True(File.Exists(Path.Combine(package.StagingPath, "RouterPlus.Updater.exe")));
     }
@@ -35,60 +32,26 @@ public sealed class UpdatePackageValidationTests
     {
         var package = await CreatePackageAsync(includeTraversalEntry: false);
         await File.WriteAllTextAsync(package.ChecksumPath, $"{new string('0', 64)}  {Path.GetFileName(package.ArchivePath)}");
-        var verifier = new UpdatePackageVerifier(new TestSignatureVerifier());
+        var verifier = new UpdatePackageVerifier();
 
         await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
             package.ArchivePath,
             package.ChecksumPath,
-            package.ManifestPath,
             package.StagingPath,
-            ReleaseVersion.Parse("1.3.0"),
-            "Test Publisher"));
-    }
-
-    [Fact]
-    public async Task VerifyAsync_rejects_missing_manifest_signature()
-    {
-        var package = await CreatePackageAsync(includeTraversalEntry: false, signature: "");
-        var verifier = new UpdatePackageVerifier(new TestSignatureVerifier());
-
-        await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
-            package.ArchivePath,
-            package.ChecksumPath,
-            package.ManifestPath,
-            package.StagingPath,
-            ReleaseVersion.Parse("1.3.0"),
-            "Test Publisher"));
-    }
-
-    [Fact]
-    public async Task VerifyAsync_rejects_invalid_manifest_signature()
-    {
-        var package = await CreatePackageAsync(includeTraversalEntry: false);
-        var verifier = new UpdatePackageVerifier(new TestSignatureVerifier { ManifestValid = false });
-
-        await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
-            package.ArchivePath,
-            package.ChecksumPath,
-            package.ManifestPath,
-            package.StagingPath,
-            ReleaseVersion.Parse("1.3.0"),
-            "Test Publisher"));
+            ReleaseVersion.Parse("1.3.0")));
     }
 
     [Fact]
     public async Task VerifyAsync_rejects_zip_path_traversal()
     {
         var package = await CreatePackageAsync(includeTraversalEntry: true);
-        var verifier = new UpdatePackageVerifier(new TestSignatureVerifier());
+        var verifier = new UpdatePackageVerifier();
 
         await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
             package.ArchivePath,
             package.ChecksumPath,
-            package.ManifestPath,
             package.StagingPath,
-            ReleaseVersion.Parse("1.3.0"),
-            "Test Publisher"));
+            ReleaseVersion.Parse("1.3.0")));
     }
 
     [Fact]
@@ -135,14 +98,12 @@ public sealed class UpdatePackageValidationTests
     }
 
     private static async Task<PackageFixture> CreatePackageAsync(
-        bool includeTraversalEntry,
-        string signature = "signed-manifest")
+        bool includeTraversalEntry)
     {
         var root = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         var archivePath = Path.Combine(root, "RouterPlus-v1.3.0-win-x64.zip");
         var checksumPath = archivePath + ".sha256";
-        var manifestPath = Path.Combine(root, "RouterPlus-v1.3.0-manifest.json");
         var stagingPath = Path.Combine(root, "staging");
 
         await using (var stream = File.Create(archivePath))
@@ -163,31 +124,11 @@ public sealed class UpdatePackageValidationTests
 
         var hash = Convert.ToHexString(await SHA256.HashDataAsync(File.OpenRead(archivePath))).ToLowerInvariant();
         await File.WriteAllTextAsync(checksumPath, $"{hash}  {Path.GetFileName(archivePath)}");
-        var manifest = new
-        {
-            version = "1.3.0",
-            channel = "stable",
-            assetName = Path.GetFileName(archivePath),
-            sha256 = hash,
-            publisher = "Test Publisher",
-            signature
-        };
-        await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest));
-        return new PackageFixture(archivePath, checksumPath, manifestPath, stagingPath);
+        return new PackageFixture(archivePath, checksumPath, stagingPath);
     }
 
     private sealed record PackageFixture(
         string ArchivePath,
         string ChecksumPath,
-        string ManifestPath,
         string StagingPath);
-
-    private sealed class TestSignatureVerifier : IUpdateSignatureVerifier
-    {
-        public bool ManifestValid { get; init; } = true;
-
-        public bool VerifyManifest(string manifestPath, ReleaseManifest manifest, string expectedPublisher) => ManifestValid;
-
-        public bool VerifyExecutable(string executablePath, string expectedPublisher) => true;
-    }
 }

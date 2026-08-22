@@ -31,13 +31,13 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 - User guide, privacy, troubleshooting, security policy và release checklist.
 - GitHub issue/PR templates có yêu cầu loại bỏ dữ liệu nhạy cảm.
 - Ảnh minh họa giao diện dùng dữ liệu demo đã sanitise.
-- Help/About và self-update coordinator với checksum, manifest signature, Authenticode gate, staging và rollback helper.
+- Help/About và self-update coordinator với GitHub release metadata, checksum SHA-256, HTTPS host validation, staging và rollback helper.
 
 ### Changed
 
 - README được tổ chức lại theo hướng người dùng cuối: tải bản release, quick start và tài liệu hỗ trợ.
 - Project bổ sung MIT License ở file `LICENSE`.
-- Release workflow publish cả `RouterPlus.Updater.exe` và fail-closed khi thiếu signing material.
+- Release workflow publish cả `RouterPlus.Updater.exe`; build và release không yêu cầu signing material.
 
 ### Fixed
 
@@ -53,7 +53,7 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 
 ### Known limitations
 
-- Build unsigned không tự cài update; self-update chỉ được bật trên executable đã được ký và package có manifest signature hợp lệ.
+- Build unsigned có thể kiểm tra/cài update sau khi người dùng xác nhận; updater chỉ chọn stable tag `v...`, checksum SHA-256 hợp lệ và archive layout an toàn.
 - Public release vẫn bị chặn cho đến khi repository public, kênh báo cáo private và clean-machine smoke test được xác nhận.
 - Project chưa bật private security reporting channel.
 

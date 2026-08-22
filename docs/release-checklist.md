@@ -7,16 +7,13 @@ Dùng checklist này trước và sau mỗi tag release. Nếu một hard gate c
 - [ ] Repository đã chuyển sang public và kiểm tra visibility bằng GitHub API.
 - [x] Project đã thêm `LICENSE` MIT; chủ dự án đã xác nhận quyền chọn license.
 - [ ] GitHub Security Advisories hoặc một kênh báo cáo bảo mật private thực tế đã được cấu hình và thử nghiệm.
-- [ ] Certificate code-signing còn hiệu lực, chain/trust và timestamp đều kiểm tra được trên Windows sạch.
-- [ ] `RouterPlus.exe` và `RouterPlus.Updater.exe` đều có Authenticode signature đúng publisher.
-- [ ] Manifest ký bằng private key tương ứng với public key pin trong source; private key chỉ nằm trong secret manager.
 - [ ] Repository không chứa email, profile thật, Chrome path thật, token, key, OAuth state hoặc ảnh debug cá nhân.
 
 ## Trước khi tag
 
 - [ ] Không còn ảnh raw `ui-*.png` chứa dữ liệu cá nhân trong workspace.
 - [ ] Ảnh trong `docs/assets/` chỉ dùng dữ liệu demo.
-- [ ] README có link tải release, About/Help và behavior unsigned fail-closed.
+- [ ] README có link tải release, About/Help và behavior self-update qua GitHub + checksum.
 - [ ] `docs/user-guide.md`, `docs/privacy.md`, `docs/troubleshooting.md` và `SECURITY.md` khớp với code hiện tại.
 - [ ] `CHANGELOG.md` có entry cho thay đổi chuẩn bị phát hành.
 - [ ] `SECURITY.md` có kênh private thật, không phải placeholder.
@@ -25,14 +22,14 @@ Dùng checklist này trước và sau mỗi tag release. Nếu một hard gate c
 - [ ] Build Release pass với 0 warning/error.
 - [ ] Self-contained publish tạo được cả `RouterPlus.exe` và `RouterPlus.Updater.exe`.
 - [ ] Vulnerability scan không có package vulnerable chưa được chấp nhận.
-- [ ] Preflight public, security channel và signing đều pass.
+- [ ] Preflight public repository và security channel pass.
 
 ## Dev và personal release
 
-- [ ] Dev test local chạy `scripts\sign-local-release.ps1` trên máy Windows có Windows SDK; self-signed certificate chỉ dùng để kiểm thử.
+- [ ] Dev build local chạy `scripts\\build.ps1`; build unsigned không cần certificate.
 - [ ] Không upload `RouterPlus-Dev-Test.cer` hoặc ZIP dev như stable production release.
 - [ ] Personal GitHub workflow được chạy thủ công từ `Actions` → `Personal Release` với tag `personal-v...`.
-- [ ] Personal release phải ghi rõ unsigned/download-only; self-update phải tiếp tục bị vô hiệu hóa.
+- [ ] Personal release ghi rõ unsigned/checksum; không được chứa secret hoặc dữ liệu cá nhân.
 - [ ] Production release vẫn chỉ đi qua workflow tag `v...` và các hard gate bên dưới.
 ## Tạo package
 
@@ -40,7 +37,6 @@ Dùng checklist này trước và sau mỗi tag release. Nếu một hard gate c
 - [ ] Release workflow chạy đúng commit/tag.
 - [ ] File zip có tên `RouterPlus-vX.Y.Z-win-x64.zip`.
 - [ ] File `.sha256` khớp đúng zip.
-- [ ] Manifest có version/channel/assetName/sha256/publisher/signature đúng archive.
 - [ ] Zip giải nén được và có `RouterPlus.exe`, `RouterPlus.Updater.exe`.
 - [ ] Không có `.pdb`, `artifacts`, `work`, raw screenshots hoặc secrets trong archive.
 - [ ] Release notes generated không chứa dữ liệu nhạy cảm.
@@ -48,11 +44,11 @@ Dùng checklist này trước và sau mỗi tag release. Nếu một hard gate c
 ## Smoke test sau khi phát hành
 
 - [ ] Tải zip từ GitHub Release bằng Windows user sạch.
-- [ ] Kiểm tra checksum và Authenticode publisher.
+- [ ] Kiểm tra checksum của archive.
 - [ ] Giải nén vào thư mục mới và mở `RouterPlus.exe`.
 - [ ] Mở About/Help; xác nhận không có profile, email, path hoặc secret.
 - [ ] Chạy check update không có update và kiểm tra request/log đã sanitized.
-- [ ] Từ một bản cũ, stage một package đã ký; xác nhận user confirmation trước restart.
+- [ ] Từ một bản cũ, stage package tải từ GitHub; xác nhận user confirmation trước restart.
 - [ ] Xác nhận settings và DPAPI secrets còn nguyên sau update.
 - [ ] Ép health-check thất bại; xác nhận live bản cũ được rollback.
 - [ ] Kiểm tra target bị khóa, updater chạy song song và parent process chưa thoát.
@@ -62,6 +58,6 @@ Dùng checklist này trước và sau mỗi tag release. Nếu một hard gate c
 ## Sau release
 
 - [ ] Xác nhận GitHub Release ở trạng thái đúng stable/prerelease.
-- [ ] Xác nhận assets zip, checksum và manifest tải được.
+- [ ] Xác nhận assets zip và checksum tải được.
 - [ ] Cập nhật changelog nếu có hotfix.
 - [ ] Theo dõi rollback/update failure không chứa response body hoặc secret.

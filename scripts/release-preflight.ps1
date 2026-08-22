@@ -2,9 +2,7 @@
 param(
     [switch]$RequireLicense,
     [switch]$RequirePublicRepository,
-    [switch]$RequirePrivateSecurityChannel,
-    [switch]$RequireUpdateSigning,
-    [string]$PublishDirectory
+    [switch]$RequirePrivateSecurityChannel
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,8 +32,6 @@ $requiredFiles = @(
     '.github\workflows\release.yml',
     '.github\workflows\release-personal.yml',
     'scripts\package-release.ps1',
-    'scripts\sign-local-release.ps1',
-    'scripts\sign-release-manifest.ps1',
     'src\RouterPlus.Updater\RouterPlus.Updater.csproj'
 )
 
@@ -60,6 +56,11 @@ if ($unexpectedImages) {
     throw "Unexpected image assets are present in the release tree. Review them for personal data:$([Environment]::NewLine)$paths"
 }
 
+$binaryExtensions = @(
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico',
+    '.dll', '.exe', '.zip', '.7z', '.pdb', '.dmp', '.mdmp',
+    '.pdf', '.cer', '.pfx', '.pem', '.key', '.woff', '.woff2', '.ttf'
+)
 $publicTextFiles = @(
     'README.md',
     'CHANGELOG.md',
@@ -72,22 +73,64 @@ $publicTextFiles = @(
     '.github\ISSUE_TEMPLATE\feature_request.md',
     '.github\PULL_REQUEST_TEMPLATE.md'
 )
-$sensitivePatterns = @(
+$publicDataPatterns = @(
     'arpachy',
     'hieuck\.browser',
     'gmail\.com',
     'yahoo\.com',
     'CentBrowser',
-    'G:\\Program Files',
-    'ghp_[A-Za-z0-9]+',
-    'github_pat_[A-Za-z0-9_]+',
-    'sk-[A-Za-z0-9]+',
-    '-----BEGIN .*PRIVATE KEY-----'
+    'G:\\Program Files'
 )
-foreach ($relativePath in $publicTextFiles) {
+$sensitivePatterns = @(
+    '\bgh[pousr]_[A-Za-z0-9_]{20,}\b',
+    '\bgithub_pat_[A-Za-z0-9_]{20,}\b',
+    '\bAKIA[0-9A-Z]{16}\b',
+    '\bASIA[0-9A-Z]{16}\b',
+    '\bAIza[0-9A-Za-z_-]{20,}\b',
+    'xox[baprs]-[0-9A-Za-z-]{20,}',
+    '\bsk-[A-Za-z0-9]{20,}\b',
+    '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'
+)
+
+function Test-TextReleasePath([string]$relativePath) {
+    $extension = [IO.Path]::GetExtension($relativePath).ToLowerInvariant()
+    return $binaryExtensions -notcontains $extension
+}
+
+$trackedFiles = @(git -C $repositoryRoot ls-files)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to enumerate tracked files for release preflight.'
+}
+$untrackedFiles = @(git -C $repositoryRoot ls-files --others --exclude-standard)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to enumerate non-ignored files for release preflight.'
+}
+$scanFiles = @($trackedFiles + $untrackedFiles) |
+    Where-Object { Test-TextReleasePath $_ } |
+    Sort-Object -Unique
+
+foreach ($relativePath in $scanFiles) {
     $path = Get-RepositoryPath $relativePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        continue
+    }
+
     $text = Get-Content -LiteralPath $path -Raw
     foreach ($pattern in $sensitivePatterns) {
+        if ($text -match $pattern) {
+            throw "Sensitive-value pattern '$pattern' found in release tree file: $relativePath"
+        }
+    }
+}
+
+foreach ($relativePath in $publicTextFiles) {
+    $path = Get-RepositoryPath $relativePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        continue
+    }
+
+    $text = Get-Content -LiteralPath $path -Raw
+    foreach ($pattern in $publicDataPatterns) {
         if ($text -match $pattern) {
             throw "Sensitive-value pattern '$pattern' found in public release file: $relativePath"
         }
@@ -95,8 +138,8 @@ foreach ($relativePath in $publicTextFiles) {
 }
 
 $readme = Get-Content -LiteralPath (Get-RepositoryPath 'README.md') -Raw
-if ($readme -notmatch 'releases/latest') {
-    throw 'README.md does not link to the latest release.'
+if ($readme -notmatch 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases(?:/latest)?') {
+    throw 'README.md does not link to GitHub Releases.'
 }
 
 $changelog = Get-Content -LiteralPath (Get-RepositoryPath 'CHANGELOG.md') -Raw
@@ -113,36 +156,6 @@ if ($RequirePrivateSecurityChannel) {
     $security = Get-Content -LiteralPath (Get-RepositoryPath 'SECURITY.md') -Raw
     if ($security -notmatch [Regex]::Escape($configuredChannel)) {
         throw 'SECURITY.md does not publish the configured private security reporting channel.'
-    }
-}
-
-if ($RequireUpdateSigning) {
-    if ([string]::IsNullOrWhiteSpace($PublishDirectory)) {
-        throw 'PublishDirectory is required for the update-signing gate.'
-    }
-
-    $publishPath = (Resolve-Path $PublishDirectory).Path
-    $signingSubject = $env:UPDATE_SIGNING_SUBJECT
-    if ([string]::IsNullOrWhiteSpace($signingSubject)) {
-        throw 'UPDATE_SIGNING_SUBJECT must be configured for the update-signing gate.'
-    }
-    if ([string]::IsNullOrWhiteSpace($env:MANIFEST_SIGNING_KEY_BASE64)) {
-        throw 'MANIFEST_SIGNING_KEY_BASE64 must be configured for the manifest-signing gate.'
-    }
-
-    foreach ($binary in @('RouterPlus.exe', 'RouterPlus.Updater.exe')) {
-        $binaryPath = Join-Path $publishPath $binary
-        if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
-            throw "Signed release binary is missing: $binary"
-        }
-
-        $signature = Get-AuthenticodeSignature -FilePath $binaryPath
-        if ($signature.Status -ne 'Valid') {
-            throw "Authenticode signature is not valid for $binary"
-        }
-        if ($signature.SignerCertificate.Subject -notlike "*$signingSubject*") {
-            throw "Authenticode signer does not match the configured publisher for $binary"
-        }
     }
 }
 

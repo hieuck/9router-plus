@@ -97,56 +97,17 @@ jobs:
         shell: pwsh
         run: .\scripts\package-release.ps1 -PublishDirectory "$env:RUNNER_TEMP\routerplus-release-publish"
 
-      - name: Sign release binaries
-        shell: pwsh
-        env:
-          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
-          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD)) {
-            throw 'Windows signing certificate secrets are required. Release is blocked.'
-          }
-
-          $publishDirectory = Join-Path $env:RUNNER_TEMP 'routerplus-release-publish'
-          $certificatePath = Join-Path $env:RUNNER_TEMP 'routerplus-release-signing.pfx'
-          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE_BASE64))
-          $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
-          if ([string]::IsNullOrWhiteSpace($signtool)) {
-            throw 'signtool.exe is not available on the runner.'
-          }
-
-          foreach ($binary in @('RouterPlus.exe', 'RouterPlus.Updater.exe')) {
-            $binaryPath = Join-Path $publishDirectory $binary
-            & $signtool sign /fd SHA256 /f $certificatePath /p $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $binaryPath
-            if ($LASTEXITCODE -ne 0) {
-              throw "Could not sign $binary"
-            }
-          }
-
-      - name: Verify signing gates
-        shell: pwsh
-        env:
-          UPDATE_SIGNING_SUBJECT: ${{ secrets.UPDATE_SIGNING_SUBJECT }}
-          MANIFEST_SIGNING_KEY_BASE64: ${{ secrets.MANIFEST_SIGNING_KEY_BASE64 }}
-        run: .\scripts\release-preflight.ps1 -RequireUpdateSigning -PublishDirectory "$env:RUNNER_TEMP\routerplus-release-publish"
-
       - name: Package release
         id: package
         shell: pwsh
         env:
           RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
           RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
-          MANIFEST_SIGNING_KEY_BASE64: ${{ secrets.MANIFEST_SIGNING_KEY_BASE64 }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:MANIFEST_SIGNING_KEY_BASE64)) {
-            throw 'MANIFEST_SIGNING_KEY_BASE64 is required. Release is blocked.'
-          }
-
           $publishDirectory = Join-Path $env:RUNNER_TEMP 'routerplus-release-publish'
           $archiveName = "RouterPlus-$env:RELEASE_TAG-win-x64.zip"
           $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
           $checksumPath = "$archivePath.sha256"
-          $manifestPath = Join-Path $env:RUNNER_TEMP "RouterPlus-$env:RELEASE_TAG-manifest.json"
 
           Compress-Archive `
             -Path (Join-Path $publishDirectory '*') `
@@ -156,22 +117,8 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $archiveName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
 
-          $manifest = [ordered]@{
-            version = $env:RELEASE_VERSION
-            channel = if ($env:RELEASE_VERSION.Contains('-')) { 'prerelease' } else { 'stable' }
-            assetName = $archiveName
-            sha256 = $hash
-            publisher = '9Router Project'
-            signature = ''
-          }
-          $manifest | ConvertTo-Json -Depth 5 -Compress | Set-Content -LiteralPath $manifestPath -Encoding utf8
-          $manifestKeyPath = Join-Path $env:RUNNER_TEMP 'routerplus-manifest-signing.pem'
-          [IO.File]::WriteAllBytes($manifestKeyPath, [Convert]::FromBase64String($env:MANIFEST_SIGNING_KEY_BASE64))
-          .\scripts\sign-release-manifest.ps1 -ManifestPath $manifestPath -PrivateKeyPath $manifestKeyPath
-
           "archive=$archivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "checksum=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "manifest=$manifestPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Create GitHub Release
         shell: pwsh
@@ -181,7 +128,6 @@ jobs:
           RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
           ARCHIVE_PATH: ${{ steps.package.outputs.archive }}
           CHECKSUM_PATH: ${{ steps.package.outputs.checksum }}
-          MANIFEST_PATH: ${{ steps.package.outputs.manifest }}
         run: |
           $arguments = @(
             'release', 'create', $env:RELEASE_TAG,
@@ -195,7 +141,7 @@ jobs:
             $arguments += '--prerelease'
           }
 
-          $arguments += @($env:ARCHIVE_PATH, $env:CHECKSUM_PATH, $env:MANIFEST_PATH)
+          $arguments += @($env:ARCHIVE_PATH, $env:CHECKSUM_PATH)
           & gh @arguments
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE

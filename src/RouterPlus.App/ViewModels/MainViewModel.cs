@@ -78,6 +78,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _statusText = "Đang khởi tạo…";
     private readonly Queue<string> _logEntries = new();
     private string _logText = "Chưa có log.";
+    private ToastNotification? _currentToast;
 
     public MainViewModel(
         SettingsStore? settingsStore = null,
@@ -827,6 +828,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public ToastNotification? CurrentToast
+    {
+        get => _currentToast;
+        private set
+        {
+            if (_currentToast == value) return;
+            _currentToast?.Hide();
+            _currentToast = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private void ShowToast(string message, ToastType type = ToastType.Info, int durationSeconds = 3)
+    {
+        CurrentToast = new ToastNotification(message, type, TimeSpan.FromSeconds(durationSeconds));
+        CurrentToast.Show();
+    }
+
     public AsyncRelayCommand RefreshCommand { get; }
 
     public AsyncRelayCommand RefreshConnectionStatusesCommand { get; }
@@ -996,8 +1015,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 UpdateState = UpdateState.Disabled;
                 UpdateStatusText = release.IsUpdateAvailable
-                    ? $"Có bản {release.AvailableVersion}, nhưng tự cập nhật đang tắt vì chưa xác minh được chữ ký."
-                    : "Tự cập nhật đang tắt vì chưa xác minh được chữ ký phát hành.";
+                    ? $"Có bản {release.AvailableVersion}, nhưng tự cập nhật chỉ hỗ trợ trên Windows."
+                    : "Tự cập nhật chỉ hỗ trợ trên Windows.";
             }
             else if (release.IsUpdateAvailable)
             {
@@ -1023,7 +1042,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             UpdateState = _updateService.IsInstallSupported ? UpdateState.Failed : UpdateState.Disabled;
             UpdateStatusText = _updateService.IsInstallSupported
                 ? "Không thể kiểm tra bản cập nhật lúc này."
-                : "Không thể bật tự cập nhật vì chưa xác minh được chữ ký phát hành.";
+                : "Không thể bật tự cập nhật trên hệ điều hành này.";
         }
         finally
         {
@@ -1162,6 +1181,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     createdProfile.DirectoryName),
                     StringComparison.Ordinal));
             StatusText = $"Đã thêm profile \"{createdProfile.Name}\" ({createdProfile.DirectoryName}).";
+            ShowToast($"Đã thêm profile {createdProfile.Name}", ToastType.Success);
         }
         catch (Exception exception)
         {
@@ -1184,19 +1204,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (SelectedProfile is not null)
         {
             StatusText = $"Đã mở thư mục profile {SelectedProfile.Name}.";
+            ShowToast(StatusText, ToastType.Success);
         }
     }
 
     public void MarkProfileActionFailed(Exception exception, [CallerMemberName] string? operation = null) =>
         SetError(exception, operation);
 
-    public void MarkApiKeyPasted(ProviderKind provider) =>
+    public void MarkApiKeyPasted(ProviderKind provider)
+    {
         StatusText = $"{ProviderCatalog.Get(provider).DisplayName} API key đã được dán vào ô nhập.";
+        ShowToast(StatusText, ToastType.Info);
+    }
 
-    public void MarkApiKeyPasteFailed(ProviderKind provider, string? details = null) =>
+    public void MarkApiKeyPasteFailed(ProviderKind provider, string? details = null)
+    {
         StatusText = string.IsNullOrWhiteSpace(details)
             ? $"Clipboard không có API key cho {ProviderCatalog.Get(provider).DisplayName}."
             : $"Không thể dán API key cho {ProviderCatalog.Get(provider).DisplayName}. Kiểm tra quyền truy cập clipboard.";
+        ShowToast(StatusText, ToastType.Warning);
+    }
 
     private void ApplyProfileFilter()
     {
@@ -1353,6 +1380,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             MarkSettingsSaved();
             await RefreshConnectionStatusesAsync();
             StatusText = "Đã lưu cài đặt.";
+            ShowToast(StatusText, ToastType.Success);
         }
         catch (Exception exception)
         {
@@ -1395,6 +1423,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (definition.Workflow != WorkflowKind.ApiKey)
         {
             StatusText = $"{definition.DisplayName} không dùng API key.";
+            ShowToast(StatusText, ToastType.Warning);
             return false;
         }
 
@@ -1410,6 +1439,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             StatusText = "Hãy dán API key vào ô bảo mật.";
+            ShowToast(StatusText, ToastType.Warning);
             return false;
         }
 
@@ -1431,9 +1461,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
                 var existingTestResult = await api.TestConnectionAsync(existingConnection.Id);
                 await RefreshConnectionStatusesAsync(showStatus: false);
-                StatusText = existingTestResult.Valid
+                var updateMessage = existingTestResult.Valid
                     ? $"{definition.DisplayName} key updated in 9Router for {profile.Name}; local key saved."
                     : $"{definition.DisplayName} key saved for {profile.Name}, but the connection test failed.";
+                StatusText = updateMessage;
+                ShowToast(updateMessage, existingTestResult.Valid ? ToastType.Success : ToastType.Warning, 5);
                 return true;
             }
 
@@ -1452,9 +1484,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             var createdTestResult = await api.TestConnectionAsync(created.Id);
             await RefreshConnectionStatusesAsync(showStatus: false);
-            StatusText = createdTestResult.Valid
+            var createMessage = createdTestResult.Valid
                 ? $"Đã thêm {definition.DisplayName} cho {profile.Name}, priority {created.Priority}."
                 : $"Đã lưu {definition.DisplayName} cho {profile.Name}, nhưng kiểm tra kết nối thất bại.";
+            StatusText = createMessage;
+            ShowToast(createMessage, createdTestResult.Valid ? ToastType.Success : ToastType.Warning, 5);
             return true;
         }
         catch (Exception exception)
@@ -1483,6 +1517,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (SelectedProfile is null)
         {
             StatusText = "Hãy chọn Chrome profile trước.";
+            ShowToast(StatusText, ToastType.Warning);
             return;
         }
 
@@ -1507,6 +1542,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     _currentWorkflowProvider = null;
                     await LaunchUrlAsync(definition.QuickLink);
                     StatusText = $"Đã mở {definition.DisplayName}. Lấy key rồi dán vào ô bảo mật bên dưới và bấm Lưu API key.";
+                    ShowToast(StatusText, ToastType.Info, 5);
                     break;
                 case WorkflowKind.DeviceCode:
                     await RunDeviceCodeWorkflowAsync(api, provider, cancellationToken);
@@ -1521,6 +1557,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _currentWorkflowProvider = null;
             _workflowExistingIds.Clear();
             StatusText = $"Đã hủy thao tác thêm {definition.DisplayName}. Bạn có thể thử lại.";
+            ShowToast(StatusText, ToastType.Warning, 5);
         }
         catch (Exception exception)
         {
@@ -1742,6 +1779,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _currentWorkflowProvider = null;
         await RefreshConnectionStatusesAsync(showStatus: false);
         StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {SelectedProfile.Name}.";
+        ShowToast(StatusText, ToastType.Success, 5);
         WaitForConnectionCommand.RaiseCanExecuteChanged();
     }
 
@@ -1762,6 +1800,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (SelectedProfile is null)
         {
             StatusText = "Hãy chọn Chrome profile trước.";
+            ShowToast(StatusText, ToastType.Warning);
             return;
         }
 
@@ -1774,6 +1813,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             await LaunchUrlAsync(definition.QuickLink);
             StatusText = $"Đã mở nhanh {definition.DisplayName}.";
+            ShowToast(StatusText, ToastType.Success);
         }
         catch (Exception exception)
         {
@@ -1786,6 +1826,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (_currentWorkflowProvider is null || SelectedProfile is null)
         {
             StatusText = "Chưa có workflow OAuth đang chờ.";
+            ShowToast(StatusText, ToastType.Warning);
             return;
         }
 
@@ -1804,6 +1845,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _currentWorkflowProvider = null;
             await RefreshConnectionStatusesAsync(showStatus: false);
             StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {SelectedProfile.Name}.";
+            ShowToast(StatusText, ToastType.Success, 5);
             WaitForConnectionCommand.RaiseCanExecuteChanged();
         }
         catch (Exception exception)
@@ -2059,6 +2101,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var definition = ProviderCatalog.Get(provider);
             await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
             StatusText = $"Đã mở dashboard {definition.DisplayName} cho profile {SelectedProfile.Name}.";
+            ShowToast(StatusText, ToastType.Success);
         }
         catch (Exception exception)
         {
@@ -2089,6 +2132,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (matchingConnections.Length == 0)
             {
                 StatusText = $"No {definition.DisplayName} connection found for profile {profile.Name}.";
+                ShowToast(StatusText, ToastType.Warning, 5);
                 return;
             }
 
@@ -2105,10 +2149,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (failedConnectionCount == 0)
             {
                 StatusText = $"Test connection succeeded for {definition.DisplayName} on profile {profile.Name}.";
+                ShowToast(StatusText, ToastType.Success);
             }
             else
             {
                 StatusText = $"Test connection failed for {definition.DisplayName} ({failedConnectionCount} connection(s)).";
+                ShowToast(StatusText, ToastType.Warning, 5);
             }
         }
         catch (Exception exception)
@@ -2245,6 +2291,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StatusText = SafeError(exception);
         var operationName = string.IsNullOrWhiteSpace(operation) ? "Thao tác" : operation;
         AppendLog("ERROR", $"{operationName}: {SafeErrorLog(exception)}");
+        ShowToast(SafeError(exception), ToastType.Error, 5);
     }
 
     private void SetStatusText(string value, string level, bool forceLog)
@@ -2351,7 +2398,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
-
 
 
 

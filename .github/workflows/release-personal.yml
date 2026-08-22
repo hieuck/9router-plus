@@ -113,8 +113,8 @@ jobs:
         run: |
           $notice = @(
             'This is a personal unsigned Windows build.',
-            'Authenticode and manifest signatures are intentionally absent.',
-            'Self-update remains disabled until a trusted signing configuration is used.',
+            'Authenticode and manifest signatures are not required.',
+            'Self-update uses GitHub release metadata and the adjacent SHA-256 checksum.',
             'Verify the adjacent SHA-256 checksum before running the archive.'
           ) -join "`n"
           Set-Content -LiteralPath (Join-Path "$env:RUNNER_TEMP\routerplus-personal-release-publish" 'UNSIGNED-RELEASE.txt') -Value $notice -Encoding utf8
@@ -156,7 +156,7 @@ jobs:
             "Personal unsigned build for RouterPlus $env:RELEASE_VERSION.",
             '',
             'This release is for personal use and download-only distribution.',
-            'Authenticode and manifest signatures are intentionally absent; self-update remains disabled.',
+            'Authenticode and manifest signatures are not required for self-update.',
             'Verify the SHA-256 checksum before running the archive.'
           ) | Set-Content -LiteralPath $notesPath -Encoding utf8
 

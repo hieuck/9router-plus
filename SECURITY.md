@@ -23,9 +23,9 @@ Repository hiện chưa công bố email/kênh private cụ thể, vì vậy kh�
 - RouterPlus lưu API key bằng Windows DPAPI `CurrentUser`.
 - User Windows khác không tự giải mã được encrypted secrets.
 - Request kiểm tra update chỉ tới repository GitHub cố định và không gửi profile, email, API key, OAuth state, Chrome path hoặc machine identifier.
-- Package update phải qua checksum, manifest signature dùng public key pin, Authenticode publisher verification và archive/path validation trước khi staging.
+- Package update lấy metadata và asset từ repository GitHub cố định qua HTTPS; chỉ staging sau khi checksum SHA-256 khớp, host được allow và archive/path validation pass. Không dùng manifest signature hoặc Authenticode gate.
 - Updater helper dùng backup/swap/health-check/rollback; settings và DPAPI secrets nằm ngoài thư mục package.
-- Build unsigned không tự cài update. Chỉ release có chữ ký hợp lệ mới được bật automatic install; nếu thiếu chữ ký, app fail closed.
+- Build unsigned vẫn có thể kiểm tra/cài update sau khi người dùng xác nhận. SHA-256 kiểm tra toàn vẹn package nhưng không thay thế publisher signature; SmartScreen warning vẫn có thể xuất hiện.
 - Không chạy executable từ release mirror không xác định.
 
 ## Khi gửi bản vá

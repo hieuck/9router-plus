@@ -50,7 +50,7 @@ public sealed class MainViewModelUpdateTests
     {
         var service = new FakeUpdateService
         {
-            CheckResult = new ReleaseCheckResult(ReleaseVersion.Parse("1.0.0"), null, null, null, null, null)
+            CheckResult = new ReleaseCheckResult(ReleaseVersion.Parse("1.0.0"), null, null, null, null)
         };
         var viewModel = new MainViewModel(updateService: service);
 
@@ -91,7 +91,7 @@ public sealed class MainViewModelUpdateTests
     }
 
     [Fact]
-    public async Task Installation_is_disabled_when_signature_verification_is_unavailable()
+    public async Task Installation_is_disabled_when_platform_does_not_support_the_updater()
     {
         var service = new FakeUpdateService { IsInstallSupported = false, CheckResult = CreateAvailableResult() };
         var viewModel = new MainViewModel(updateService: service);
@@ -100,7 +100,7 @@ public sealed class MainViewModelUpdateTests
 
         Assert.Equal(UpdateState.Disabled, viewModel.UpdateState);
         Assert.False(viewModel.InstallUpdateCommand.CanExecute(null));
-        Assert.Contains("chữ ký", viewModel.UpdateStatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Windows", viewModel.UpdateStatusText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -122,8 +122,7 @@ public sealed class MainViewModelUpdateTests
         ReleaseVersion.Parse("1.1.0"),
         "safe release notes",
         new ReleaseAsset("RouterPlus-v1.1.0-win-x64.zip", new Uri("https://github.com/hieuck/9router-plus/releases/download/v1.1.0/RouterPlus-v1.1.0-win-x64.zip"), 10, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true),
-        new ReleaseAsset("RouterPlus-v1.1.0-win-x64.zip.sha256", new Uri("https://github.com/hieuck/9router-plus/releases/download/v1.1.0/RouterPlus-v1.1.0-win-x64.zip.sha256"), 64, null, true),
-        new ReleaseAsset("RouterPlus-v1.1.0-manifest.json", new Uri("https://github.com/hieuck/9router-plus/releases/download/v1.1.0/RouterPlus-v1.1.0-manifest.json"), 512, null, true));
+        new ReleaseAsset("RouterPlus-v1.1.0-win-x64.zip.sha256", new Uri("https://github.com/hieuck/9router-plus/releases/download/v1.1.0/RouterPlus-v1.1.0-win-x64.zip.sha256"), 64, null, true));
 
     private sealed class FakeUpdateService : IUpdateService
     {
@@ -136,7 +135,7 @@ public sealed class MainViewModelUpdateTests
         public Task<ReleaseCheckResult> CheckAsync(CancellationToken cancellationToken = default)
         {
             if (Error is not null) throw Error;
-            return Task.FromResult(CheckResult ?? new ReleaseCheckResult(ReleaseVersion.Parse("1.0.0"), null, null, null, null, null));
+            return Task.FromResult(CheckResult ?? new ReleaseCheckResult(ReleaseVersion.Parse("1.0.0"), null, null, null, null));
         }
 
         public Task<VerifiedUpdatePackage> DownloadAndStageAsync(ReleaseCheckResult release, CancellationToken cancellationToken = default)
