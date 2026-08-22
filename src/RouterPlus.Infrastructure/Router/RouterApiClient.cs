@@ -40,8 +40,11 @@ public sealed class RouterApiClient : IRouterApiClient
         var usageByConnection = _usageReader.GetTodayUsageByConnection();
         var tokenExpirationByConnection = _usageReader.GetTokenExpirationByConnection();
 
+        // Fetch real quota data from 9Router API (same as Quota Tracker dashboard)
+        var quotaByConnection = await FetchAllQuotasAsync(connections, cancellationToken);
+
         return connections.EnumerateArray()
-            .Select(element => ParseConnection(element, usageByConnection, tokenExpirationByConnection))
+            .Select(element => ParseConnection(element, usageByConnection, tokenExpirationByConnection, quotaByConnection))
             .Where(connection => connection is not null)
             .Cast<ProviderConnection>()
             .OrderBy(connection => connection.Provider)
@@ -392,13 +395,13 @@ public sealed class RouterApiClient : IRouterApiClient
 
         if (root.TryGetProperty("connection", out var connection))
         {
-            return ParseConnection(connection, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>());
+            return ParseConnection(connection, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>(), new Dictionary<string, QuotaData>());
         }
 
-        return root.TryGetProperty("id", out _) ? ParseConnection(root, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>()) : null;
+        return root.TryGetProperty("id", out _) ? ParseConnection(root, new Dictionary<string, UsageData>(), new Dictionary<string, TokenExpirationData>(), new Dictionary<string, QuotaData>()) : null;
     }
 
-    private static ProviderConnection? ParseConnection(JsonElement element, Dictionary<string, UsageData> usageByConnection, Dictionary<string, TokenExpirationData> tokenExpirationByConnection)
+    private static ProviderConnection? ParseConnection(JsonElement element, Dictionary<string, UsageData> usageByConnection, Dictionary<string, TokenExpirationData> tokenExpirationByConnection, Dictionary<string, QuotaData> quotaByConnection)
     {
         if (!element.TryGetProperty("id", out var idElement) ||
             !element.TryGetProperty("provider", out var providerElement))
@@ -532,6 +535,14 @@ public sealed class RouterApiClient : IRouterApiClient
                 }
             }
         }
+        // HIGHEST PRIORITY: Apply real quota data from 9Router Quota Tracker API
+        if (quotaByConnection.TryGetValue(id, out var quota))
+        {
+            if (quota.Used.HasValue) usageCount = quota.Used.Value;
+            if (quota.Total.HasValue) limitCount = quota.Total.Value;
+            if (quota.ResetAt.HasValue) usageResetAt = quota.ResetAt.Value;
+        }
+
 return new ProviderConnection(id, provider, name, priority, isActive, email, createdAt, testStatus, errorCode, lastError, lastErrorAt, usageCount, limitCount, usageResetAt, expiresAt, expiresIn, lastRefreshAt);
 }
     private static string? GetStringOrNumber(JsonElement root, string propertyName)
@@ -572,4 +583,56 @@ return new ProviderConnection(id, provider, name, priority, isActive, email, cre
         ProviderKind.Kimchi => "kimchi",
         _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown provider.")
     };
+
+    public record QuotaData(long? Used, long? Total, long? Remaining, DateTimeOffset? ResetAt);
+
+    private async Task<Dictionary<string, QuotaData>> FetchAllQuotasAsync(
+        JsonElement connections, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, QuotaData>();
+        var fetchTasks = new List<(string Id, Task<QuotaData?> Task)>();
+        foreach (var element in connections.EnumerateArray())
+        {
+            if (!element.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.String) continue;
+            var id = idEl.GetString()!;
+            fetchTasks.Add((id, FetchQuotaAsync(id, cancellationToken)));
+        }
+        var tasks = fetchTasks.Select(t => t.Task).ToArray();
+        await Task.WhenAll(tasks);
+        for (int i = 0; i < fetchTasks.Count; i++)
+        {
+            if (tasks[i].Result is QuotaData quota) result[fetchTasks[i].Id] = quota;
+        }
+        return result;
+    }
+
+    private async Task<QuotaData?> FetchQuotaAsync(string connectionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync(
+                CreateUri($"api/usage/{Uri.EscapeDataString(connectionId)}"), cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+            using var doc = await ReadDocumentAsync(response, cancellationToken);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("message", out _)) return null;
+            long? used = null, total = null, remaining = null;
+            DateTimeOffset? resetAt = null;
+            if (root.TryGetProperty("quotas", out var quotas))
+            {
+                foreach (var quotaType in quotas.EnumerateObject())
+                {
+                    var q = quotaType.Value;
+                    used = q.TryGetProperty("used", out var u) && u.ValueKind == JsonValueKind.Number ? u.GetInt64() : (long?)null;
+                    total = q.TryGetProperty("total", out var t) && t.ValueKind == JsonValueKind.Number ? t.GetInt64() : (long?)null;
+                    remaining = q.TryGetProperty("remaining", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetInt64() : (long?)null;
+                    if (q.TryGetProperty("resetAt", out var ra) && ra.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(ra.GetString(), out var parsedReset))
+                        resetAt = parsedReset;
+                    break;
+                }
+            }
+            return new QuotaData(used, total, remaining, resetAt);
+        }
+        catch { return null; }
+    }
 }

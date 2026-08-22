@@ -40,7 +40,8 @@ public sealed class MainViewModelApiKeyTests
                     "GET /api/providers",
                     "POST /api/providers",
                     "POST /api/providers/openrouter-1/test",
-                    "GET /api/providers"
+                    "GET /api/providers",
+                    "GET /api/usage/openrouter-1"
                 ],
                 handler.Requests);
             Assert.Equal(
