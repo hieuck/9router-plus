@@ -22,9 +22,17 @@ public sealed class SettingsStore
             return new RouterSettings();
         }
 
-        await using var stream = File.OpenRead(_filePath);
-        return await JsonSerializer.DeserializeAsync<RouterSettings>(stream, _jsonOptions, cancellationToken)
-            ?? new RouterSettings();
+        try
+        {
+            await using var stream = File.OpenRead(_filePath);
+            return await JsonSerializer.DeserializeAsync<RouterSettings>(stream, _jsonOptions, cancellationToken)
+                ?? new RouterSettings();
+        }
+        catch (JsonException)
+        {
+            // Return defaults if JSON is corrupted or incompatible
+            return new RouterSettings();
+        }
     }
 
     public RouterSettings Load()
@@ -34,8 +42,16 @@ public sealed class SettingsStore
             return new RouterSettings();
         }
 
-        var json = File.ReadAllText(_filePath);
-        return JsonSerializer.Deserialize<RouterSettings>(json, _jsonOptions) ?? new RouterSettings();
+        try
+        {
+            var json = File.ReadAllText(_filePath);
+            return JsonSerializer.Deserialize<RouterSettings>(json, _jsonOptions) ?? new RouterSettings();
+        }
+        catch (JsonException)
+        {
+            // Return defaults if JSON is corrupted or incompatible
+            return new RouterSettings();
+        }
     }
 
     public async Task SaveAsync(RouterSettings settings, CancellationToken cancellationToken = default)
