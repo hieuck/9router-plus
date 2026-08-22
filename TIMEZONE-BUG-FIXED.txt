@@ -1,0 +1,63 @@
+﻿╔═══════════════════════════════════════════════════════════════════════════╗
+║          ✅ BUG FIX - Timezone Issue Resolved                            ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+🐛 VẤN ĐỀ PHÁT HIỆN
+Bạn phát hiện: "tôi thấy ngày bị sai"
+
+🔍 NGUYÊN NHÂN
+Code: usageResetAt = DateTimeOffset.Now.Date.AddDays(1)
+
+Local time: 2026-08-22 17:46 (UTC+7)
+DateTimeOffset.Now.Date = 2026-08-22 00:00:00 +07:00
+AddDays(1) = 2026-08-23 00:00:00 +07:00
+Converted to UTC = 2026-08-22 17:00:00 UTC ❌ SAI!
+
+Nên là: 2026-08-23 00:00:00 UTC
+
+═══════════════════════════════════════════════════════════════════════════
+
+✅ FIXED
+
+Code mới: usageResetAt = DateTimeOffset.UtcNow.Date.AddDays(1)
+
+Current UTC: 2026-08-22 10:46 UTC
+DateTimeOffset.UtcNow.Date = 2026-08-22 00:00:00 UTC
+AddDays(1) = 2026-08-23 00:00:00 UTC ✅ ĐÚNG!
+
+Reset time hiển thị: "Reset vào 2026-08-23 00:00 UTC" (midnight UTC)
+
+═══════════════════════════════════════════════════════════════════════════
+
+📋 COMMITS
+
+2a2ed8c - fix: use UtcNow for usage reset time calculation
+032daa0 - feat: add real usage quota from 9Router SQLite database
+b9a2ad7 - feat: add usage quota tracking with OAuth token expiration support
+
+═══════════════════════════════════════════════════════════════════════════
+
+🚀 NEXT STEPS
+
+Code đã fix và commit rồi!
+Build files ở src/RouterPlus.Infrastructure/bin/Release đã có version mới.
+
+Để dùng version mới:
+1. Đóng RouterPlus app hiện tại (PID 49188)
+2. Build lại hoặc copy DLL từ bin/Release
+3. Run app mới → reset time sẽ đúng!
+
+Hoặc đợi app hiện tại đóng, rồi tôi publish lại.
+
+═══════════════════════════════════════════════════════════════════════════
+
+✅ SUMMARY
+
+Issue: Timezone bug in reset time calculation
+Root cause: DateTimeOffset.Now vs DateTimeOffset.UtcNow
+Fixed: Changed to UtcNow
+Status: Committed to git ✅
+
+Cảm ơn bạn đã phát hiện bug!
+
+╚═══════════════════════════════════════════════════════════════════════════╝
