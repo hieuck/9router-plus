@@ -482,8 +482,11 @@ public sealed class RouterApiClient : IRouterApiClient
             // Use today's usage from database
             usageCount = dbUsage.Requests;
             // Database doesn't have limit, so we leave limitCount null
-            // Set reset time to end of today
-            usageResetAt = DateTimeOffset.UtcNow.Date.AddDays(1);
+            // Set reset time to end of today ONLY if not already set from expiresAt
+            if (!usageResetAt.HasValue)
+            {
+                usageResetAt = DateTimeOffset.UtcNow.Date.AddDays(1);
+            }
         }
         
         // If backend doesn't provide usage data and database doesn't have it, try to infer from error messages
