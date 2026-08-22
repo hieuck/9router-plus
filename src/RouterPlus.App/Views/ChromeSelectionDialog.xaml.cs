@@ -1,6 +1,8 @@
 using RouterPlus.Infrastructure.Chrome;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
 
@@ -9,12 +11,19 @@ namespace RouterPlus.App.Views;
 public partial class ChromeSelectionDialog : Window, INotifyPropertyChanged
 {
     private ChromeInstallationViewModel? _selectedInstallation;
+    private readonly ChromeLocator _chromeLocator = new();
 
     public ChromeSelectionDialog(IReadOnlyList<ChromeInstallation> installations)
     {
         InitializeComponent();
         DataContext = this;
 
+        LoadInstallations(installations);
+    }
+
+    private void LoadInstallations(IReadOnlyList<ChromeInstallation> installations)
+    {
+        Installations.Clear();
         foreach (var installation in installations)
         {
             Installations.Add(new ChromeInstallationViewModel(installation));
@@ -57,6 +66,80 @@ public partial class ChromeSelectionDialog : Window, INotifyPropertyChanged
         Close();
     }
 
+    private void Rescan_Click(object sender, RoutedEventArgs e)
+    {
+        var installations = _chromeLocator.FindAll();
+        LoadInstallations(installations);
+
+        if (Installations.Count == 0)
+        {
+            System.Windows.MessageBox.Show(
+                "Không tìm thấy Chrome installation nào.",
+                "Scan lại",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    private void OpenChromeLocation_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button && button.Tag is string path)
+        {
+            OpenFolderAndSelectFile(path);
+        }
+    }
+
+    private void OpenUserDataLocation_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button && button.Tag is string path)
+        {
+            OpenFolder(path);
+        }
+    }
+
+    private static void OpenFolderAndSelectFile(string filePath)
+    {
+        if (File.Exists(filePath))
+        {
+            try
+            {
+                Process.Start("explorer.exe", $"/select,\"{filePath}\"");
+            }
+            catch
+            {
+                // Fallback: open folder
+                var directory = Path.GetDirectoryName(filePath);
+                if (directory != null)
+                {
+                    OpenFolder(directory);
+                }
+            }
+        }
+        else
+        {
+            System.Windows.MessageBox.Show($"File không tồn tại:\n{filePath}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private static void OpenFolder(string folderPath)
+    {
+        if (Directory.Exists(folderPath))
+        {
+            try
+            {
+                Process.Start("explorer.exe", $"\"{folderPath}\"");
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Không thể mở thư mục:\n{ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        else
+        {
+            System.Windows.MessageBox.Show($"Thư mục không tồn tại:\n{folderPath}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -71,6 +154,7 @@ public sealed class ChromeInstallationViewModel
     {
         Installation = installation;
         DisplayName = GetDisplayName(installation.ExecutablePath);
+        IsValid = ValidateInstallation(installation);
     }
 
     public ChromeInstallation Installation { get; }
@@ -80,6 +164,32 @@ public sealed class ChromeInstallationViewModel
     public string ExecutablePath => Installation.ExecutablePath;
 
     public string UserDataDirectory => Installation.UserDataDirectory;
+
+    public bool IsValid { get; }
+
+    private static bool ValidateInstallation(ChromeInstallation installation)
+    {
+        // Verify executable exists
+        if (!File.Exists(installation.ExecutablePath))
+        {
+            return false;
+        }
+
+        // Verify User Data directory exists
+        if (!Directory.Exists(installation.UserDataDirectory))
+        {
+            return false;
+        }
+
+        // Verify Local State file exists (confirms valid Chrome User Data)
+        var localStatePath = Path.Combine(installation.UserDataDirectory, "Local State");
+        if (!File.Exists(localStatePath))
+        {
+            return false;
+        }
+
+        return true;
+    }
 
     private static string GetDisplayName(string executablePath)
     {
