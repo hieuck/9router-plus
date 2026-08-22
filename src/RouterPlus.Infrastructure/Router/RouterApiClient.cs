@@ -536,15 +536,15 @@ public sealed class RouterApiClient : IRouterApiClient
             }
         }
         // HIGHEST PRIORITY: Apply real quota data from 9Router Quota Tracker API
+        var quotaRows = Array.Empty<ProviderQuota>();
         if (quotaByConnection.TryGetValue(id, out var quota))
         {
-            if (quota.Used.HasValue) usageCount = quota.Used.Value;
-            if (quota.Total.HasValue) limitCount = quota.Total.Value;
+            quotaRows = quota.QuotaRows.ToArray();
             if (quota.ResetAt.HasValue) usageResetAt = quota.ResetAt.Value;
         }
 
-return new ProviderConnection(id, provider, name, priority, isActive, email, createdAt, testStatus, errorCode, lastError, lastErrorAt, usageCount, limitCount, usageResetAt, expiresAt, expiresIn, lastRefreshAt);
-}
+        return new ProviderConnection(id, provider, name, priority, isActive, email, createdAt, testStatus, errorCode, lastError, lastErrorAt, usageCount, limitCount, usageResetAt, expiresAt, expiresIn, lastRefreshAt, quotaRows);
+    }
     private static string? GetStringOrNumber(JsonElement root, string propertyName)
     {
         if (!root.TryGetProperty(propertyName, out var property))
@@ -584,7 +584,14 @@ return new ProviderConnection(id, provider, name, priority, isActive, email, cre
         _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown provider.")
     };
 
-    public record QuotaData(long? Used, long? Total, long? Remaining, DateTimeOffset? ResetAt);
+    public record QuotaData(
+        IReadOnlyList<ProviderQuota> QuotaRows)
+    {
+        public decimal? Used => QuotaRows.FirstOrDefault()?.Used;
+        public decimal? Total => QuotaRows.FirstOrDefault()?.Total;
+        public decimal? Remaining => QuotaRows.FirstOrDefault()?.Remaining;
+        public DateTimeOffset? ResetAt => QuotaRows.FirstOrDefault(quota => quota.ResetAt.HasValue)?.ResetAt;
+    }
 
     private async Task<Dictionary<string, QuotaData>> FetchAllQuotasAsync(
         JsonElement connections, CancellationToken cancellationToken)
@@ -616,23 +623,38 @@ return new ProviderConnection(id, provider, name, priority, isActive, email, cre
             using var doc = await ReadDocumentAsync(response, cancellationToken);
             var root = doc.RootElement;
             if (root.TryGetProperty("message", out _)) return null;
-            long? used = null, total = null, remaining = null;
-            DateTimeOffset? resetAt = null;
-            if (root.TryGetProperty("quotas", out var quotas))
+
+            if (!root.TryGetProperty("quotas", out var quotas) ||
+                quotas.ValueKind != JsonValueKind.Object)
             {
-                foreach (var quotaType in quotas.EnumerateObject())
-                {
-                    var q = quotaType.Value;
-                    used = q.TryGetProperty("used", out var u) && u.ValueKind == JsonValueKind.Number ? u.GetInt64() : (long?)null;
-                    total = q.TryGetProperty("total", out var t) && t.ValueKind == JsonValueKind.Number ? t.GetInt64() : (long?)null;
-                    remaining = q.TryGetProperty("remaining", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetInt64() : (long?)null;
-                    if (q.TryGetProperty("resetAt", out var ra) && ra.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(ra.GetString(), out var parsedReset))
-                        resetAt = parsedReset;
-                    break;
-                }
+                return null;
             }
-            return new QuotaData(used, total, remaining, resetAt);
+
+            var quotaRows = quotas.EnumerateObject()
+                .Select(quotaType =>
+                {
+                    var quota = quotaType.Value;
+                    var used = GetDecimal(quota, "used");
+                    var total = GetDecimal(quota, "total");
+                    var remaining = GetDecimal(quota, "remaining");
+                    var resetAt = quota.TryGetProperty("resetAt", out var resetElement) &&
+                                  resetElement.ValueKind == JsonValueKind.String &&
+                                  DateTimeOffset.TryParse(resetElement.GetString(), out var parsedReset)
+                        ? parsedReset
+                        : (DateTimeOffset?)null;
+                    return new ProviderQuota(quotaType.Name, used, total, remaining, resetAt);
+                })
+                .ToArray();
+
+            return quotaRows.Length == 0 ? null : new QuotaData(quotaRows);
         }
         catch { return null; }
     }
+
+    private static decimal? GetDecimal(JsonElement root, string propertyName) =>
+        root.TryGetProperty(propertyName, out var property) &&
+        property.ValueKind == JsonValueKind.Number &&
+        property.TryGetDecimal(out var value)
+            ? value
+            : null;
 }

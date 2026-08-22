@@ -10,6 +10,7 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
     private readonly ProviderApiKeyState _apiKeyState = new();
     private ProviderHealthState _healthState = ProviderHealthState.Unknown;
     private string _statusTooltip = "Provider status is waiting for synchronization.";
+    private IReadOnlyList<ProviderConnection> _connections = Array.Empty<ProviderConnection>();
 
     public ProviderCardViewModel(ProviderDefinition definition)
     {
@@ -67,6 +68,12 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
 
     public bool IsUnknown => _healthState == ProviderHealthState.Unknown;
 
+    public IReadOnlyList<ProviderConnection> Connections => _connections;
+
+    public IReadOnlyList<ProviderQuota> QuotaRows => _connections
+        .SelectMany(connection => connection.QuotaRows)
+        .ToArray();
+
     public void LoadSavedApiKey(string? value) => _apiKeyState.LoadSaved(value);
 
     public void MarkApiKeySaved() => _apiKeyState.MarkSaved();
@@ -77,6 +84,7 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
     {
         _healthState = status?.HealthState ?? ProviderHealthState.Unknown;
         _statusTooltip = status?.ToolTip ?? "Select a profile to inspect provider status.";
+        _connections = status?.Connections ?? Array.Empty<ProviderConnection>();
         OnPropertyChanged(nameof(HealthState));
         OnPropertyChanged(nameof(StatusLabel));
         OnPropertyChanged(nameof(StatusTooltip));
@@ -85,6 +93,8 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(IsMissing));
         OnPropertyChanged(nameof(IsUnknown));
+        OnPropertyChanged(nameof(Connections));
+        OnPropertyChanged(nameof(QuotaRows));
     }
 
     private void ApiKeyState_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
