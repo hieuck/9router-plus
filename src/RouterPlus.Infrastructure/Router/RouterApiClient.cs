@@ -452,23 +452,46 @@ public sealed class RouterApiClient : IRouterApiClient
             : (DateTimeOffset?)null;
 
 
-        var expiresAt = element.TryGetProperty("expiresAt", out var expiresAtElement) &&
-                        expiresAtElement.ValueKind == JsonValueKind.String &&
-                        expiresAtElement.TryGetDateTimeOffset(out var parsedExpiresAt)
-            ? parsedExpiresAt
-            : (DateTimeOffset?)null;
-
-        var expiresIn = element.TryGetProperty("expiresIn", out var expiresInElement) &&
-                        expiresInElement.ValueKind == JsonValueKind.Number &&
-                        expiresInElement.TryGetInt32(out var parsedExpiresIn)
-            ? parsedExpiresIn
-            : (int?)null;
-
-        var lastRefreshAt = element.TryGetProperty("lastRefreshAt", out var lastRefreshAtElement) &&
-                            lastRefreshAtElement.ValueKind == JsonValueKind.String &&
-                            lastRefreshAtElement.TryGetDateTimeOffset(out var parsedLastRefreshAt)
-            ? parsedLastRefreshAt
-            : (DateTimeOffset?)null;
+        // ALWAYS prefer database for OAuth token expiration (most accurate, from local database)
+        // Database is the source of truth when 9Router is not running
+        DateTimeOffset? expiresAt = null;
+        int? expiresIn = null;
+        DateTimeOffset? lastRefreshAt = null;
+        
+        if (tokenExpirationByConnection.TryGetValue(id, out var dbToken))
+        {
+            expiresAt = dbToken.ExpiresAt;
+            expiresIn = dbToken.ExpiresIn;
+            lastRefreshAt = dbToken.LastRefreshAt;
+        }
+        
+        // Fallback to API response if database doesn't have token data
+        if (!expiresAt.HasValue)
+        {
+            expiresAt = element.TryGetProperty("expiresAt", out var expiresAtElement) &&
+                            expiresAtElement.ValueKind == JsonValueKind.String &&
+                            expiresAtElement.TryGetDateTimeOffset(out var parsedExpiresAt)
+                ? parsedExpiresAt
+                : (DateTimeOffset?)null;
+        }
+        
+        if (!expiresIn.HasValue)
+        {
+            expiresIn = element.TryGetProperty("expiresIn", out var expiresInElement) &&
+                            expiresInElement.ValueKind == JsonValueKind.Number &&
+                            expiresInElement.TryGetInt32(out var parsedExpiresIn)
+                ? parsedExpiresIn
+                : (int?)null;
+        }
+        
+        if (!lastRefreshAt.HasValue)
+        {
+            lastRefreshAt = element.TryGetProperty("lastRefreshAt", out var lastRefreshAtElement) &&
+                                lastRefreshAtElement.ValueKind == JsonValueKind.String &&
+                                lastRefreshAtElement.TryGetDateTimeOffset(out var parsedLastRefreshAt)
+                ? parsedLastRefreshAt
+                : (DateTimeOffset?)null;
+        }
 
         // Use expiresAt for OAuth providers to show token expiration time
         // This is different from usage quota - it's when the OAuth token expires
