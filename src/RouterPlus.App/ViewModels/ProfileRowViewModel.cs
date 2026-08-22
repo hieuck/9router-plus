@@ -75,7 +75,8 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
                 healthState,
                 errorConnection?.TestStatus,
                 errorConnection?.ErrorCode,
-                errorConnection?.LastError);
+                errorConnection?.LastError,
+                matchingConnections);
         }
 
         OnPropertyChanged(nameof(ConnectedProviderCount));
@@ -105,6 +106,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
     private string? _errorCode;
     private string? _lastError;
     private string? _testStatus;
+    private IReadOnlyList<ProviderConnection> _connections = Array.Empty<ProviderConnection>();
 
     public ProfileProviderStatusViewModel(ProviderDefinition definition)
     {
@@ -140,6 +142,12 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
 
     public string? TestStatus => _testStatus;
 
+    public IReadOnlyList<ProviderConnection> Connections => _connections;
+
+    public IReadOnlyList<ProviderQuota> QuotaRows => _connections
+        .SelectMany(connection => connection.QuotaRows)
+        .ToArray();
+
     public string DisplayLabel => $"{ShortName} {StatusMarker}";
 
     public string StatusMarker => _healthState switch
@@ -166,7 +174,8 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         ProviderHealthState healthState = ProviderHealthState.Unknown,
         string? testStatus = null,
         string? errorCode = null,
-        string? lastError = null)
+        string? lastError = null,
+        IReadOnlyList<ProviderConnection>? connections = null)
     {
         _connectionCount = Math.Max(0, connectionCount);
         _isKnown = true;
@@ -174,6 +183,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _testStatus = testStatus;
         _errorCode = errorCode;
         _lastError = SanitizeLastError(lastError);
+        _connections = connections ?? Array.Empty<ProviderConnection>();
         RaiseStatusChanged();
     }
 
@@ -185,6 +195,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _testStatus = null;
         _errorCode = null;
         _lastError = null;
+        _connections = Array.Empty<ProviderConnection>();
         RaiseStatusChanged();
     }
 
@@ -210,6 +221,8 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ErrorCode));
         OnPropertyChanged(nameof(LastError));
         OnPropertyChanged(nameof(TestStatus));
+        OnPropertyChanged(nameof(Connections));
+        OnPropertyChanged(nameof(QuotaRows));
         OnPropertyChanged(nameof(DisplayLabel));
         OnPropertyChanged(nameof(StatusMarker));
         OnPropertyChanged(nameof(ToolTip));
