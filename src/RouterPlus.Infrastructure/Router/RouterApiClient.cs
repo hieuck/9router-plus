@@ -428,9 +428,65 @@ public sealed class RouterApiClient : IRouterApiClient
             ? parsedLastErrorAt
             : (DateTimeOffset?)null;
 
-        return new ProviderConnection(id, provider, name, priority, isActive, email, createdAt, testStatus, errorCode, lastError, lastErrorAt);
-    }
+        var usageCount = element.TryGetProperty("usageCount", out var usageCountElement) &&
+                         usageCountElement.ValueKind == JsonValueKind.Number &&
+                         usageCountElement.TryGetInt64(out var parsedUsageCount)
+            ? parsedUsageCount
+            : (long?)null;
+        var limitCount = element.TryGetProperty("limitCount", out var limitCountElement) &&
+                         limitCountElement.ValueKind == JsonValueKind.Number &&
+                         limitCountElement.TryGetInt64(out var parsedLimitCount)
+            ? parsedLimitCount
+            : (long?)null;
+        var usageResetAt = element.TryGetProperty("usageResetAt", out var usageResetAtElement) &&
+                           usageResetAtElement.ValueKind == JsonValueKind.String &&
+                           usageResetAtElement.TryGetDateTimeOffset(out var parsedUsageResetAt)
+            ? parsedUsageResetAt
+            : (DateTimeOffset?)null;
 
+
+        var expiresAt = element.TryGetProperty("expiresAt", out var expiresAtElement) &&
+                        expiresAtElement.ValueKind == JsonValueKind.String &&
+                        expiresAtElement.TryGetDateTimeOffset(out var parsedExpiresAt)
+            ? parsedExpiresAt
+            : (DateTimeOffset?)null;
+
+        var expiresIn = element.TryGetProperty("expiresIn", out var expiresInElement) &&
+                        expiresInElement.ValueKind == JsonValueKind.Number &&
+                        expiresInElement.TryGetInt32(out var parsedExpiresIn)
+            ? parsedExpiresIn
+            : (int?)null;
+
+        var lastRefreshAt = element.TryGetProperty("lastRefreshAt", out var lastRefreshAtElement) &&
+                            lastRefreshAtElement.ValueKind == JsonValueKind.String &&
+                            lastRefreshAtElement.TryGetDateTimeOffset(out var parsedLastRefreshAt)
+            ? parsedLastRefreshAt
+            : (DateTimeOffset?)null;
+
+        // Use expiresAt for OAuth providers to show token expiration time
+        // This is different from usage quota - it's when the OAuth token expires
+        if (expiresAt.HasValue && expiresAt.Value > DateTimeOffset.Now && !usageResetAt.HasValue)
+        {
+            usageResetAt = expiresAt.Value;
+        }
+        
+        // If backend doesn't provide usage data, try to infer from error messages
+        if (!usageCount.HasValue && !limitCount.HasValue)
+        {
+            var inferred = UsageInferenceService.InferUsageFromError(provider, errorCode, lastError, lastErrorAt);
+            if (inferred is not null)
+            {
+                usageCount = inferred.UsageCount;
+                limitCount = inferred.LimitCount;
+                // Only use inferred resetAt if we don't have expiresAt
+                if (!usageResetAt.HasValue)
+                {
+                    usageResetAt = inferred.UsageResetAt;
+                }
+            }
+        }
+return new ProviderConnection(id, provider, name, priority, isActive, email, createdAt, testStatus, errorCode, lastError, lastErrorAt, usageCount, limitCount, usageResetAt, expiresAt, expiresIn, lastRefreshAt);
+}
     private static string? GetStringOrNumber(JsonElement root, string propertyName)
     {
         if (!root.TryGetProperty(propertyName, out var property))
