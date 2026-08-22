@@ -14,9 +14,9 @@ Dùng dữ liệu mẫu như `demo.user@example.com`, `C:\Users\demo\...` và `m
 
 ## Báo cáo lỗ hổng
 
-Không mở public issue cho lỗ hổng bảo mật. Trước khi public release, chủ dự án phải bật GitHub Security Advisories hoặc công bố một kênh liên hệ bảo mật private thực tế tại đây.
+Không mở public issue cho lỗ hổng bảo mật. Kênh báo cáo private chính thức là [GitHub Security Advisories](https://github.com/hieuck/9router-plus/security/advisories/new).
 
-Repository hiện chưa công bố email/kênh private cụ thể, vì vậy không nên gửi secret thật qua issue hoặc commit để “báo lỗi”. Đây là hard blocker: không public repository và không tạo stable release cho đến khi kênh private được cấu hình và kiểm tra.
+Private vulnerability reporting đã được bật cho repository. Không gửi secret thật qua issue hoặc commit để “báo lỗi”; dùng kênh private ở trên.
 
 ## Phạm vi bảo mật
 

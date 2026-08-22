@@ -2,18 +2,9 @@
 
 Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các release được tạo từ tag SemVer dạng `vMAJOR.MINOR.PATCH`.
 
-## [personal-v1.0.1] - 2026-08-21
-
-### Added
-
-- Bộ lọc provider trong sidebar cho phép lọc profile theo kết nối provider.
-- Toggle button với icon và tên ngắn cho từng provider (Codex, Kiro, OpenRouter, Ollama, Kimchi).
-
-### Fixed
-
-- Khắc phục hiện tượng cửa sổ nháy/thay đổi kích thước khi mở ứng dụng. Window placement được load và áp dụng trước khi window hiển thị.
-
 ## Unreleased
+
+## [v0.1.0] - 2026-08-22
 
 ### Added
 
@@ -54,8 +45,19 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 ### Known limitations
 
 - Build unsigned có thể kiểm tra/cài update sau khi người dùng xác nhận; updater chỉ chọn stable tag `v...`, checksum SHA-256 hợp lệ và archive layout an toàn.
-- Public release vẫn bị chặn cho đến khi repository public, kênh báo cáo private và clean-machine smoke test được xác nhận.
-- Project chưa bật private security reporting channel.
+- Stable release đầu tiên dành cho giai đoạn thử nghiệm public; build và release không yêu cầu chữ ký.
+- Private vulnerability reporting được bật qua GitHub Security Advisories.
+
+## [personal-v1.0.1] - 2026-08-21
+
+### Added
+
+- Bộ lọc provider trong sidebar cho phép lọc profile theo kết nối provider.
+- Toggle button với icon và tên ngắn cho từng provider (Codex, Kiro, OpenRouter, Ollama, Kimchi).
+
+### Fixed
+
+- Khắc phục hiện tượng cửa sổ nháy/thay đổi kích thước khi mở ứng dụng. Window placement được load và áp dụng trước khi window hiển thị.
 
 ## Release entry format
 
