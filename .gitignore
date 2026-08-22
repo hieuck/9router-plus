@@ -10,3 +10,9 @@ artifacts/
 .worktrees/
 work/
 ui-*.png
+
+# Temporary working files (not part of the project)
+*.sqlite
+*.patch
+*.csx
+temp_db_query/

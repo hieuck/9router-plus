@@ -1,6 +1,0 @@
-﻿Do you want me to:
-1. Create a complete manual patch and you apply it
-2. Continue trying to automate the changes  
-3. Summarize what's been done so you can finish manually
-
-Which option do you prefer?
