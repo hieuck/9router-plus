@@ -10,6 +10,7 @@ public sealed class RouterApiClient : IRouterApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly Uri _baseUri;
+    private readonly UsageDatabaseReader _usageReader;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -20,6 +21,7 @@ public sealed class RouterApiClient : IRouterApiClient
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         ArgumentException.ThrowIfNullOrWhiteSpace(dashboardBaseUrl);
         _baseUri = new Uri(dashboardBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
+        _usageReader = new UsageDatabaseReader();
     }
 
     public async Task<IReadOnlyList<ProviderConnection>> ListAllConnectionsAsync(
@@ -33,8 +35,12 @@ public sealed class RouterApiClient : IRouterApiClient
             return Array.Empty<ProviderConnection>();
         }
 
+        
+        // Get usage data from database
+        var usageByConnection = _usageReader.GetTodayUsageByConnection();
+
         return connections.EnumerateArray()
-            .Select(ParseConnection)
+            .Select(element => ParseConnection(element, usageByConnection))
             .Where(connection => connection is not null)
             .Cast<ProviderConnection>()
             .OrderBy(connection => connection.Provider)
@@ -385,13 +391,13 @@ public sealed class RouterApiClient : IRouterApiClient
 
         if (root.TryGetProperty("connection", out var connection))
         {
-            return ParseConnection(connection);
+            return ParseConnection(connection, new Dictionary<string, UsageData>());
         }
 
-        return root.TryGetProperty("id", out _) ? ParseConnection(root) : null;
+        return root.TryGetProperty("id", out _) ? ParseConnection(root, new Dictionary<string, UsageData>()) : null;
     }
 
-    private static ProviderConnection? ParseConnection(JsonElement element)
+    private static ProviderConnection? ParseConnection(JsonElement element, Dictionary<string, UsageData> usageByConnection)
     {
         if (!element.TryGetProperty("id", out var idElement) ||
             !element.TryGetProperty("provider", out var providerElement))
@@ -470,7 +476,17 @@ public sealed class RouterApiClient : IRouterApiClient
             usageResetAt = expiresAt.Value;
         }
         
-        // If backend doesn't provide usage data, try to infer from error messages
+        // Try to get real usage data from database first
+        if (!usageCount.HasValue && !limitCount.HasValue && usageByConnection.TryGetValue(id, out var dbUsage))
+        {
+            // Use today's usage from database
+            usageCount = dbUsage.Requests;
+            // Database doesn't have limit, so we leave limitCount null
+            // Set reset time to end of today
+            usageResetAt = DateTimeOffset.Now.Date.AddDays(1);
+        }
+        
+        // If backend doesn't provide usage data and database doesn't have it, try to infer from error messages
         if (!usageCount.HasValue && !limitCount.HasValue)
         {
             var inferred = UsageInferenceService.InferUsageFromError(provider, errorCode, lastError, lastErrorAt);
