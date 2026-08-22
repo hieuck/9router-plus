@@ -45,6 +45,7 @@ public partial class ChromeSelectionDialog : Window, INotifyPropertyChanged
             if (_selectedInstallation == value) return;
             _selectedInstallation = value;
             OnPropertyChanged();
+            SelectButton.IsEnabled = value != null;
         }
     }
 
