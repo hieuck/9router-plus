@@ -782,7 +782,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         try
         {
+            AppendLog("INFO", "Auto-detect: searching for Chrome installations...");
             var installations = _chromeLocator.FindAll();
+            AppendLog("INFO", $"Auto-detect: found {installations.Count} installation(s).");
+
+            foreach (var inst in installations)
+            {
+                AppendLog("INFO", $"  - {inst.ExecutablePath}");
+                AppendLog("INFO", $"    User Data: {inst.UserDataDirectory}");
+            }
 
             if (installations.Count == 0)
             {
@@ -792,7 +800,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             if (installations.Count == 1)
             {
-                // Only one found - apply directly
                 var installation = installations[0];
                 ChromeExecutablePath = installation.ExecutablePath;
                 ChromeUserDataDirectory = installation.UserDataDirectory;
@@ -801,13 +808,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
             }
 
-            // Multiple installations found - show selection dialog
+            AppendLog("INFO", $"Auto-detect: showing selection dialog for {installations.Count} installations...");
             var dialog = new ChromeSelectionDialog(installations)
             {
                 Owner = System.Windows.Application.Current.MainWindow
             };
 
-            if (dialog.ShowDialog() == true && dialog.Result != null)
+            var dialogResult = dialog.ShowDialog();
+            AppendLog("INFO", $"Auto-detect: dialog result = {dialogResult}");
+
+            if (dialogResult == true && dialog.Result != null)
             {
                 ChromeExecutablePath = dialog.Result.ExecutablePath;
                 ChromeUserDataDirectory = dialog.Result.UserDataDirectory;
@@ -821,6 +831,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            AppendLog("ERROR", $"Auto-detect error: {SafeError(ex)}");
             StatusText = $"Lỗi auto-detect: {SafeError(ex)}";
         }
         await Task.CompletedTask;
