@@ -8,4 +8,15 @@
     <sys:String x:Key="ProviderSaveKeyText">Save key</sys:String>
     <sys:String x:Key="ProviderGetKeyText">Get key</sys:String>
     <sys:String x:Key="ProviderCancelText">Cancel</sys:String>
+
+    <!-- Chrome Selection Dialog -->
+    <sys:String x:Key="ChromeSelectionDialogTitle">Select Chrome</sys:String>
+    <sys:String x:Key="ChromeSelectionRescan">Rescan</sys:String>
+    <sys:String x:Key="ChromeSelectionOpenChrome">Chrome</sys:String>
+    <sys:String x:Key="ChromeSelectionOpenData">Data</sys:String>
+    <sys:String x:Key="ChromeSelectionOk">OK</sys:String>
+    <sys:String x:Key="ChromeSelectionSelect">Select</sys:String>
+    <sys:String x:Key="ChromeSelectionCancel">Cancel</sys:String>
+    <sys:String x:Key="ChromeSelectionToolTipChrome">Open Chrome location</sys:String>
+    <sys:String x:Key="ChromeSelectionToolTipData">Open User Data location</sys:String>
 </ResourceDictionary>

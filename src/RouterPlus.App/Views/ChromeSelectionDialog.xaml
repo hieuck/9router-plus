@@ -1,7 +1,7 @@
 <Window x:Class="RouterPlus.App.Views.ChromeSelectionDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Chon Chrome Installation"
+        Title="{DynamicResource ChromeSelectionDialogTitle}"
         Width="600" Height="320"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
@@ -19,8 +19,8 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Chon Chrome" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Content="Quet lai" Click="Rescan_Click" Padding="10,4" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="0" Text="{DynamicResource ChromeSelectionDialogTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="{DynamicResource ChromeSelectionRescan}" Click="Rescan_Click" Padding="10,4" VerticalAlignment="Center" />
         </Grid>
 
         <!-- List -->
@@ -55,18 +55,18 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
-                            <Button Content="Chrome" FontSize="9" Padding="6,2" Margin="0,0,4,0"
-                                    ToolTip="Mo vi tri Chrome"
+                            <Button Content="{DynamicResource ChromeSelectionOpenChrome}" FontSize="9" Padding="6,2" Margin="0,0,4,0"
+                                    ToolTip="{DynamicResource ChromeSelectionToolTipChrome}"
                                     Click="OpenChromeLocation_Click"
                                     Tag="{Binding ExecutablePath}" />
-                            <Button Content="Data" FontSize="9" Padding="6,2"
-                                    ToolTip="Mo vi tri User Data"
+                            <Button Content="{DynamicResource ChromeSelectionOpenData}" FontSize="9" Padding="6,2"
+                                    ToolTip="{DynamicResource ChromeSelectionToolTipData}"
                                     Click="OpenUserDataLocation_Click"
                                     Tag="{Binding UserDataDirectory}" />
                             <Border Margin="6,0,0,0" CornerRadius="4" Padding="5,1"
                                     Background="{DynamicResource SuccessBrush}"
                                     Visibility="{Binding IsValid, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <TextBlock Text="OK" FontSize="9" Foreground="White" FontWeight="SemiBold" />
+                                <TextBlock Text="{DynamicResource ChromeSelectionOk}" FontSize="9" Foreground="White" FontWeight="SemiBold" />
                             </Border>
                         </StackPanel>
                     </Grid>
@@ -74,10 +74,10 @@
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <!-- Buttons -->
+        <!-- Buttons - aligned right, same height -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Content="Huy" Width="80" Height="32" Margin="0,0,8,0" Click="Cancel_Click" />
-            <Button x:Name="SelectButton" Content="Chon" Width="80" Height="32" Click="Select_Click" IsEnabled="False"
+            <Button Content="{DynamicResource ChromeSelectionCancel}" Width="80" Height="32" Margin="0,0,8,0" Click="Cancel_Click" />
+            <Button x:Name="SelectButton" Content="{DynamicResource ChromeSelectionSelect}" Width="80" Height="32" Click="Select_Click" IsEnabled="False"
                     Style="{StaticResource PrimaryButtonStyle}" />
         </StackPanel>
     </Grid>
