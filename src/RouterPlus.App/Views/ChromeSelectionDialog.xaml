@@ -27,7 +27,7 @@
                            Margin="0,5,0,0" />
             </StackPanel>
             <Button Grid.Column="1"
-                    Content="🔄 Scan lại"
+                    Content="🔄 Quét lại"
                     Click="Rescan_Click"
                     VerticalAlignment="Center"
                     Padding="12,6"
