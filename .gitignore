@@ -16,3 +16,32 @@ ui-*.png
 *.patch
 *.csx
 temp_db_query/
+
+# Session reports and temporary scripts (development artifacts)
+*-COMPLETE.txt
+*-FIXED*.txt
+*-FIX*.txt
+*-SUMMARY.txt
+*-REPORT*.txt
+*-VERIFICATION*.txt
+*-CHECKLIST*.txt
+*-ANALYSIS*.txt
+*-STATUS*.txt
+NEXT_STEPS.txt
+investigation-*.txt
+fix_*.py
+temp_*.html
+temp_*.txt
+*.pyc
+__pycache__/
+
+# Sensitive data patterns (prevent credential leaks)
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.*
+credentials.*
+config.local.*
