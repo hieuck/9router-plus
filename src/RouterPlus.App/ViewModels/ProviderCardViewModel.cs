@@ -11,6 +11,7 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
     private ProviderHealthState _healthState = ProviderHealthState.Unknown;
     private string _statusTooltip = "Provider status is waiting for synchronization.";
     private IReadOnlyList<ProviderConnection> _connections = Array.Empty<ProviderConnection>();
+    private bool _isWorkflowInProgress;
 
     public ProviderCardViewModel(ProviderDefinition definition)
     {
@@ -37,6 +38,8 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
     };
 
     public WorkflowKind Workflow => Definition.Workflow;
+
+    public bool IsWorkflowInProgress => _isWorkflowInProgress;
 
     public string ApiKeyValue
     {
@@ -79,6 +82,17 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
     public void MarkApiKeySaved() => _apiKeyState.MarkSaved();
 
     public void ToggleApiKeyVisibility() => _apiKeyState.ToggleVisibility();
+
+    internal void SetWorkflowInProgress(bool value)
+    {
+        if (_isWorkflowInProgress == value)
+        {
+            return;
+        }
+
+        _isWorkflowInProgress = value;
+        OnPropertyChanged(nameof(IsWorkflowInProgress));
+    }
 
     public void UpdateProviderStatus(ProfileProviderStatusViewModel? status)
     {

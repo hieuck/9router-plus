@@ -5,7 +5,7 @@ namespace RouterPlus.Core.Tests;
 public sealed class ToastNotificationLayoutTests
 {
     [Fact]
-    public void Toast_overlay_spans_the_main_window_grid()
+    public void Toast_overlay_is_top_right_of_content_area()
     {
         var xamlPath = FindRepositoryFile("src", "RouterPlus.App", "MainWindow.xaml");
         var document = XDocument.Load(xamlPath);
@@ -20,8 +20,13 @@ public sealed class ToastNotificationLayoutTests
                     "{Binding CurrentToast.IsVisible}",
                     StringComparison.Ordinal)));
 
-        Assert.Equal("2", (string?)toastBorder.Attribute("Grid.RowSpan"));
-        Assert.Equal("2", (string?)toastBorder.Attribute("Grid.ColumnSpan"));
+        Assert.Equal("1", (string?)toastBorder.Attribute("Grid.Row"));
+        Assert.Equal("1", (string?)toastBorder.Attribute("Grid.Column"));
+        Assert.Equal("Top", (string?)toastBorder.Attribute("VerticalAlignment"));
+        Assert.Equal("Right", (string?)toastBorder.Attribute("HorizontalAlignment"));
+        Assert.Equal("0,14,26,0", (string?)toastBorder.Attribute("Margin"));
+        Assert.Null(toastBorder.Attribute("Grid.RowSpan"));
+        Assert.Null(toastBorder.Attribute("Grid.ColumnSpan"));
     }
 
     private static string FindRepositoryFile(params string[] parts)
