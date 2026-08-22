@@ -8,4 +8,15 @@
     <sys:String x:Key="ProviderSaveKeyText">Lưu key</sys:String>
     <sys:String x:Key="ProviderGetKeyText">Lấy key</sys:String>
     <sys:String x:Key="ProviderCancelText">Hủy</sys:String>
+
+    <!-- Chrome Selection Dialog -->
+    <sys:String x:Key="ChromeSelectionDialogTitle">Chọn Chrome</sys:String>
+    <sys:String x:Key="ChromeSelectionRescan">Quét lại</sys:String>
+    <sys:String x:Key="ChromeSelectionOpenChrome">Chrome</sys:String>
+    <sys:String x:Key="ChromeSelectionOpenData">Data</sys:String>
+    <sys:String x:Key="ChromeSelectionOk">OK</sys:String>
+    <sys:String x:Key="ChromeSelectionSelect">Chọn</sys:String>
+    <sys:String x:Key="ChromeSelectionCancel">Hủy</sys:String>
+    <sys:String x:Key="ChromeSelectionToolTipChrome">Mở vị trí Chrome</sys:String>
+    <sys:String x:Key="ChromeSelectionToolTipData">Mở vị trí User Data</sys:String>
 </ResourceDictionary>
