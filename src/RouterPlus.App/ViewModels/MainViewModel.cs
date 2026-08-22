@@ -9,6 +9,7 @@ using RouterPlus.Core.Providers;
 using RouterPlus.Core.Security;
 using RouterPlus.Core.Updates;
 using RouterPlus.App;
+using RouterPlus.App.Views;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Router;
 using RouterPlus.Infrastructure.Security;
@@ -801,7 +802,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             // Multiple installations found - show selection dialog
-            var dialog = new Views.ChromeSelectionDialog(installations)
+            var dialog = new ChromeSelectionDialog(installations)
             {
                 Owner = System.Windows.Application.Current.MainWindow
             };
