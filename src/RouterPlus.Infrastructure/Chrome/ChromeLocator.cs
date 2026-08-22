@@ -97,21 +97,45 @@ public sealed class ChromeLocator
         var executableDir = Path.GetDirectoryName(executablePath);
         if (string.IsNullOrWhiteSpace(executableDir))
         {
-            return FindUserDataDirectory(); // Fallback to default
+            return null;
         }
 
-        // Check if it's CentBrowser
-        if (executablePath.Contains("CentBrowser", StringComparison.OrdinalIgnoreCase))
+        // Get the Application folder's parent (should be browser root)
+        var browserRoot = Path.GetDirectoryName(executableDir);
+        if (string.IsNullOrWhiteSpace(browserRoot))
         {
-            var centBrowserUserData = Path.Combine(Path.GetDirectoryName(executableDir)!, "User Data");
-            if (Directory.Exists(centBrowserUserData))
+            return null;
+        }
+
+        // Try User Data in the same root as executable
+        var userDataCandidate = Path.Combine(browserRoot, "User Data");
+        if (Directory.Exists(userDataCandidate))
+        {
+            // Verify it's a valid Chrome User Data directory
+            var localStateFile = Path.Combine(userDataCandidate, "Local State");
+            if (File.Exists(localStateFile))
             {
-                return centBrowserUserData;
+                return userDataCandidate;
             }
         }
 
-        // Default: Google Chrome location
-        return FindUserDataDirectory();
+        // For Google Chrome in LocalAppData, try the standard location
+        if (executablePath.Contains("Google\\Chrome", StringComparison.OrdinalIgnoreCase))
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var googleChromeUserData = Path.Combine(localAppData, "Google", "Chrome", "User Data");
+            if (Directory.Exists(googleChromeUserData))
+            {
+                var localStateFile = Path.Combine(googleChromeUserData, "Local State");
+                if (File.Exists(localStateFile))
+                {
+                    return googleChromeUserData;
+                }
+            }
+        }
+
+        // Could not find valid User Data directory
+        return null;
     }
 
     public string? FindUserDataDirectory()
