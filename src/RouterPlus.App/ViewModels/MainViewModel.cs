@@ -1263,6 +1263,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void ApplyProfileFilter()
     {
+        var selectedProfileId = SelectedProfile?.Id;
         FilteredProfiles.Clear();
         FilteredProfileRows.Clear();
         var rowsByProfileId = ProfileRows.ToDictionary(row => row.Profile.Id, StringComparer.Ordinal);
@@ -1283,6 +1284,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
             row.SetDisplayIndex(displayIndex++);
             FilteredProfileRows.Add(row);
         }
+
+        if (selectedProfileId is not null &&
+            FilteredProfiles.Any(profile => profile.Id == selectedProfileId))
+        {
+            SelectedProfile = Profiles.First(profile => profile.Id == selectedProfileId);
+        }
+
         OnPropertyChanged(nameof(FilteredProfileCount));
         OnPropertyChanged(nameof(FilteredProfileCountLabel));
     }

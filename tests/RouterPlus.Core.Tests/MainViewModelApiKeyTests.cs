@@ -11,6 +11,47 @@ namespace RouterPlus.Core.Tests;
 public sealed class MainViewModelApiKeyTests
 {
     [Fact]
+    public async Task AddApiKey_preserves_selected_profile_when_refresh_rebuilds_filtered_rows()
+    {
+        var profile = new ChromeProfile(
+            "profile-id",
+            "Work",
+            "Default",
+            Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N")),
+            IsDefault: true);
+        var secretKey = ProfileSecretKey.Create(profile, ProviderKind.OpenRouter);
+        var handler = new ApiKeyAddHandler();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = new MainViewModel(httpClient: httpClient)
+        {
+            DashboardBaseUrl = "http://router.test"
+        };
+        viewModel.Profiles.Add(profile);
+        viewModel.ProfileRows.Add(new ProfileRowViewModel(profile, viewModel.Providers));
+        viewModel.SelectedProfile = profile;
+        viewModel.ProfileSearchText = profile.Name;
+        viewModel.FilteredProfileRows.CollectionChanged += (_, eventArgs) =>
+        {
+            if (eventArgs.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+            {
+                viewModel.SelectedProfile = null;
+            }
+        };
+
+        try
+        {
+            var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "test-key");
+
+            Assert.True(added);
+            Assert.Equal(profile.Id, viewModel.SelectedProfile?.Id);
+        }
+        finally
+        {
+            await new DpapiSecretVault().RemoveAsync(secretKey);
+        }
+    }
+
+    [Fact]
     public async Task AddApiKey_tests_created_connection_before_refreshing_status()
     {
         var profile = new ChromeProfile(
