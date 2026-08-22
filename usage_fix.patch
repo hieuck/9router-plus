@@ -1,0 +1,26 @@
+*** Begin Patch
+*** Update File: src/RouterPlus.Infrastructure/Router/RouterApiClient.cs
+@@ -476,14 +476,18 @@ private static ProviderConnection? ParseConnection(JsonElement element, Diction
+             usageResetAt = expiresAt.Value;
+         }
+         
+-        // Try to get real usage data from database first
+-        if (!usageCount.HasValue && !limitCount.HasValue && usageByConnection.TryGetValue(id, out var dbUsage))
++        // ALWAYS prefer database for usageCount (most accurate, real-time local data)
++        // Database is the source of truth for usage tracking, NOT API response
++        if (usageByConnection.TryGetValue(id, out var dbUsage))
+         {
+-            // Use today's usage from database
++            // Override API usageCount with real database value (accurate, real-time)
+             usageCount = dbUsage.Requests;
++            
+             // Database doesn't have limit, so we leave limitCount null
++            // (API limitCount is preserved if available)
++            
+             // Set reset time to end of today ONLY if not already set from expiresAt
+-            if (!usageResetAt.HasValue)
++            if (!usageResetAt.HasValue || usageResetAt.Value.Date != DateTimeOffset.UtcNow.Date.AddDays(1).Date)
+             {
+                 usageResetAt = DateTimeOffset.UtcNow.Date.AddDays(1);
+             }
+*** End Patch

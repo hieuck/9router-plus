@@ -1,0 +1,82 @@
+## Tóm tắt Điều tra - Usage Quota Integration
+
+### Vấn đề
+RouterPlus không hiển thị usage quota dù 9Router có dashboard quota page.
+
+### Phát hiện chính
+
+#### ✅ RouterPlus (Frontend) - ĐÃ SẴN SÀNG
+- Có đầy đủ code parse usageCount, limitCount, usageResetAt
+- UI hiển thị bars, percentages, warnings đã hoàn chỉnh
+- Tất cả ViewModels và converters đã implement
+
+#### ❌ 9Router Backend - THIẾU DATA
+Endpoint /api/providers KHÔNG trả về:
+- usageCount
+- limitCount  
+- usageResetAt
+
+Nhưng error messages CHO THẤY backend biết về limits:
+- Codex: "The usage limit has been reached"
+- Kiro: "You have reached the limit...MONTHLY_REQUEST_COUNT"
+- Ollama: "reached your session usage limit"
+- OpenRouter: "requires more credits"
+
+### Giải pháp
+
+Backend cần implement 1 trong 4 options:
+
+1. **Track usage khi proxy requests** (BEST)
+2. **Parse provider response headers** (x-ratelimit-*)
+3. **Background worker fetch từ provider APIs** (mỗi 10 phút)
+4. **Parse từ lastError** (quick fix, không chính xác)
+
+Sau đó thêm 3 fields vào /api/providers response:
+
+`json
+{
+  "connections": [{
+    "id": "...",
+    "provider": "openrouter",
+    ...
+    "usageCount": 8500,
+    "limitCount": 10000,
+    "usageResetAt": "2026-08-27T00:00:00Z"
+  }]
+}
+`
+
+### Files tạo ra
+
+1. docs/CURRENT-SITUATION-ANALYSIS.md (8.4 KB)
+   - Phân tích chi tiết tình hình
+   - 4 giải pháp implement
+   - Testing checklist
+
+2. docs/9router-usage-api-integration.md (12 KB)
+   - Full integration guide
+   - API specs
+   - Implementation strategies
+
+3. docs/provider-usage-api-examples.md (13 KB)
+   - Code examples cho từng provider
+   - OpenRouter, Codex, Kiro, Ollama, Kimchi
+   - Caching, error handling
+
+4. docs/USAGE-QUOTA-SUMMARY.md (6.3 KB)
+   - Quick reference
+   - Minimal examples
+   - Fast start guide
+
+### Hành động tiếp theo
+
+**Cho 9Router Backend Developer:**
+1. Mở Chrome DevTools Network tab tại http://localhost:20128/dashboard/quota
+2. Xem dashboard gọi API nào để lấy quota data
+3. Implement track/fetch usage theo 1 trong 4 giải pháp
+4. Add 3 fields vào /api/providers response
+5. Test với RouterPlus
+
+**Cho RouterPlus:**
+✅ Không cần làm gì - đã sẵn sàng 100%
+

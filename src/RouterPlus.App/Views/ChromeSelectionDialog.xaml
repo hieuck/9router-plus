@@ -1,0 +1,145 @@
+<Window x:Class="RouterPlus.App.Views.ChromeSelectionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Chọn Chrome Installation"
+        Width="700"
+        Height="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource SurfaceBrush}">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Chọn Chrome Installation" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Text="Tìm thấy nhiều Chrome trên máy. Vui lòng chọn một."
+                       FontSize="11"
+                       Foreground="{DynamicResource MutedTextBrush}"
+                       Margin="0,5,0,0" />
+        </StackPanel>
+
+        <ListBox Grid.Row="1"
+                 x:Name="InstallationListBox"
+                 ItemsSource="{Binding Installations}"
+                 SelectedItem="{Binding SelectedInstallation, Mode=TwoWay}"
+                 HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 BorderBrush="{DynamicResource BorderBrush}"
+                 BorderThickness="1"
+                 Background="{DynamicResource PanelBrush}">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0,0,0,8" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="1" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="ItemBorder"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="8"
+                                        Padding="12">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource PanelLightBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
+                                Width="40" Height="40"
+                                CornerRadius="8"
+                                Background="{DynamicResource AccentDarkBrush}"
+                                Margin="0,0,12,0"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="C"
+                                       Foreground="{DynamicResource AvatarTextBrush}"
+                                       FontSize="16"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+
+                        <TextBlock Grid.Row="0" Grid.Column="1"
+                                   Text="{Binding DisplayName}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold" />
+                        <TextBlock Grid.Row="1" Grid.Column="1"
+                                   Text="{Binding ExecutablePath}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0" />
+                        <TextBlock Grid.Row="2" Grid.Column="1"
+                                   Text="{Binding UserDataDirectory}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0" />
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,20,0,0">
+            <Button Content="Hủy"
+                    Width="100"
+                    Height="38"
+                    Margin="0,0,8,0"
+                    Click="Cancel_Click" />
+            <Button Content="Chọn"
+                    Width="100"
+                    Height="38"
+                    Click="Select_Click">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                        <Setter Property="IsEnabled" Value="False" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedInstallation}" Value="{x:Null}">
+                                <Setter Property="IsEnabled" Value="False" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding SelectedInstallation, Converter={x:Null}}" Value="False">
+                                <Setter Property="IsEnabled" Value="True" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

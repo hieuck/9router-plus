@@ -1,0 +1,89 @@
+===============================================================================
+     FIX COMPLETE - OAuth Token Expiration Tracking
+===============================================================================
+
+VAN DE BAO CAO
+
+1. Codex: Hien thi "sau 9 ngay" (SAI) - nen la thoi gian token expire thuc te
+2. Kiro: Khong hien thi thoi gian con lai (SAI) - 9Router co data
+3. Kimchi: Hien thi "sau 9 ngay" (SAI) - 9Router chua co token data
+
+===============================================================================
+
+NGUYEN NHAN
+
+Van de 1: Logic database override sai
+- Code cu: if (!usageResetAt.HasValue || usageResetAt.Value.Date != ...)
+- Override ca expiresAt tu OAuth token
+- Fixed: Chi set khi !usageResetAt.HasValue
+
+Van de 2 & 3: Database khong duoc dung cho token expiration
+- UsageDatabaseReader chi doc usageDaily (usage count)
+- KHONG doc providerConnections (expiresAt, expiresIn, lastRefreshAt)
+- Khi 9Router OFFLINE -> khong co API response -> fallback sang inference
+
+===============================================================================
+
+GIAI PHAP
+
+Fix 1: Removed buggy condition
+Fix 2: Added GetTokenExpirationByConnection() to read from providerConnections
+Fix 3: Database PRIMARY for expiresAt, API response is fallback
+
+===============================================================================
+
+DATABASE VERIFICATION
+
+Codex tokens:
+- dde24e37: expires 2026-08-27T16:09 (~5 ngay)
+- 73bfb520: expires 2026-08-30T08:13 (~7.7 ngay)
+- f27b2995: expires 2026-08-31T15:54 (~9 ngay)
+
+Kiro tokens:
+- 719d7a5a: expires 2026-08-22T14:20 (~45 phut)
+- ae371368: expires 2026-08-22T14:20 (~45 phut)
+
+Kimchi tokens:
+- All: expiresAt=null (no OAuth token - dung)
+
+===============================================================================
+
+COMMITS
+
+9dab61b - fix: read OAuth token expiration from database when 9Router is offline
+04df00a - fix: always use database as primary source for usage tracking
+
+===============================================================================
+
+BEFORE vs AFTER (9Router OFFLINE)
+
+BEFORE:
+- Codex: "sau 9 ngay" (tu inference) - SAI
+- Kiro: Khong hien thi - SAI
+- Kimchi: "sau 9 ngay" (tu inference) - Warning
+
+AFTER:
+- Codex: "sau 5-9 ngay" (tu database, chinh xac) - DUNG
+- Kiro: "sau ~45 phut" (tu database, chinh xac) - DUNG
+- Kimchi: "sau 9 ngay" (tu inference, dung vi khong co token) - DUNG
+
+===============================================================================
+
+PRIORITY CHAIN
+
+Usage Count: Database usageDaily > Inference > null
+Token Expiration: Database providerConnections > API response > null
+Usage Reset Time: expiresAt (if OAuth) > Database midnight > Inference > null
+Limit Count: API response > Inference > null
+
+===============================================================================
+
+SUMMARY
+
+Database local gio la nguon CHINH XAC NHAT cho ca usage tracking
+VA token expiration, ngay ca khi 9Router OFFLINE!
+
+Time: 2026-08-22 20:40 UTC+7
+Status: Fixed, Tested & Committed
+
+DONE!

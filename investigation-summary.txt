@@ -1,0 +1,48 @@
+# Investigation Complete - Summary
+
+## Created Documentation Files
+
+1. **docs/USAGE-QUOTA-SUMMARY.md** (6.3 KB)
+   - Quick reference for backend developers
+   - Minimal code examples
+   - Testing checklist
+
+2. **docs/9router-usage-api-integration.md** (12 KB)
+   - Complete integration guide
+   - API response format specifications
+   - Implementation strategies
+   - Troubleshooting guide
+
+3. **docs/provider-usage-api-examples.md** (13 KB)
+   - Working code for each provider
+   - OpenRouter, Codex, Kiro, Ollama, Kimchi
+   - Caching and error handling
+   - Complete integration example
+
+## Key Findings
+
+### ✅ Frontend is Complete
+- RouterPlus UI fully implements usage tracking
+- Parses: usageCount, limitCount, usageResetAt
+- Displays: bars, percentages, warnings, tooltips
+- Color coding: green < 80%, orange >= 80%, red >= 100%
+
+### ⚠️ Backend Integration Needed
+- 9Router backend must return 3 optional fields
+- Fields: usageCount, limitCount, usageResetAt
+- Endpoint: GET http://localhost:20128/api/providers
+
+### 📊 What the UI Shows
+- Sidebar badges: "8.5K/10K" with color
+- Provider cards: usage bars with percentage
+- Tooltips: detailed usage + reset time
+- Warnings: visible at 80%+ usage
+
+## Next Steps for Backend Developer
+
+1. Start with OpenRouter (easiest)
+2. Add 10-minute caching
+3. Test with mock data first
+4. Add other providers incrementally
+5. Monitor API rate limits
+

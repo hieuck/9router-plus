@@ -45,6 +45,75 @@ public sealed class ChromeLocator
         return candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path));
     }
 
+    public IReadOnlyList<ChromeInstallation> FindAll()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+        var executableCandidates = new[]
+        {
+            Path.Combine(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+            ReadRegistryExecutable(RegistryHive.CurrentUser),
+            ReadRegistryExecutable(RegistryHive.LocalMachine)
+        };
+
+        // Search for other Chromium-based browsers in common locations
+        var additionalSearchPaths = new[]
+        {
+            Path.Combine(programFiles, "CentBrowser", "Application", "chrome.exe"),
+            Path.Combine(programFilesX86, "CentBrowser", "Application", "chrome.exe"),
+            Path.Combine(localAppData, "CentBrowser", "Application", "chrome.exe"),
+            "G:\\CentBrowser\\Application\\chrome.exe",
+            "D:\\CentBrowser\\Application\\chrome.exe",
+            "C:\\CentBrowser\\Application\\chrome.exe"
+        };
+
+        var allCandidates = executableCandidates.Concat(additionalSearchPaths);
+        var foundExecutables = allCandidates
+            .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
+            .Select(path => Path.GetFullPath(path!))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var installations = new List<ChromeInstallation>();
+        foreach (var executable in foundExecutables)
+        {
+            var userDataDirectory = FindUserDataDirectoryForExecutable(executable);
+            if (!string.IsNullOrWhiteSpace(userDataDirectory))
+            {
+                installations.Add(new ChromeInstallation(executable, userDataDirectory));
+            }
+        }
+
+        return installations;
+    }
+
+    private string? FindUserDataDirectoryForExecutable(string executablePath)
+    {
+        // Try to infer User Data location based on executable path
+        var executableDir = Path.GetDirectoryName(executablePath);
+        if (string.IsNullOrWhiteSpace(executableDir))
+        {
+            return FindUserDataDirectory(); // Fallback to default
+        }
+
+        // Check if it's CentBrowser
+        if (executablePath.Contains("CentBrowser", StringComparison.OrdinalIgnoreCase))
+        {
+            var centBrowserUserData = Path.Combine(Path.GetDirectoryName(executableDir)!, "User Data");
+            if (Directory.Exists(centBrowserUserData))
+            {
+                return centBrowserUserData;
+            }
+        }
+
+        // Default: Google Chrome location
+        return FindUserDataDirectory();
+    }
+
     public string? FindUserDataDirectory()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);

@@ -1,0 +1,49 @@
+# Checklist Xác Nhận Fix Bug Search Profile
+
+## ✓ Kiểm Tra Hoàn Thành
+
+### XAML UI (src/RouterPlus.App/MainWindow.xaml)
+✓ Đã thêm search box tại Grid.Row="5"
+✓ TextBox binding đến ProfileSearchText với UpdateSourceTrigger=PropertyChanged
+✓ Button clear binding đến ClearProfileSearchCommand
+✓ Placeholder "Tìm profile..." hiển thị khi rỗng
+✓ XAML syntax hợp lệ (đã parse thành công)
+✓ Không sử dụng PlaceholderBehavior không tồn tại
+✓ Dùng TextBlock overlay cho placeholder
+
+### ViewModel Backend (src/RouterPlus.App/ViewModels/MainViewModel.cs)
+✓ ProfileSearchText property tồn tại
+✓ ClearProfileSearchCommand tồn tại và được khởi tạo
+✓ FilteredProfileRows collection tồn tại
+✓ ApplyProfileFilter() được gọi khi ProfileSearchText thay đổi
+✓ ChromeProfileFilter.Filter() thực hiện tìm kiếm
+
+### Binding Verification
+✓ ProfileSearchText - property public tồn tại
+✓ ClearProfileSearchCommand - AsyncRelayCommand public tồn tại
+✓ FilteredProfileRows - ObservableCollection public tồn tại
+✓ CanClearProfileSearch - property boolean tồn tại
+
+## Chức Năng Hoạt Động
+1. Search box hiển thị trên danh sách profile
+2. Gõ từ khóa → filter realtime
+3. Tìm kiếm không phân biệt hoa thường
+4. Tìm trong tên profile và directory name
+5. Click ✕ để xóa search
+6. Số lượng profile filtered cập nhật tự động
+
+## Yêu Cầu Để Test
+- Cần cài .NET SDK 8.0.424
+- Build project: dotnet build
+- Run app để test UI
+
+## Kết Luận
+Fix đã hoàn chỉnh về mặt code:
+- UI component đã thêm
+- Backend logic đã sẵn sàng từ trước
+- Binding đúng và đầy đủ
+- XAML syntax hợp lệ
+
+Chỉ còn thiếu .NET SDK để build và test thực tế.
+
+2026-08-22 21:33:10
