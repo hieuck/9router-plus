@@ -20,7 +20,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="{DynamicResource ChromeSelectionDialogTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Content="{DynamicResource ChromeSelectionRescan}" Click="Rescan_Click" Padding="10,4" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="{DynamicResource ChromeSelectionRescan}" Click="Rescan_Click" Style="{StaticResource ToolButtonStyle}" VerticalAlignment="Center" />
         </Grid>
 
         <!-- List -->
@@ -55,11 +55,14 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
-                            <Button Content="{DynamicResource ChromeSelectionOpenChrome}" FontSize="9" Padding="6,3" Margin="0,0,4,0" MinWidth="50"
+                            <Button Content="{DynamicResource ChromeSelectionOpenChrome}"
+                                    Style="{StaticResource CompactButtonStyle}"
+                                    Margin="0,0,4,0"
                                     ToolTip="{DynamicResource ChromeSelectionToolTipChrome}"
                                     Click="OpenChromeLocation_Click"
                                     Tag="{Binding ExecutablePath}" />
-                            <Button Content="{DynamicResource ChromeSelectionOpenData}" FontSize="9" Padding="6,3" MinWidth="40"
+                            <Button Content="{DynamicResource ChromeSelectionOpenData}"
+                                    Style="{StaticResource CompactButtonStyle}"
                                     ToolTip="{DynamicResource ChromeSelectionToolTipData}"
                                     Click="OpenUserDataLocation_Click"
                                     Tag="{Binding UserDataDirectory}" />
@@ -82,13 +85,12 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Button Grid.Column="1" Content="{DynamicResource ChromeSelectionCancel}"
-                    Width="80" Height="30" Padding="0" Margin="0,0,8,0"
-                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Style="{StaticResource DialogButtonStyle}"
                     Click="Cancel_Click" />
             <Button Grid.Column="2" x:Name="SelectButton"
                     Content="{DynamicResource ChromeSelectionSelect}"
-                    Width="80" Height="30" Padding="0"
-                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Style="{StaticResource DialogButtonStyle}"
+                    Margin="0"
                     Click="Select_Click" IsEnabled="False" />
         </Grid>
     </Grid>
