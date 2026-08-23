@@ -26,15 +26,17 @@ public sealed record ProviderConnection(
 
     public bool HasUsageData => QuotaRows.Count > 0 || UsageCount.HasValue || LimitCount.HasValue;
 
-    public double? UsagePercentage => QuotaRows.FirstOrDefault()?.UsagePercentage is { } quotaPercentage
+    public double? UsagePercentage => QuotaRows.FirstOrDefault(quota => quota.UsagePercentage.HasValue)?.UsagePercentage is { } quotaPercentage
         ? (double)quotaPercentage
         : LimitCount.HasValue && LimitCount.Value > 0
             ? (UsageCount ?? 0) * 100.0 / LimitCount.Value
             : null;
 
-    public bool IsNearLimit => UsagePercentage.HasValue && UsagePercentage.Value >= 80;
+    public bool IsNearLimit => QuotaRows.Any(quota => quota.IsNearLimit)
+        || UsagePercentage.HasValue && UsagePercentage.Value >= 80;
 
-    public bool IsOverLimit => UsagePercentage.HasValue && UsagePercentage.Value >= 100;
+    public bool IsOverLimit => QuotaRows.Any(quota => quota.IsOverLimit)
+        || UsagePercentage.HasValue && UsagePercentage.Value >= 100;
 
     public bool HasSuccessfulTestStatus => TestStatus is not null &&
         TestStatus.Trim().ToLowerInvariant() is "active" or "ok" or "healthy" or "available" or "ready" or "success" or "connected";
@@ -76,9 +78,11 @@ public sealed record ProviderQuota(
         ? ResetAt.Value.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)
         : "N/A";
 
-    public bool IsNearLimit => UsagePercentage >= 80m;
+    public bool IsNearLimit => UsagePercentage >= 80m
+        || Remaining.HasValue && Remaining.Value <= 0m;
 
-    public bool IsOverLimit => UsagePercentage >= 100m;
+    public bool IsOverLimit => UsagePercentage >= 100m
+        || Remaining.HasValue && Remaining.Value <= 0m;
 
     private static string FormatValue(decimal value) =>
         value.ToString("0.##", System.Globalization.CultureInfo.CurrentCulture);
