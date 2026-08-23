@@ -98,6 +98,92 @@ public sealed class RouterApiConnectionTests
     }
 
     [Fact]
+    public async Task WaitForNewConnection_accepts_existing_connection_refreshed_after_snapshot()
+    {
+        var snapshot = new ProviderConnection(
+            "codex-1",
+            ProviderKind.Codex,
+            "old-account@example.com",
+            1,
+            true,
+            "old-account@example.com",
+            CreatedAt: DateTimeOffset.UtcNow.AddDays(-1),
+            LastRefreshAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+        var refreshedAt = DateTimeOffset.UtcNow;
+        var handler = new JsonHandler($$"""
+            {"connections":[
+              {"id":"codex-1","provider":"codex","name":"new-account@example.com","email":"new-account@example.com","priority":1,"isActive":true,"testStatus":"active","lastRefreshAt":"{{refreshedAt:O}}"}
+            ]}
+            """);
+        using var httpClient = new HttpClient(handler);
+        var api = new RouterApiClient(httpClient, "http://localhost:20128");
+
+        var connection = await api.WaitForNewConnectionAsync(
+            ProviderKind.Codex,
+            new Dictionary<string, ProviderConnection> { [snapshot.Id] = snapshot },
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromMilliseconds(1));
+
+        Assert.Equal(snapshot.Id, connection.Id);
+        Assert.Equal("new-account@example.com", connection.Email);
+    }
+
+    [Fact]
+    public async Task WaitForNewConnection_accepts_refresh_when_previous_timestamp_is_missing()
+    {
+        var snapshot = new ProviderConnection(
+            "codex-1",
+            ProviderKind.Codex,
+            "old-account@example.com",
+            1,
+            true,
+            "old-account@example.com",
+            TestStatus: "active");
+        var refreshedAt = DateTimeOffset.UtcNow;
+        var handler = new JsonHandler($$"""
+            {"connections":[
+              {"id":"codex-1","provider":"codex","name":"old-account@example.com","email":"old-account@example.com","priority":1,"isActive":true,"testStatus":"active","lastRefreshAt":"{{refreshedAt:O}}"}
+            ]}
+            """);
+        using var httpClient = new HttpClient(handler);
+        var api = new RouterApiClient(httpClient, "http://localhost:20128");
+
+        var connection = await api.WaitForNewConnectionAsync(
+            ProviderKind.Codex,
+            new Dictionary<string, ProviderConnection> { [snapshot.Id] = snapshot },
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromMilliseconds(1));
+
+        Assert.Equal(snapshot.Id, connection.Id);
+    }
+
+    [Fact]
+    public async Task WaitForNewConnection_ignores_unrelated_health_status_changes()
+    {
+        var snapshot = new ProviderConnection(
+            "codex-1",
+            ProviderKind.Codex,
+            "account@example.com",
+            1,
+            true,
+            "account@example.com",
+            TestStatus: "active");
+        var handler = new JsonHandler("""
+            {"connections":[
+              {"id":"codex-1","provider":"codex","name":"account@example.com","email":"account@example.com","priority":1,"isActive":true,"testStatus":"unavailable"}
+            ]}
+            """);
+        using var httpClient = new HttpClient(handler);
+        var api = new RouterApiClient(httpClient, "http://localhost:20128");
+
+        await Assert.ThrowsAsync<TimeoutException>(() => api.WaitForNewConnectionAsync(
+            ProviderKind.Codex,
+            new Dictionary<string, ProviderConnection> { [snapshot.Id] = snapshot },
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromMilliseconds(1)));
+    }
+
+    [Fact]
     public async Task UpdateConnection_includes_api_key_in_the_9router_request()
     {
         var handler = new RecordingHandler();
