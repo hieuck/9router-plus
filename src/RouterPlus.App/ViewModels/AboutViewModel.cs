@@ -41,13 +41,31 @@ public static class ApplicationInfo
         get
         {
             var assembly = typeof(ApplicationInfo).Assembly;
-            var version = assembly.GetName().Version;
-            if (version is null)
-            {
-                return ReleaseVersion.Parse("0.0.0");
-            }
-
-            return ReleaseVersion.Parse($"{Math.Max(0, version.Major)}.{Math.Max(0, version.Minor)}.{Math.Max(0, version.Build)}");
+            var assemblyVersion = assembly.GetName().Version ?? new Version(0, 0, 0);
+            var informationalVersion = assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion;
+            return ParseVersion(informationalVersion, assemblyVersion);
         }
+    }
+
+    public static ReleaseVersion ParseVersion(string? informationalVersion, Version assemblyVersion)
+    {
+        var candidate = informationalVersion?.Trim();
+        if (!string.IsNullOrWhiteSpace(candidate))
+        {
+            candidate = candidate.StartsWith('v') ? candidate[1..] : candidate;
+            try
+            {
+                return ReleaseVersion.Parse(candidate);
+            }
+            catch (FormatException)
+            {
+                // CI builds may use a commit SHA as informational version.
+            }
+        }
+
+        return ReleaseVersion.Parse(
+            $"{Math.Max(0, assemblyVersion.Major)}.{Math.Max(0, assemblyVersion.Minor)}.{Math.Max(0, assemblyVersion.Build)}");
     }
 }
