@@ -321,6 +321,28 @@ public partial class MainWindow : Window
         await ViewModel.DeleteSelectedProfileAsync();
     }
 
+    private async void ReenableQuotaConnection_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not WpfButton { DataContext: QuotaResetSuggestion suggestion })
+        {
+            return;
+        }
+
+        var result = System.Windows.MessageBox.Show(
+            this,
+            $"{suggestion.Message}\n\nBạn có muốn bật lại connection này không?",
+            "Xác nhận bật lại connection",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await ViewModel.ReenableQuotaConnectionAsync(suggestion.ConnectionId, confirmedByUser: true);
+    }
+
     private async void AddProviderApiKey_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not WpfButton button || button.DataContext is not ProviderCardViewModel card)
@@ -330,6 +352,7 @@ public partial class MainWindow : Window
 
         await ViewModel.AddApiKeyAsync(card.Kind, card.ApiKeyValue);
     }
+
 
     private void ToggleProviderApiKeyVisibility_Click(object sender, RoutedEventArgs e)
     {

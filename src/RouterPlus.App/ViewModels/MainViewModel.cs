@@ -80,6 +80,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly Queue<string> _logEntries = new();
     private string _logText = "Chưa có log.";
     private ToastNotification? _currentToast;
+    private IReadOnlyList<QuotaAutoDisableMarker> _quotaAutoDisableMarkers = Array.Empty<QuotaAutoDisableMarker>();
+    private readonly ObservableCollection<QuotaResetSuggestion> _quotaResetSuggestions = new();
+    private bool _quotaMarkersLoaded;
 
     public MainViewModel(
         SettingsStore? settingsStore = null,
@@ -113,7 +116,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProviderCards = Providers.Select(definition => new ProviderCardViewModel(definition)).ToArray();
         ApiKeyProviders = Providers.Where(provider => provider.Workflow == WorkflowKind.ApiKey).ToArray();
         RefreshCommand = new AsyncRelayCommand(InitializeAsync);
-        RefreshConnectionStatusesCommand = new AsyncRelayCommand(RefreshConnectionStatusesAsync);
+        RefreshConnectionStatusesCommand = new AsyncRelayCommand(() => RefreshConnectionStatusesAsync());
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, CanSaveSettings);
         AddProfileCommand = new AsyncRelayCommand(AddProfileAsync, () => CanAddProfile);
         ClearProfileSearchCommand = new AsyncRelayCommand(ClearProfileSearchAsync, () => CanClearProfileSearch);
@@ -903,6 +906,187 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public IReadOnlyList<QuotaResetSuggestion> QuotaResetSuggestions => _quotaResetSuggestions;
+
+    internal async Task InitializeQuotaAutoDisableMarkersForTestAsync()
+    {
+        await LoadQuotaAutoDisableMarkersAsync();
+    }
+
+    public async Task<bool> ReenableQuotaConnectionAsync(
+        string connectionId,
+        bool confirmedByUser,
+        CancellationToken cancellationToken = default)
+    {
+        if (!confirmedByUser || string.IsNullOrWhiteSpace(connectionId))
+        {
+            return false;
+        }
+
+        var marker = _quotaAutoDisableMarkers.FirstOrDefault(item =>
+            string.Equals(item.ConnectionId, connectionId, StringComparison.Ordinal));
+        if (marker is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var api = CreateApiClient();
+            var current = (await api.ListAllConnectionsAsync(cancellationToken))
+                .FirstOrDefault(connection => string.Equals(connection.Id, connectionId, StringComparison.Ordinal));
+            if (current is null || current.Provider != marker.Provider || current.IsActive)
+            {
+                RemoveQuotaResetSuggestion(connectionId);
+                return false;
+            }
+
+            var resetAt = current.QuotaRows.FirstOrDefault(quota => quota.ResetAt.HasValue)?.ResetAt;
+            if (marker.ResetAt is not { } markerResetAt
+                || resetAt is not { } currentResetAt
+                || markerResetAt > DateTimeOffset.UtcNow
+                || currentResetAt < markerResetAt
+                || current.IsOverLimit)
+            {
+                StatusText = $"Connection {marker.Name ?? connectionId} chưa đủ điều kiện bật lại; quota có thể đã hết lại hoặc chưa có reset time đáng tin cậy.";
+                ShowToast(StatusText, ToastType.Warning, 5);
+                return false;
+            }
+
+            await api.UpdateConnectionAsync(
+                connectionId,
+                isActive: true,
+                cancellationToken: cancellationToken);
+            _quotaAutoDisableMarkers = _quotaAutoDisableMarkers
+                .Where(item => !string.Equals(item.ConnectionId, connectionId, StringComparison.Ordinal))
+                .ToArray();
+            await SaveQuotaAutoDisableMarkersAsync(cancellationToken);
+            RemoveQuotaResetSuggestion(connectionId);
+            await RefreshConnectionStatusesAsync(showStatus: false, cancellationToken: cancellationToken);
+            StatusText = $"Đã bật lại connection {marker.Name ?? connectionId}.";
+            ShowToast(StatusText, ToastType.Success);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+            return false;
+        }
+    }
+
+    private async Task LoadQuotaAutoDisableMarkersAsync()
+    {
+        if (_quotaMarkersLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = await _settingsStore.LoadAsync();
+            _quotaAutoDisableMarkers = settings.QuotaAutoDisableMarkers ?? [];
+        }
+        catch (Exception exception)
+        {
+            AppendLog("WARN", $"Không thể đọc marker quota: {SafeError(exception)}");
+            _quotaAutoDisableMarkers = [];
+        }
+
+        _quotaMarkersLoaded = true;
+        OnPropertyChanged(nameof(QuotaResetSuggestions));
+    }
+
+    private async Task SaveQuotaAutoDisableMarkersAsync(CancellationToken cancellationToken = default)
+    {
+        await _settingsStore.UpdateQuotaAutoDisableMarkersAsync(_quotaAutoDisableMarkers, cancellationToken);
+    }
+
+    private void RemoveQuotaResetSuggestion(string connectionId)
+    {
+        var suggestion = _quotaResetSuggestions.FirstOrDefault(item =>
+            string.Equals(item.ConnectionId, connectionId, StringComparison.Ordinal));
+        if (suggestion is not null)
+        {
+            _quotaResetSuggestions.Remove(suggestion);
+        }
+    }
+
+    private void UpsertQuotaAutoDisableMarker(ProviderConnection connection)
+    {
+        var marker = new QuotaAutoDisableMarker(
+            connection.Id,
+            connection.Provider,
+            connection.Name,
+            connection.QuotaRows.FirstOrDefault(quota => quota.ResetAt.HasValue)?.ResetAt);
+        _quotaAutoDisableMarkers = _quotaAutoDisableMarkers
+            .Where(item => !string.Equals(item.ConnectionId, connection.Id, StringComparison.Ordinal))
+            .Append(marker)
+            .ToArray();
+    }
+
+    private async Task UpdateQuotaResetSuggestionsAsync(
+        IReadOnlyList<ProviderConnection> connections,
+        CancellationToken cancellationToken)
+    {
+        var byId = connections.ToDictionary(connection => connection.Id, StringComparer.Ordinal);
+        var previousSuggestionIds = _quotaResetSuggestions
+            .Select(suggestion => suggestion.ConnectionId)
+            .ToHashSet(StringComparer.Ordinal);
+        var now = DateTimeOffset.UtcNow;
+        var nextSuggestions = new List<QuotaResetSuggestion>();
+        var nextMarkers = new List<QuotaAutoDisableMarker>();
+        foreach (var marker in _quotaAutoDisableMarkers)
+        {
+            if (!byId.TryGetValue(marker.ConnectionId, out var connection))
+            {
+                nextMarkers.Add(marker);
+                continue;
+            }
+
+            if (connection.IsActive || connection.Provider != marker.Provider)
+            {
+                continue;
+            }
+
+            nextMarkers.Add(marker);
+            if (marker.ResetAt is { } resetAt && resetAt <= now && !connection.IsOverLimit)
+            {
+                nextSuggestions.Add(new QuotaResetSuggestion(
+                    marker.ConnectionId,
+                    marker.Provider,
+                    connection.Name ?? marker.Name,
+                    resetAt));
+            }
+        }
+
+        var markersChanged = !_quotaAutoDisableMarkers.SequenceEqual(nextMarkers);
+        _quotaAutoDisableMarkers = nextMarkers;
+        _quotaResetSuggestions.Clear();
+        foreach (var suggestion in nextSuggestions
+                     .GroupBy(item => item.ConnectionId, StringComparer.Ordinal)
+                     .Select(group => group.First()))
+        {
+            _quotaResetSuggestions.Add(suggestion);
+        }
+
+        if (markersChanged)
+        {
+            await SaveQuotaAutoDisableMarkersAsync(cancellationToken);
+        }
+
+        OnPropertyChanged(nameof(QuotaResetSuggestions));
+        var newSuggestion = _quotaResetSuggestions.FirstOrDefault(suggestion =>
+            !previousSuggestionIds.Contains(suggestion.ConnectionId));
+        if (newSuggestion is not null)
+        {
+            ShowToast(newSuggestion.Message, ToastType.Info, 6);
+        }
+    }
+
     private void ShowToast(string message, ToastType type = ToastType.Info, int durationSeconds = 3)
     {
         CurrentToast = new ToastNotification(message, type, TimeSpan.FromSeconds(durationSeconds));
@@ -990,6 +1174,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var settings = await _settingsStore.LoadAsync();
+            _quotaAutoDisableMarkers = settings.QuotaAutoDisableMarkers ?? [];
+            _quotaMarkersLoaded = true;
             DashboardBaseUrl = settings.DashboardBaseUrl;
             ChromeExecutablePath = settings.ChromeExecutablePath ?? string.Empty;
             ChromeUserDataDirectory = settings.ChromeUserDataDirectory ?? string.Empty;
@@ -1335,8 +1521,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         UpdateRecentProfilesList();
     }
 
-    public async Task RefreshConnectionStatusesAsync() =>
-        await RefreshConnectionStatusesAsync(showStatus: true, forceLog: true);
+    public async Task RefreshConnectionStatusesAsync(CancellationToken cancellationToken = default) =>
+        await RefreshConnectionStatusesAsync(showStatus: true, forceLog: true, cancellationToken);
 
     private async Task LoadSelectedProfileApiKeysAsync()
     {
@@ -1380,7 +1566,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task RefreshConnectionStatusesAsync(bool showStatus, bool forceLog = false)
+    private async Task RefreshConnectionStatusesAsync(
+        bool showStatus,
+        bool forceLog = false,
+        CancellationToken cancellationToken = default)
     {
         if (ProfileRows.Count == 0)
         {
@@ -1396,7 +1585,47 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            var connections = await CreateApiClient().ListAllConnectionsAsync();
+            var api = CreateApiClient();
+            var connections = await api.ListAllConnectionsAsync(cancellationToken);
+            var exhaustedConnections = connections
+                .Where(connection =>
+                    connection.IsActive &&
+                    connection.IsOverLimit &&
+                    connection.Provider is ProviderKind.Codex or ProviderKind.Ollama)
+                .ToArray();
+
+            await LoadQuotaAutoDisableMarkersAsync();
+            var disableFailures = 0;
+            foreach (var connection in exhaustedConnections)
+            {
+                try
+                {
+                    await api.UpdateConnectionAsync(
+                        connection.Id,
+                        isActive: false,
+                        cancellationToken: cancellationToken);
+                    UpsertQuotaAutoDisableMarker(connection);
+                    await SaveQuotaAutoDisableMarkersAsync(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    disableFailures++;
+                    AppendLog("WARN", $"Không thể tự tắt connection {connection.Id}: {SafeError(exception)}");
+                }
+            }
+
+            if (exhaustedConnections.Length > 0)
+            {
+                connections = await api.ListAllConnectionsAsync(cancellationToken);
+                await SaveQuotaAutoDisableMarkersAsync(cancellationToken);
+            }
+
+            await UpdateQuotaResetSuggestionsAsync(connections, cancellationToken);
+
             foreach (var row in ProfileRows)
             {
                 row.UpdateConnections(connections);
@@ -1407,8 +1636,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ApplyProfileFilter();
 
             var matchedProfiles = ProfileRows.Count(row => row.ConnectedProviderCount > 0);
-            ConnectionStatusText =
-                $"Đã đồng bộ {connections.Count} connection · {matchedProfiles}/{ProfileRows.Count} profile có provider.";
+            ConnectionStatusText = disableFailures > 0
+                ? $"Đã đồng bộ {connections.Count} connection · tắt tự động thất bại {disableFailures} connection."
+                : $"Đã đồng bộ {connections.Count} connection · {matchedProfiles}/{ProfileRows.Count} profile có provider.";
             if (showStatus)
             {
                 if (forceLog)
@@ -1420,6 +1650,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     StatusText = ConnectionStatusText;
                 }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -1906,6 +2140,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (_currentWorkflowProvider is null || SelectedProfile is null)
         {
             StatusText = "Chưa có workflow OAuth đang chờ.";
+            ShowToast(StatusText, ToastType.Warning);
             return;
         }
 
@@ -1933,7 +2168,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 cancellationToken: cancellationToken);
             _workflowExistingConnections[connection.Id] = connection;
             _currentWorkflowProvider = null;
-            await RefreshConnectionStatusesAsync(showStatus: false);
+            await RefreshConnectionStatusesAsync(showStatus: false, cancellationToken: cancellationToken);
             StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {SelectedProfile.Name}.";
             ShowToast(StatusText, ToastType.Success, 5);
         }
@@ -1959,6 +2194,315 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(IsWorkflowInProgress));
             CancelWorkflowCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public async Task OpenSelectedGoogleLoginAsync()
+    {
+        if (SelectedProfile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return;
+        }
+
+        try
+        {
+            await LaunchUrlAsync("https://accounts.google.com/");
+            StatusText = $"Đã mở đăng nhập Google bằng profile {SelectedProfile.Name}.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    public async Task DeleteSelectedProfileAsync()
+    {
+        var profile = SelectedProfile;
+        if (profile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return;
+        }
+
+        var removedManagedProfiles = _managedProfiles
+            .Where(managedProfile => IsManagedProfileFor(managedProfile, profile))
+            .ToArray();
+
+        try
+        {
+            _profileDeleter.Delete(profile, ChromeUserDataDirectory);
+            _managedProfiles.RemoveAll(managedProfile => IsManagedProfileFor(managedProfile, profile));
+            try
+            {
+                await _settingsStore.SaveAsync(BuildSettings());
+            }
+            catch
+            {
+                _managedProfiles.AddRange(removedManagedProfiles);
+                throw;
+            }
+
+            RefreshProfiles();
+            StatusText = $"Đã xóa profile {profile.Name}.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    private void TrackProfileLaunch(ChromeProfile profile)
+    {
+        var existing = _recentProfiles.FirstOrDefault(r =>
+            r.ProfileId == profile.Id &&
+            r.UserDataDirectory.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            _recentProfiles.Remove(existing);
+            _recentProfiles.Insert(0, existing with
+            {
+                LastUsedUtc = DateTime.UtcNow,
+                LaunchCount = existing.LaunchCount + 1
+            });
+        }
+        else
+        {
+            _recentProfiles.Insert(0, new RecentProfile(
+                profile.Id,
+                profile.Name,
+                profile.UserDataDirectory,
+                DateTime.UtcNow,
+                1,
+                false));
+        }
+
+        // Keep only top MaxRecentSlots recent profiles
+        while (_recentProfiles.Count > MaxRecentSlots)
+        {
+            _recentProfiles.RemoveAt(_recentProfiles.Count - 1);
+        }
+
+        UpdateRecentProfilesList();
+    }
+
+    public AsyncRelayCommand<ChromeProfile> TogglePinProfileCommand { get; }
+
+    private async Task TogglePinProfileAsync(ChromeProfile? profile)
+    {
+        if (profile is null) return;
+
+        var recent = _recentProfiles.FirstOrDefault(r =>
+            r.ProfileId == profile.Id &&
+            r.UserDataDirectory.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
+
+        if (recent != null)
+        {
+            var index = _recentProfiles.IndexOf(recent);
+            _recentProfiles[index] = recent with { IsPinned = !recent.IsPinned };
+
+            // Sort: pinned first, then by last used
+            var sorted = _recentProfiles
+                .OrderByDescending(r => r.IsPinned)
+                .ThenByDescending(r => r.LastUsedUtc)
+                .ToList();
+            _recentProfiles.Clear();
+            _recentProfiles.AddRange(sorted);
+
+            UpdateRecentProfilesList();
+            await SaveSettingsAsync();
+        }
+    }
+
+    private void UpdateRecentProfilesList()
+    {
+        RecentProfileRows.Clear();
+        var slot = 0;
+        foreach (var recent in _recentProfiles.Take(MaxRecentSlots))
+        {
+            var profile = Profiles.FirstOrDefault(p =>
+                p.Id == recent.ProfileId &&
+                p.UserDataDirectory.Equals(recent.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
+            if (profile is null)
+            {
+                continue;
+            }
+            RecentProfileRows.Add(new RecentProfileRowViewModel(recent, profile, slot));
+            slot++;
+        }
+        ClearRecentProfilesCommand.RaiseCanExecuteChanged();
+        RebuildQuickLaunchProfiles();
+    }
+
+    internal async Task ClearRecentProfilesAsync()
+    {
+        if (_recentProfiles.Count == 0) return;
+        _recentProfiles.Clear();
+        UpdateRecentProfilesList();
+        StatusText = "Đã xoá danh sách profile dùng gần đây.";
+        await SaveSettingsAsync();
+    }
+
+    internal Task OpenQuickLaunchPalette()
+    {
+        if (Profiles.Count == 0)
+        {
+            StatusText = "Chưa có Chrome profile để hiển thị Quick Launch.";
+            return Task.CompletedTask;
+        }
+        QuickLaunchFilterText = string.Empty;
+        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles.FirstOrDefault();
+        IsQuickLaunchOpen = true;
+        QuickLaunchVisibilityRequested?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
+    internal Task CloseQuickLaunchPalette()
+    {
+        IsQuickLaunchOpen = false;
+        QuickLaunchFilterText = string.Empty;
+        return Task.CompletedTask;
+    }
+
+    public event EventHandler? QuickLaunchVisibilityRequested;
+
+    private void RebuildQuickLaunchProfiles()
+    {
+        FilteredQuickLaunchProfiles.Clear();
+        var filter = QuickLaunchFilterText?.Trim() ?? string.Empty;
+        IEnumerable<ChromeProfile> source = Profiles;
+        if (!string.IsNullOrEmpty(filter))
+        {
+            source = source.Where(p => p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+        }
+        foreach (var profile in source.Take(MaxQuickLaunchResults))
+        {
+            FilteredQuickLaunchProfiles.Add(profile);
+        }
+        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles.FirstOrDefault();
+    }
+
+    internal Task MoveQuickLaunchSelection(int delta)
+    {
+        if (FilteredQuickLaunchProfiles.Count == 0)
+        {
+            SelectedQuickLaunchProfile = null;
+            return Task.CompletedTask;
+        }
+        var currentIndex = SelectedQuickLaunchProfile is null
+            ? -1
+            : FilteredQuickLaunchProfiles.IndexOf(SelectedQuickLaunchProfile);
+        var count = FilteredQuickLaunchProfiles.Count;
+        var nextIndex = ((currentIndex + delta) % count + count) % count;
+        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles[nextIndex];
+        return Task.CompletedTask;
+    }
+
+    private async Task ConfirmQuickLaunchSelectionAsync(ChromeProfile? profile)
+    {
+        var target = profile ?? SelectedQuickLaunchProfile;
+        if (target is null)
+        {
+            await CloseQuickLaunchPalette();
+            return;
+        }
+        await LaunchProfileAsync(target);
+        await CloseQuickLaunchPalette();
+    }
+
+    private async Task LaunchSelectedProfileAsync()
+    {
+        if (SelectedProfile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return;
+        }
+
+        try
+        {
+            TrackProfileLaunch(SelectedProfile);
+            await LaunchUrlAsync(DashboardBaseUrl);
+            StatusText = $"Đã mở 9Router bằng profile {SelectedProfile.Name}.";
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    private async Task OpenProviderDashboardAsync(ProviderKind provider)
+    {
+        if (SelectedProfile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return;
+        }
+
+        try
+        {
+            var definition = ProviderCatalog.Get(provider);
+            await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
+            StatusText = $"Đã mở dashboard {definition.DisplayName} cho profile {SelectedProfile.Name}.";
+            ShowToast(StatusText, ToastType.Success);
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    private async Task TestConnectionAsync(ProviderKind provider)
+    {
+        var profile = SelectedProfile;
+        if (profile is null)
+        {
+            StatusText = "Select a Chrome profile first.";
+            return;
+        }
+
+        try
+        {
+            var definition = ProviderCatalog.Get(provider);
+            var api = CreateApiClient();
+            var matchingConnections = (await api.ListConnectionsAsync(provider))
+                .Where(connection => string.Equals(
+                    connection.Name?.Trim(),
+                    profile.Name.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (matchingConnections.Length == 0)
+            {
+                StatusText = $"No {definition.DisplayName} connection found for profile {profile.Name}.";
+                ShowToast(StatusText, ToastType.Warning, 5);
+                return;
+            }
+
+            var failedConnectionCount = 0;
+            foreach (var connection in matchingConnections)
+            {
+                var result = await api.TestConnectionAsync(connection.Id);
+                if (!result.Valid)
+                {
+                    failedConnectionCount++;
+                }
+            }
+
+            if (failedConnectionCount == 0)
+            {
+                StatusText = $"Test connection succeeded for {definition.DisplayName} on profile {profile.Name}.";
+                ShowToast(StatusText, ToastType.Success);
+            }
+            else
+            {
+                StatusText = $"Test connection failed for {definition.DisplayName} ({failedConnectionCount} connection(s)).";
+                ShowToast(StatusText, ToastType.Warning, 5);
+            }
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
         }
     }
 
@@ -2062,7 +2606,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         placement?.Height,
         _recentProfiles.ToArray(),
         _enableKeyboardShortcuts,
-        _shortcutBindings.BuildSettingsDictionary());    }
+        _shortcutBindings.BuildSettingsDictionary(),
+        _quotaAutoDisableMarkers);    }
 
     private static WindowPlacement? TryCreateWindowPlacement(
         double? left,

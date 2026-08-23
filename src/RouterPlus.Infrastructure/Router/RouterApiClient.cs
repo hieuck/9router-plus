@@ -268,10 +268,11 @@ public sealed class RouterApiClient : IRouterApiClient
         string? name = null,
         int? priority = null,
         string? apiKey = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool? isActive = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionId);
-        if (string.IsNullOrWhiteSpace(name) && priority is null && string.IsNullOrWhiteSpace(apiKey))
+        if (string.IsNullOrWhiteSpace(name) && priority is null && string.IsNullOrWhiteSpace(apiKey) && isActive is null)
         {
             return;
         }
@@ -295,6 +296,11 @@ public sealed class RouterApiClient : IRouterApiClient
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
             request["apiKey"] = apiKey.Trim();
+        }
+
+        if (isActive is not null)
+        {
+            request["isActive"] = isActive.Value;
         }
 
         using var response = await _httpClient.PutAsJsonAsync(CreateUri($"api/providers/{Uri.EscapeDataString(connectionId)}"), request, _jsonOptions, cancellationToken);
@@ -484,13 +490,6 @@ public sealed class RouterApiClient : IRouterApiClient
             ? parsedLastRefreshAt
             : (DateTimeOffset?)null;
 
-        // Use expiresAt for OAuth providers to show token expiration time
-        // This is different from usage quota - it's when the OAuth token expires
-        if (expiresAt.HasValue && expiresAt.Value > DateTimeOffset.Now && !usageResetAt.HasValue)
-        {
-            usageResetAt = expiresAt.Value;
-        }
-
         // If backend doesn't provide usage data, try to infer it from error messages
         if (!usageCount.HasValue && !limitCount.HasValue)
         {
@@ -619,7 +618,14 @@ public sealed class RouterApiClient : IRouterApiClient
 
             return quotaRows.Length == 0 ? null : new QuotaData(quotaRows);
         }
-        catch { return null; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static decimal? GetDecimal(JsonElement root, string propertyName) =>

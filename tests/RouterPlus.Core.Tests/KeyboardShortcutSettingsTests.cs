@@ -1,4 +1,5 @@
 using RouterPlus.App.ViewModels;
+using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Storage;
 
 namespace RouterPlus.Core.Tests;
@@ -36,6 +37,33 @@ public sealed class KeyboardShortcutSettingsTests
             Assert.True(loaded.EnableKeyboardShortcuts);
             Assert.Equal("Alt+Q", loaded.KeyboardShortcuts!["OpenQuickLaunch"]);
             Assert.Equal("Ctrl+Alt+1", loaded.KeyboardShortcuts!["OpenProviderCodex"]);
+        }
+        finally
+        {
+            DeleteTempDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task SettingsStore_round_trips_quota_auto_disable_markers()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            var marker = new QuotaAutoDisableMarker(
+                "codex-1",
+                ProviderKind.Codex,
+                "Work",
+                DateTimeOffset.Parse("2026-09-01T00:00:00Z"));
+            var store = new SettingsStore(path);
+
+            await store.SaveAsync(new RouterSettings(QuotaAutoDisableMarkers: [marker]));
+
+            var loaded = await store.LoadAsync();
+
+            var restored = Assert.Single(loaded.QuotaAutoDisableMarkers!);
+            Assert.Equal(marker, restored);
         }
         finally
         {

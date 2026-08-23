@@ -190,7 +190,7 @@ public sealed class RouterApiConnectionTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
-        await api.UpdateConnectionAsync("openrouter-1", "Work", 7, "new-key");
+        await api.UpdateConnectionAsync("openrouter-1", "Work", 7, "new-key", CancellationToken.None);
 
         Assert.Equal(HttpMethod.Put, handler.Method);
         Assert.EndsWith("/api/providers/openrouter-1", handler.RequestUri, StringComparison.Ordinal);
@@ -198,6 +198,31 @@ public sealed class RouterApiConnectionTests
         Assert.Equal("Work", document.RootElement.GetProperty("name").GetString());
         Assert.Equal(7, document.RootElement.GetProperty("priority").GetInt32());
         Assert.Equal("new-key", document.RootElement.GetProperty("apiKey").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateConnection_can_disable_a_connection()
+    {
+        var handler = new RecordingHandler();
+        using var httpClient = new HttpClient(handler);
+        var api = new RouterApiClient(httpClient, "http://localhost:20128");
+
+        await api.UpdateConnectionAsync("codex-1", isActive: false);
+
+        Assert.Equal(HttpMethod.Put, handler.Method);
+        using var document = JsonDocument.Parse(handler.Body);
+        Assert.False(document.RootElement.GetProperty("isActive").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ListAllConnections_propagates_quota_fetch_cancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        using var httpClient = new HttpClient(new CancellationHandler(cancellation));
+        var api = new RouterApiClient(httpClient, "http://localhost:20128");
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => api.ListAllConnectionsAsync(cancellation.Token));
     }
 
     [Fact]
@@ -229,6 +254,29 @@ public sealed class RouterApiConnectionTests
 
         Assert.False(result.Valid);
         Assert.Equal("Invalid token", result.Error);
+    }
+
+    private sealed class CancellationHandler(CancellationTokenSource cancellation) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/providers")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"connections\":[{\"id\":\"codex-1\",\"provider\":\"codex\",\"name\":\"Work\",\"isActive\":true}]}",
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            }
+
+            cancellation.Cancel();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Cancellation was not propagated.");
+        }
     }
 
     private sealed class JsonHandler(string json) : HttpMessageHandler
