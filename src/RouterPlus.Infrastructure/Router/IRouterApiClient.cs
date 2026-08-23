@@ -64,6 +64,10 @@ public interface IRouterApiClient
         CancellationToken cancellationToken = default,
         bool? isActive = null);
 
+    Task DeleteConnectionAsync(
+        string connectionId,
+        CancellationToken cancellationToken = default);
+
     Task<ProviderConnection> WaitForNewConnectionAsync(
         ProviderKind provider,
         IReadOnlyDictionary<string, ProviderConnection> existingConnections,
