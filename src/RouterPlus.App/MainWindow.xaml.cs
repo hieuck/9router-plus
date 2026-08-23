@@ -32,11 +32,39 @@ public partial class MainWindow : Window
     private async void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
         await ViewModel.InitializeAsync();
+        ViewModel.StartQuotaPolling();
+    }
+
+    private async void Window_OnStateChanged(object? sender, EventArgs e)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        try
+        {
+            if (WindowState == WindowState.Minimized)
+            {
+                ViewModel.PauseQuotaPolling();
+            }
+            else if (WindowState == WindowState.Normal)
+            {
+                await ViewModel.ResumeQuotaPollingAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            // Swallow background polling errors to avoid crashing the app.
+        }
     }
 
     private async void Window_OnClosing(object? sender, CancelEventArgs e)
     {
-        if (_isClosing || WindowState != WindowState.Normal)
+        if (_isClosing)
         {
             return;
         }
@@ -45,7 +73,11 @@ public partial class MainWindow : Window
         _isClosing = true;
         try
         {
-            await ViewModel.SaveWindowPlacementAsync(Left, Top, Width, Height);
+            await ViewModel.StopQuotaPollingAsync();
+            if (WindowState == WindowState.Normal)
+            {
+                await ViewModel.SaveWindowPlacementAsync(Left, Top, Width, Height);
+            }
         }
         finally
         {

@@ -15,6 +15,7 @@ using RouterPlus.Infrastructure.Router;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Infrastructure.Updates;
+using RouterPlus.App.Services;
 
 namespace RouterPlus.App.ViewModels;
 
@@ -83,6 +84,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private IReadOnlyList<QuotaAutoDisableMarker> _quotaAutoDisableMarkers = Array.Empty<QuotaAutoDisableMarker>();
     private readonly ObservableCollection<QuotaResetSuggestion> _quotaResetSuggestions = new();
     private bool _quotaMarkersLoaded;
+    private readonly SemaphoreSlim _connectionRefreshGate = new(1, 1);
+    private readonly QuotaPollingService _quotaPollingService;
 
     public MainViewModel(
         SettingsStore? settingsStore = null,
@@ -100,6 +103,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
         _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
         _runStartupUpdateCheck = runStartupUpdateCheck;
+        _quotaPollingService = new QuotaPollingService(
+            RefreshForQuotaPollingAsync,
+            QuotaPollingOptions.Default);
         Profiles = new ObservableCollection<ChromeProfile>();
         FilteredProfiles = new ObservableCollection<ChromeProfile>();
         ProfileRows = new ObservableCollection<ProfileRowViewModel>();
@@ -946,7 +952,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 || resetAt is not { } currentResetAt
                 || markerResetAt > DateTimeOffset.UtcNow
                 || currentResetAt < markerResetAt
-                || current.IsOverLimit)
+                || !QuotaAutoDisablePolicy.HasRecovered(current))
             {
                 StatusText = $"Connection {marker.Name ?? connectionId} chưa đủ điều kiện bật lại; quota có thể đã hết lại hoặc chưa có reset time đáng tin cậy.";
                 ShowToast(StatusText, ToastType.Warning, 5);
@@ -1033,9 +1039,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CancellationToken cancellationToken)
     {
         var byId = connections.ToDictionary(connection => connection.Id, StringComparer.Ordinal);
-        var previousSuggestionIds = _quotaResetSuggestions
-            .Select(suggestion => suggestion.ConnectionId)
-            .ToHashSet(StringComparer.Ordinal);
+        HashSet<string> previousSuggestionIds;
+        if (System.Windows.Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
+        {
+            previousSuggestionIds = dispatcher.Invoke(() => _quotaResetSuggestions
+                .Select(suggestion => suggestion.ConnectionId)
+                .ToHashSet(StringComparer.Ordinal));
+        }
+        else
+        {
+            previousSuggestionIds = _quotaResetSuggestions
+                .Select(suggestion => suggestion.ConnectionId)
+                .ToHashSet(StringComparer.Ordinal);
+        }
         var now = DateTimeOffset.UtcNow;
         var nextSuggestions = new List<QuotaResetSuggestion>();
         var nextMarkers = new List<QuotaAutoDisableMarker>();
@@ -1053,7 +1069,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             nextMarkers.Add(marker);
-            if (marker.ResetAt is { } resetAt && resetAt <= now && !connection.IsOverLimit)
+            if (marker.ResetAt is { } resetAt && resetAt <= now && QuotaAutoDisablePolicy.HasRecovered(connection))
             {
                 nextSuggestions.Add(new QuotaResetSuggestion(
                     marker.ConnectionId,
@@ -1065,12 +1081,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         var markersChanged = !_quotaAutoDisableMarkers.SequenceEqual(nextMarkers);
         _quotaAutoDisableMarkers = nextMarkers;
-        _quotaResetSuggestions.Clear();
-        foreach (var suggestion in nextSuggestions
-                     .GroupBy(item => item.ConnectionId, StringComparer.Ordinal)
-                     .Select(group => group.First()))
+        var distinctSuggestions = nextSuggestions
+            .GroupBy(item => item.ConnectionId, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToList();
+        if (System.Windows.Application.Current?.Dispatcher is { } suggestionDispatcher)
         {
-            _quotaResetSuggestions.Add(suggestion);
+            suggestionDispatcher.Invoke(() =>
+            {
+                _quotaResetSuggestions.Clear();
+                foreach (var suggestion in distinctSuggestions)
+                {
+                    _quotaResetSuggestions.Add(suggestion);
+                }
+            });
+        }
+        else
+        {
+            _quotaResetSuggestions.Clear();
+            foreach (var suggestion in distinctSuggestions)
+            {
+                _quotaResetSuggestions.Add(suggestion);
+            }
         }
 
         if (markersChanged)
@@ -1079,7 +1111,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         OnPropertyChanged(nameof(QuotaResetSuggestions));
-        var newSuggestion = _quotaResetSuggestions.FirstOrDefault(suggestion =>
+        var newSuggestion = distinctSuggestions.FirstOrDefault(suggestion =>
             !previousSuggestionIds.Contains(suggestion.ConnectionId));
         if (newSuggestion is not null)
         {
@@ -1089,8 +1121,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void ShowToast(string message, ToastType type = ToastType.Info, int durationSeconds = 3)
     {
-        CurrentToast = new ToastNotification(message, type, TimeSpan.FromSeconds(durationSeconds));
-        CurrentToast.Show();
+        void Show()
+        {
+            var toast = new ToastNotification(message, type, TimeSpan.FromSeconds(durationSeconds));
+            CurrentToast = toast;
+            toast.Show();
+        }
+
+        if (System.Windows.Application.Current?.Dispatcher is not { } dispatcher || dispatcher.CheckAccess())
+        {
+            Show();
+        }
+        else
+        {
+            dispatcher.Invoke(Show);
+        }
     }
 
     public AsyncRelayCommand RefreshCommand { get; }
@@ -1521,8 +1566,40 @@ public sealed class MainViewModel : INotifyPropertyChanged
         UpdateRecentProfilesList();
     }
 
-    public async Task RefreshConnectionStatusesAsync(CancellationToken cancellationToken = default) =>
-        await RefreshConnectionStatusesAsync(showStatus: true, forceLog: true, cancellationToken);
+    public Task RefreshConnectionStatusesAsync(CancellationToken cancellationToken = default) =>
+        RefreshConnectionStatusesAsync(showStatus: true, forceLog: true, cancellationToken);
+
+    public void StartQuotaPolling() => _quotaPollingService.Start();
+
+    public void PauseQuotaPolling() => _quotaPollingService.Pause();
+
+    public Task ResumeQuotaPollingAsync() => _quotaPollingService.ResumeAsync();
+
+    public Task StopQuotaPollingAsync() => _quotaPollingService.StopAsync();
+
+    private async Task<bool> RefreshForQuotaPollingAsync(CancellationToken cancellationToken)
+    {
+        await RefreshConnectionStatusesAsync(showStatus: false, forceLog: false, cancellationToken);
+        return _lastReliableNearLimit;
+    }
+
+    private bool _lastReliableNearLimit;
+
+    private async Task RefreshConnectionStatusesAsync(
+        bool showStatus,
+        bool forceLog = false,
+        CancellationToken cancellationToken = default)
+    {
+        await _connectionRefreshGate.WaitAsync(cancellationToken);
+        try
+        {
+            await RefreshConnectionStatusesCoreAsync(showStatus, forceLog, cancellationToken);
+        }
+        finally
+        {
+            _connectionRefreshGate.Release();
+        }
+    }
 
     private async Task LoadSelectedProfileApiKeysAsync()
     {
@@ -1566,13 +1643,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task RefreshConnectionStatusesAsync(
+    private async Task RefreshConnectionStatusesCoreAsync(
         bool showStatus,
         bool forceLog = false,
         CancellationToken cancellationToken = default)
     {
         if (ProfileRows.Count == 0)
         {
+            _lastReliableNearLimit = false;
             UpdateProviderCardStatuses();
             ConnectionStatusText = "Chưa có Chrome profile để đối chiếu.";
             if (showStatus && forceLog)
@@ -1590,9 +1668,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var exhaustedConnections = connections
                 .Where(connection =>
                     connection.IsActive &&
-                    connection.IsOverLimit &&
-                    connection.Provider is ProviderKind.Codex or ProviderKind.Ollama)
+                    QuotaAutoDisablePolicy.CanAutoDisable(connection))
                 .ToArray();
+            _lastReliableNearLimit = connections.Any(connection =>
+                connection.QuotaRows.Count > 0 && connection.IsNearLimit);
 
             await LoadQuotaAutoDisableMarkersAsync();
             var disableFailures = 0;
@@ -1657,6 +1736,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception exception)
         {
+            _lastReliableNearLimit = false;
             foreach (var row in ProfileRows)
             {
                 row.MarkStatusUnknown();
