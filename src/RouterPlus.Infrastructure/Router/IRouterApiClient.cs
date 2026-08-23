@@ -65,7 +65,7 @@ public interface IRouterApiClient
 
     Task<ProviderConnection> WaitForNewConnectionAsync(
         ProviderKind provider,
-        IReadOnlySet<string> existingConnectionIds,
+        IReadOnlyDictionary<string, ProviderConnection> existingConnections,
         TimeSpan timeout,
         TimeSpan pollInterval,
         CancellationToken cancellationToken = default);
