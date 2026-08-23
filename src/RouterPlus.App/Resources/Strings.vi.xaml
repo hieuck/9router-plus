@@ -19,4 +19,22 @@
     <sys:String x:Key="ChromeSelectionCancel">Hủy</sys:String>
     <sys:String x:Key="ChromeSelectionToolTipChrome">Mở vị trí Chrome</sys:String>
     <sys:String x:Key="ChromeSelectionToolTipData">Mở vị trí User Data</sys:String>
+
+    <!-- Google Auto-Login Dialog -->
+    <sys:String x:Key="GoogleAutoLoginDialogTitle">Tự động đăng nhập Google</sys:String>
+    <sys:String x:Key="GoogleAutoLoginProfileLabel">Profile Chrome</sys:String>
+    <sys:String x:Key="GoogleAutoLoginVaultSection">Kho lưu trữ</sys:String>
+    <sys:String x:Key="GoogleAutoLoginUnlock">Mở khóa</sys:String>
+    <sys:String x:Key="GoogleAutoLoginLock">Khóa lại</sys:String>
+    <sys:String x:Key="GoogleAutoLoginRemember">Nhớ trên thiết bị này</sys:String>
+    <sys:String x:Key="GoogleAutoLoginImport">Nhập</sys:String>
+    <sys:String x:Key="GoogleAutoLoginExport">Xuất</sys:String>
+    <sys:String x:Key="GoogleAutoLoginRemoveRemembered">Xóa ghi nhớ</sys:String>
+    <sys:String x:Key="GoogleAutoLoginCredentialsSection">Thông tin đăng nhập</sys:String>
+    <sys:String x:Key="GoogleAutoLoginEmailLabel">Email Gmail</sys:String>
+    <sys:String x:Key="GoogleAutoLoginPasswordLabel">Mật khẩu</sys:String>
+    <sys:String x:Key="GoogleAutoLoginTotpLabel">Mã TOTP (2FA)</sys:String>
+    <sys:String x:Key="GoogleAutoLoginSave">Lưu thông tin</sys:String>
+    <sys:String x:Key="GoogleAutoLoginCancel">Hủy</sys:String>
+    <sys:String x:Key="GoogleAutoLoginAutoLogin">Tự động đăng nhập</sys:String>
 </ResourceDictionary>

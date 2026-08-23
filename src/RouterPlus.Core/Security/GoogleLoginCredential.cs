@@ -29,7 +29,7 @@ public sealed record GoogleLoginCredential
 
         if (!EmailRegex.IsMatch(trimmedEmail))
         {
-            throw new FormatException($"Invalid email format: {trimmedEmail}");
+            throw new FormatException("Invalid email format.");
         }
 
         ProfileId = trimmedProfileId;

@@ -19,4 +19,22 @@
     <sys:String x:Key="ChromeSelectionCancel">Cancel</sys:String>
     <sys:String x:Key="ChromeSelectionToolTipChrome">Open Chrome location</sys:String>
     <sys:String x:Key="ChromeSelectionToolTipData">Open User Data location</sys:String>
+
+    <!-- Google Auto-Login Dialog -->
+    <sys:String x:Key="GoogleAutoLoginDialogTitle">Google Auto-Login</sys:String>
+    <sys:String x:Key="GoogleAutoLoginProfileLabel">Chrome Profile</sys:String>
+    <sys:String x:Key="GoogleAutoLoginVaultSection">Vault</sys:String>
+    <sys:String x:Key="GoogleAutoLoginUnlock">Unlock</sys:String>
+    <sys:String x:Key="GoogleAutoLoginLock">Lock</sys:String>
+    <sys:String x:Key="GoogleAutoLoginRemember">Remember on this device</sys:String>
+    <sys:String x:Key="GoogleAutoLoginImport">Import</sys:String>
+    <sys:String x:Key="GoogleAutoLoginExport">Export</sys:String>
+    <sys:String x:Key="GoogleAutoLoginRemoveRemembered">Remove remembered</sys:String>
+    <sys:String x:Key="GoogleAutoLoginCredentialsSection">Login Credentials</sys:String>
+    <sys:String x:Key="GoogleAutoLoginEmailLabel">Gmail Email</sys:String>
+    <sys:String x:Key="GoogleAutoLoginPasswordLabel">Password</sys:String>
+    <sys:String x:Key="GoogleAutoLoginTotpLabel">TOTP Secret (2FA)</sys:String>
+    <sys:String x:Key="GoogleAutoLoginSave">Save information</sys:String>
+    <sys:String x:Key="GoogleAutoLoginCancel">Cancel</sys:String>
+    <sys:String x:Key="GoogleAutoLoginAutoLogin">Auto sign in</sys:String>
 </ResourceDictionary>

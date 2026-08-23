@@ -1,0 +1,144 @@
+<Window x:Class="RouterPlus.App.Views.GoogleAutoLoginDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{DynamicResource GoogleAutoLoginDialogTitle}"
+        Width="550" Height="580"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource SurfaceBrush}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0" Text="{DynamicResource GoogleAutoLoginDialogTitle}"
+                   FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+        <!-- Profile Info -->
+        <Border Grid.Row="1" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource PanelBrush}" Padding="12" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="{DynamicResource GoogleAutoLoginProfileLabel}"
+                           FontSize="10" Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,4" />
+                <TextBlock Text="{Binding ProfileName}" FontSize="12" FontWeight="SemiBold" />
+            </StackPanel>
+        </Border>
+
+        <!-- Vault Section -->
+        <Border Grid.Row="2" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource PanelBrush}" Padding="12" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="{DynamicResource GoogleAutoLoginVaultSection}"
+                           FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <PasswordBox Grid.Column="0" x:Name="VaultPasswordBox"
+                                 IsEnabled="{Binding IsVaultUnlocked, Converter={StaticResource InverseBooleanConverter}}"
+                                 Margin="0,0,8,0" />
+                    <Button Grid.Column="1" x:Name="UnlockButton"
+                            Content="{DynamicResource GoogleAutoLoginUnlock}"
+                            Style="{StaticResource DialogButtonStyle}"
+                            Click="Unlock_Click"
+                            IsEnabled="{Binding IsVaultUnlocked, Converter={StaticResource InverseBooleanConverter}}"
+                            Margin="0,0,8,0" />
+                    <Button Grid.Column="2" x:Name="LockButton"
+                            Content="{DynamicResource GoogleAutoLoginLock}"
+                            Style="{StaticResource DialogButtonStyle}"
+                            Click="Lock_Click"
+                            IsEnabled="{Binding IsVaultUnlocked}"
+                            Margin="0" />
+                </Grid>
+
+                <CheckBox x:Name="RememberCheckBox"
+                          Content="{DynamicResource GoogleAutoLoginRemember}"
+                          IsChecked="{Binding RememberOnDevice}"
+                          IsEnabled="{Binding IsVaultUnlocked, Converter={StaticResource InverseBooleanConverter}}"
+                          Margin="0,0,0,8" />
+
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="{DynamicResource GoogleAutoLoginImport}"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="Import_Click"
+                            IsEnabled="{Binding CanAutoLogin}"
+                            Margin="0,0,8,0" />
+                    <Button Content="{DynamicResource GoogleAutoLoginExport}"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="Export_Click"
+                            IsEnabled="{Binding CanAutoLogin}"
+                            Margin="0,0,8,0" />
+                    <Button Content="{DynamicResource GoogleAutoLoginRemoveRemembered}"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="RemoveRemembered_Click"
+                            IsEnabled="{Binding IsVaultUnlocked}"
+                            Margin="0" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Credentials Section -->
+        <Border Grid.Row="3" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource PanelBrush}" Padding="12" Margin="0,0,0,12">
+            <StackPanel IsEnabled="{Binding IsVaultUnlocked}">
+                <TextBlock Text="{DynamicResource GoogleAutoLoginCredentialsSection}"
+                           FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                <TextBlock Text="{DynamicResource GoogleAutoLoginEmailLabel}"
+                           FontSize="10" Margin="0,0,0,4" />
+                <TextBox x:Name="EmailTextBox" Text="{Binding Email, Mode=TwoWay}" Margin="0,0,0,8" />
+
+                <TextBlock Text="{DynamicResource GoogleAutoLoginPasswordLabel}"
+                           FontSize="10" Margin="0,0,0,4" />
+                <PasswordBox x:Name="PasswordBox" Margin="0,0,0,8" />
+
+                <TextBlock Text="{DynamicResource GoogleAutoLoginTotpLabel}"
+                           FontSize="10" Margin="0,0,0,4" />
+                <PasswordBox x:Name="TotpSecretBox" Margin="0,0,0,8" />
+
+                <Button Content="{DynamicResource GoogleAutoLoginSave}"
+                        Style="{StaticResource DialogButtonStyle}"
+                        Click="Save_Click"
+                        HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+
+        <!-- Status -->
+        <Border Grid.Row="4" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource PanelBrush}" Padding="12" Margin="0,0,0,12">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="10" />
+            </ScrollViewer>
+        </Border>
+
+        <!-- Action Buttons -->
+        <Grid Grid.Row="5">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="1" Content="{DynamicResource GoogleAutoLoginCancel}"
+                    Style="{StaticResource DialogButtonStyle}"
+                    Click="Cancel_Click"
+                    Margin="0,0,8,0" />
+            <Button Grid.Column="2" x:Name="AutoLoginButton"
+                    Content="{DynamicResource GoogleAutoLoginAutoLogin}"
+                    Style="{StaticResource DialogButtonStyle}"
+                    Click="AutoLogin_Click"
+                    IsEnabled="{Binding CanAutoLogin}"
+                    Margin="0" />
+        </Grid>
+    </Grid>
+</Window>
