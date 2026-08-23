@@ -14,6 +14,4 @@ public sealed record RouterSettings(
     double? WindowWidth = null,
     double? WindowHeight = null,
     IReadOnlyList<RecentProfile>? RecentProfiles = null,
-    bool EnableKeyboardShortcuts = false,
-    Dictionary<string, string>? KeyboardShortcuts = null,
     IReadOnlyList<QuotaAutoDisableMarker>? QuotaAutoDisableMarkers = null);

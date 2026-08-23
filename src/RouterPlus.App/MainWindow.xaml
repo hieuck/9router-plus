@@ -16,9 +16,6 @@
         Loaded="Window_OnLoaded"
         StateChanged="Window_OnStateChanged"
         Closing="Window_OnClosing">
-    <!-- Global key bindings are generated dynamically by RebuildKeyboardBindings()
-         in MainWindow.xaml.cs so users can remap or disable them in Settings.
-         Palette-local keys remain static since they only act while the overlay is open. -->
     <Window.InputBindings>
         <KeyBinding Key="Escape" Command="{Binding CloseQuickLaunchPaletteCommand}" />
         <KeyBinding Key="Down" Command="{Binding MoveQuickLaunchSelectionCommand}" CommandParameter="1" />
@@ -545,23 +542,28 @@
                         <TextBlock Grid.Column="1" Text="{Binding FilteredProfileCountLabel}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
                     </Grid>
                     <!-- Recent Profiles Section -->
-                    <Border Grid.Row="3" 
+                    <Border Grid.Row="3"
                             Background="{DynamicResource PanelLightBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="12,10"
-                            Margin="0,0,0,10">
+                            Margin="0,0,0,10"
+                            MaxHeight="320">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Visibility" Value="Visible" />
                                 <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsQuickLaunchFeatureEnabled}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding RecentProfileRows.Count}" Value="0">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Border.Style>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
                             <Grid Margin="0,0,0,8">
                                 <Grid.ColumnDefinitions>
@@ -583,7 +585,7 @@
                                                VerticalAlignment="Center"
                                                Margin="0,0,6,0" />
                                     <Button Content="✕"
-                                            ToolTip="Xoá danh sách profile dùng gần đây (Ctrl+Shift+R)"
+                                            ToolTip="Xoá danh sách profile dùng gần đây"
                                             FontSize="9"
                                             Padding="5,1"
                                             Background="Transparent"
@@ -630,27 +632,15 @@
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
-                                                            <Border Grid.Column="0"
-                                                                    Background="{DynamicResource PanelBrush}"
-                                                                    BorderBrush="{DynamicResource BorderBrush}"
-                                                                    BorderThickness="1"
-                                                                    CornerRadius="4"
-                                                                    Padding="4,1"
-                                                                    Margin="0,0,8,0"
-                                                                    VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding KeyboardHint}"
-                                                                           FontSize="9"
-                                                                           Foreground="{DynamicResource MutedTextBrush}" />
-                                                            </Border>
                                                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                                 <TextBlock Text="{Binding Name}"
                                                                            FontSize="11"
                                                                            TextTrimming="CharacterEllipsis" />
                                                                 <TextBlock FontSize="9"
                                                                            Foreground="{DynamicResource MutedTextBrush}">
-                                                                    <Run Text="{Binding LastUsedText}" />
+                                                                    <Run Text="{Binding LastUsedText, Mode=OneWay}" />
                                                                     <Run Text=" · " />
-                                                                    <Run Text="{Binding LaunchCountText}" />
+                                                                    <Run Text="{Binding LaunchCountText, Mode=OneWay}" />
                                                                 </TextBlock>
                                                             </StackPanel>
                                                             <Button Grid.Column="2"
@@ -682,6 +672,7 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
+                        </ScrollViewer>
                     </Border>
 
                     
@@ -1766,152 +1757,6 @@
                         </Border>
 
 
-
-                        <Border Style="{StaticResource SettingsSectionStyle}">
-                            <StackPanel>
-                                <!-- Clickable Header -->
-                                <Button Background="Transparent"
-                                        BorderThickness="0"
-                                        Padding="0"
-                                        Margin="0,0,0,3"
-                                        HorizontalContentAlignment="Stretch"
-                                        Cursor="Hand"
-                                        Command="{Binding ToggleKeyboardShortcutsSectionCommand}">
-                                    <Button.Style>
-                                        <Style TargetType="Button">
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="Button">
-                                                        <ContentPresenter />
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </Button.Style>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" 
-                                                   FontFamily="Segoe UI Symbol"
-                                                   FontSize="10"
-                                                   VerticalAlignment="Center"
-                                                   Margin="0,0,8,0"
-                                                   Foreground="{DynamicResource TextBrush}">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="▼" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsKeyboardShortcutsSectionExpanded}" Value="False">
-                                                            <Setter Property="Text" Value="▶" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <TextBlock Grid.Column="1" 
-                                                   Text="Phím tắt" 
-                                                   Style="{StaticResource SettingsSectionTitleStyle}" 
-                                                   Margin="0" />
-                                    </Grid>
-                                </Button>
-                                
-                                <!-- Collapsible Content -->
-                                <StackPanel>
-                                    <StackPanel.Style>
-                                        <Style TargetType="StackPanel">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsKeyboardShortcutsSectionExpanded}" Value="False">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </StackPanel.Style>
-                                    <Grid Margin="0,0,0,6">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Bật/tắt phím tắt"
-                                                   FontSize="11"
-                                                   VerticalAlignment="Center" />
-                                        <ToggleButton Grid.Column="1"
-                                                      IsChecked="{Binding IsKeyboardShortcutsEnabled, Mode=TwoWay}"
-                                                      Padding="10,4">
-                                            <ToggleButton.Style>
-                                                <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
-                                                    <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
-                                                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-                                                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                                                    <Style.Triggers>
-                                                        <Trigger Property="IsChecked" Value="True">
-                                                            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
-                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                                            <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </ToggleButton.Style>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="Đang bật"
-                                                           Foreground="{DynamicResource AccentContentBrush}"
-                                                           Visibility="{Binding IsKeyboardShortcutsEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                           FontSize="11" />
-                                                <TextBlock Text="Đang tắt"
-                                                           Foreground="{DynamicResource MutedTextBrush}"
-                                                           Visibility="{Binding IsKeyboardShortcutsEnabled, Converter={StaticResource InverseBooleanConverter}}"
-                                                           FontSize="11" />
-                                            </StackPanel>
-                                        </ToggleButton>
-                                    </Grid>
-                                    <TextBlock Text="Mặc định tắt để tránh xung đột với phím tắt của ứng dụng khác."
-                                               Style="{StaticResource SettingsFieldHintStyle}"
-                                               Margin="0,0,0,8" />
-                                    <ItemsControl ItemsSource="{Binding ShortcutRows}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,0,0,6">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding DisplayName}" FontSize="11" />
-                                                        <TextBlock Text="{Binding ErrorMessage}"
-                                                                   FontSize="9"
-                                                                   Foreground="{DynamicResource DangerBrush}"
-                                                                   Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                    </StackPanel>
-                                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                                        <TextBox Text="{Binding Gesture, UpdateSourceTrigger=PropertyChanged}"
-                                                                 Width="120"
-                                                                 FontSize="11"
-                                                                 VerticalContentAlignment="Center"
-                                                                 ToolTip="Ví dụ: Ctrl+Alt+1, F5, Ctrl+Shift+K" />
-                                                        <Button Content="Áp dụng"
-                                                                FontSize="10"
-                                                                Margin="6,0,0,0"
-                                                                Padding="8,3"
-                                                                VerticalAlignment="Center"
-                                                                Command="{Binding DataContext.ApplyShortcutCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                CommandParameter="{Binding ActionId}"
-                                                                Style="{StaticResource UtilityButtonStyle}" />
-                                                    </StackPanel>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <Button Content="Khôi phục phím tắt mặc định"
-                                            Margin="0,8,0,0"
-                                            Padding="10,5"
-                                            HorizontalAlignment="Left"
-                                            Style="{StaticResource UtilityButtonStyle}"
-                                            Command="{Binding ResetShortcutsCommand}" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
 
                         <Border Style="{StaticResource SettingsSectionStyle}">
                             <StackPanel>

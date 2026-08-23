@@ -14,7 +14,6 @@ public sealed class RecentProfileRowViewModel : INotifyPropertyChanged
         Recent = recent ?? throw new ArgumentNullException(nameof(recent));
         Profile = profile ?? throw new ArgumentNullException(nameof(profile));
         SlotIndex = slotIndex;
-        KeyboardHint = ComputeHint(slotIndex);
         _isPinned = recent.IsPinned;
     }
 
@@ -27,8 +26,6 @@ public sealed class RecentProfileRowViewModel : INotifyPropertyChanged
     public int SlotIndex { get; }
 
     public string Name => Profile.Name;
-
-    public string KeyboardHint { get; }
 
     public string LaunchCountText => Recent.LaunchCount <= 1
         ? "1 lần"
@@ -61,15 +58,6 @@ public sealed class RecentProfileRowViewModel : INotifyPropertyChanged
     }
 
     public string PinGlyph => _isPinned ? "📌" : "📍";
-
-    private static string ComputeHint(int slotIndex)
-    {
-        if (slotIndex < 0 || slotIndex > 9)
-        {
-            return string.Empty;
-        }
-        return slotIndex == 9 ? "Ctrl+0" : $"Ctrl+{slotIndex + 1}";
-    }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

@@ -16,25 +16,25 @@ public sealed class MainViewModelRecentProfilesTests
     }
 
     [Fact]
-    public async Task OpenQuickLaunchPalette_with_no_profiles_reports_status()
+    public async Task OpenQuickLaunchPalette_with_no_profiles_is_noop_when_feature_is_disabled()
     {
         var viewModel = new MainViewModel();
 
         await viewModel.OpenQuickLaunchPalette();
 
         Assert.False(viewModel.IsQuickLaunchOpen);
-        Assert.Contains("Chưa có Chrome profile", viewModel.StatusText);
+        Assert.Equal("Đang khởi tạo…", viewModel.StatusText);
     }
 
     [Fact]
-    public async Task OpenQuickLaunchPalette_opens_when_profiles_loaded()
+    public async Task OpenQuickLaunchPalette_stays_closed_when_feature_is_disabled()
     {
         var viewModel = new MainViewModel();
         SimulateLoadedProfiles(viewModel, "Personal", "Work");
 
         await viewModel.OpenQuickLaunchPalette();
 
-        Assert.True(viewModel.IsQuickLaunchOpen);
+        Assert.False(viewModel.IsQuickLaunchOpen);
         Assert.Equal(2, viewModel.FilteredQuickLaunchProfiles.Count);
     }
 
@@ -82,7 +82,7 @@ public sealed class MainViewModelRecentProfilesTests
     }
 
     [Fact]
-    public void RecentProfileRows_render_keyboard_hint_for_slot_index()
+    public void RecentProfileRows_render_recent_profile_metadata()
     {
         var viewModel = new MainViewModel();
         SimulateLoadedProfiles(viewModel, "Personal", "Work");
@@ -94,8 +94,6 @@ public sealed class MainViewModelRecentProfilesTests
 
         var rows = viewModel.RecentProfileRows;
         Assert.Equal(2, rows.Count);
-        Assert.Equal("Ctrl+1", rows[0].KeyboardHint);
-        Assert.Equal("Ctrl+2", rows[1].KeyboardHint);
         Assert.Equal("7 lần", rows[0].LaunchCountText);
         Assert.True(rows[0].IsPinned);
     }

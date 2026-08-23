@@ -93,4 +93,39 @@ public sealed class SettingsStoreTests
             }
         }
     }
+
+    [Fact]
+    public async Task Legacy_keyboard_shortcut_fields_are_ignored_and_not_written_back()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(filePath, """
+                {
+                  "dashboardBaseUrl": "http://legacy.example:20128",
+                  "enableKeyboardShortcuts": true,
+                  "keyboardShortcuts": { "OpenProviderCodex": "Ctrl+Alt+1" }
+                }
+                """);
+
+            var store = new SettingsStore(filePath);
+            var loaded = await store.LoadAsync();
+            await store.SaveAsync(loaded);
+            var savedJson = await File.ReadAllTextAsync(filePath);
+
+            Assert.Equal("http://legacy.example:20128", loaded.DashboardBaseUrl);
+            Assert.DoesNotContain("enableKeyboardShortcuts", savedJson, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("keyboardShortcuts", savedJson, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
 }

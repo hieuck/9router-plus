@@ -15,7 +15,7 @@ RouterPlus giúp mở Chrome profile đúng ngữ cảnh và quản lý connecti
 
 ## 2. Tải và chạy lần đầu
 
-1. Mở [GitHub Releases](https://github.com/hieuck/9router-plus/releases) và chọn release stable có tag `vX.Y.Z`; không chọn release có tag `personal-v...` nếu muốn dùng kênh stable.
+1. Mở [GitHub Releases](https://github.com/hieuck/9router-plus/releases) và chọn release stable có tag `vX.Y.Z`.
 2. Tải file `RouterPlus-vX.Y.Z-win-x64.zip`.
 3. Tùy chọn: tải file `.sha256` cạnh zip và kiểm tra checksum bằng PowerShell:
 
@@ -29,7 +29,7 @@ RouterPlus giúp mở Chrome profile đúng ngữ cảnh và quản lý connecti
 
 4. Giải nén vào thư mục bạn muốn giữ ứng dụng.
 5. Mở `RouterPlus.exe`.
-6. Nếu Windows SmartScreen cảnh báo, chỉ tiếp tục khi bạn đã tải đúng asset từ release chính thức và checksum hợp lệ. Personal release và build local có thể chưa được code-sign bởi CA; đây là hành vi dự kiến cho bản cá nhân.
+6. Nếu Windows SmartScreen cảnh báo, chỉ tiếp tục khi bạn đã tải đúng asset từ release chính thức và checksum hợp lệ. Build local có thể chưa được code-sign bởi CA; đây là hành vi dự kiến trong giai đoạn phát triển.
 
 ## 3. Thiết lập lần đầu
 
@@ -37,18 +37,28 @@ RouterPlus giúp mở Chrome profile đúng ngữ cảnh và quản lý connecti
 2. Ở `Chrome executable`, chọn đúng file `chrome.exe`.
 3. Ở `Chrome User Data`, chọn thư mục User Data của Chrome/Chromium, không chọn thư mục `Profile 1` riêng lẻ.
 4. Kiểm tra `Dashboard URL`; mặc định là `http://localhost:20128`.
-5. Nhấn `Lưu cài đặt`.
-6. Chọn một profile trong danh sách. Khi đọc thành công, app hiển thị trạng thái Chrome và danh sách provider.
+5. Nếu có nhiều bản Chrome/Chromium, nhấn `⚡ Tự động phát hiện`, chọn installation hợp lệ, rồi bấm `Chọn`. Nút `Quét lại` dùng để tìm lại các installation; bạn cũng có thể mở trực tiếp vị trí executable hoặc User Data từ hộp chọn.
+6. Nhấn `Lưu cài đặt`.
+7. Chọn một profile trong danh sách. Khi đọc thành công, app hiển thị trạng thái Chrome và danh sách provider.
 
-Nếu Chrome được cài ở vị trí chuẩn, app sẽ tự thử tìm executable và User Data. Bạn vẫn có thể chọn lại thủ công trong settings.
+Nếu Chrome được cài ở vị trí chuẩn, app sẽ tự thử tìm executable và User Data. Đường dẫn có dấu ✓ khi file/thư mục tồn tại; nếu không hợp lệ, sửa lại trước khi lưu. Bạn vẫn có thể chọn lại thủ công trong settings.
 
 ## 4. Quản lý Chrome profile
 
-### Chọn và tìm profile
+### Chọn, tìm và lọc profile
 
 - Chọn profile ở thanh bên để làm profile hiện hành.
 - Dùng ô tìm kiếm theo tên hoặc thư mục.
-- Chọn bộ lọc trạng thái nếu cần tìm profile đã có provider, chưa có provider hoặc đang kết nối.
+- Dùng `Chưa có provider` để chỉ hiện profile chưa có connection.
+- Dùng các tag provider để lọc profile có connection tương ứng; số trên tag cho biết có bao nhiêu profile khớp.
+- Có thể bật nhiều bộ lọc provider cùng lúc. Nhấn lại tag đang chọn để bỏ lọc.
+
+### Recent Profiles và Quick Launch
+
+- Sidebar ghi nhớ tối đa 10 profile dùng gần đây; profile được ghim sẽ nằm trước các profile còn lại.
+- Nhấn nút ghim bên cạnh profile để ghim/bỏ ghim.
+- Nháy đúp hoặc bấm vào profile để mở dashboard bằng profile đó.
+- Dùng nút `✕` để xóa danh sách Recent; thao tác này không xóa Chrome profile.
 
 ### Tạo profile do RouterPlus quản lý
 
@@ -75,12 +85,22 @@ Nhấp chuột phải profile để:
 
 Xóa profile chỉ xóa thư mục profile được chọn; không xóa toàn bộ Chrome User Data. Hãy đóng Chrome trước khi xóa để tránh file đang được khóa.
 
-## 5. Đồng bộ và đọc trạng thái
+## 5. Đồng bộ, kiểm tra và quản lý connection
 
-1. Nhấn `Đồng bộ` để đọc connection từ 9Router.
-2. Mỗi profile hiển thị badge provider tương ứng.
+1. Nhấn `Đồng bộ` hoặc `F5` để đọc connection từ 9Router.
+2. Mỗi profile hiển thị badge provider tương ứng; thẻ provider hiển thị workflow, trạng thái và quota.
 3. Connection được match theo tên profile.
-4. Nếu connection cũ chưa được đổi tên theo profile, app có thể không nhận diện đúng. Đổi tên connection trong 9Router rồi đồng bộ lại.
+4. Nút `↻` trên thẻ provider kiểm tra lại connection của provider đó cho profile đang chọn.
+5. Nút `×` xóa connection của provider đó sau khi xác nhận; thao tác này không xóa Chrome profile.
+6. Nếu connection cũ chưa được đổi tên theo profile, app có thể không nhận diện đúng. Đổi tên connection trong 9Router rồi đồng bộ lại.
+
+### Quota Tracker và tự động bật lại
+
+- `Quota Tracker` hiển thị mức sử dụng, phần trăm và thời điểm reset của từng quota nếu 9Router cung cấp dữ liệu.
+- App tự làm mới quota theo chu kỳ phù hợp với trạng thái connection; khi cửa sổ app bị thu nhỏ, polling được tạm dừng và tiếp tục khi mở lại.
+- Khi Kiro hết quota, app có thể tự tắt connection để tránh tiếp tục gửi request lỗi.
+- Sau khi quota đã reset, app hiển thị gợi ý `Bật lại`. Chỉ nhấn nút này sau khi bạn xác nhận muốn bật connection; app sẽ đồng bộ lại trạng thái.
+- Nếu chưa có dữ liệu quota, thẻ hiển thị thông báo tương ứng thay vì suy đoán mức sử dụng.
 
 ## 6. Thêm provider OAuth/device code
 
@@ -126,7 +146,7 @@ Không gửi API key vào issue, chat, screenshot, clipboard log hoặc file bac
 - Mở menu `Trợ giúp` để xem `Giới thiệu`, hướng dẫn, chính sách bảo mật hoặc trang release cố định của dự án. About chỉ hiển thị tên app, version, MIT License và link công khai; không bind vào profile, log, settings hay secret.
 - Chọn `Kiểm tra cập nhật` để đọc release stable từ repository cố định. Request này không gửi profile, email, API key, OAuth state, Chrome path hoặc machine identifier.
 - Nếu có bản mới, app chỉ cho cài sau khi metadata release stable `v...`, host HTTPS được allow, checksum SHA-256 và archive layout được xác minh. Người dùng phải xác nhận trước khi app đóng.
-- Build unsigned vẫn hỗ trợ self-update; personal/prerelease/draft release không được chọn làm bản cập nhật stable và không có fallback tải executable từ URL tùy ý.
+- Build unsigned vẫn hỗ trợ self-update; chỉ release stable có tag `v...` và checksum hợp lệ mới được chọn làm bản cập nhật, không có fallback tải executable từ URL tùy ý.
 - Updater riêng đổi live directory sang backup, đưa staging vào vị trí live và rollback nếu bản mới không khởi động được. Settings và DPAPI secrets nằm ngoài package update.
 ## 9. Theme, font và settings
 

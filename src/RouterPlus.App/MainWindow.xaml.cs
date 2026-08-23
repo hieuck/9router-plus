@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,7 +15,6 @@ public partial class MainWindow : Window
 {
     private const double MinimumVisibleWindowSize = 64d;
     private bool _isClosing;
-    private readonly List<KeyBinding> _dynamicBindings = new();
 
     public MainWindow()
     {
@@ -23,8 +22,6 @@ public partial class MainWindow : Window
         ViewModel.LoadWindowPlacementSync();
         ApplySavedWindowPlacement();
         InitializeComponent();
-        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        RebuildKeyboardBindings();
     }
 
     private MainViewModel ViewModel => (MainViewModel)DataContext;
@@ -118,82 +115,6 @@ public partial class MainWindow : Window
             && visibleRect.Height >= MinimumVisibleWindowSize;
     }
 
-    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(MainViewModel.IsKeyboardShortcutsEnabled) or nameof(MainViewModel.ShortcutRows))
-        {
-            RebuildKeyboardBindings();
-        }
-    }
-
-    private void RebuildKeyboardBindings()
-    {
-        foreach (var binding in _dynamicBindings)
-        {
-            InputBindings.Remove(binding);
-        }
-        _dynamicBindings.Clear();
-
-        if (!ViewModel.IsKeyboardShortcutsEnabled)
-        {
-            return;
-        }
-
-        foreach (var row in ViewModel.ShortcutRows)
-        {
-            if (!KeyboardShortcutService.TryParse(row.Gesture, out var parsed) || parsed is null)
-            {
-                continue;
-            }
-
-            var command = ViewModel.ResolveShortcutCommand(row.ActionId);
-            if (command is null)
-            {
-                continue;
-            }
-
-            var parameter = ViewModel.ResolveShortcutParameter(row.ActionId);
-            var binding = new KeyBinding(command, ResolveKey(parsed), ResolveModifiers(parsed))
-            {
-                CommandParameter = parameter is null ? null : parameter
-            };
-            _dynamicBindings.Add(binding);
-            InputBindings.Add(binding);
-        }
-    }
-
-    private static Key ResolveKey(RouterPlus.Infrastructure.Storage.ParsedShortcut shortcut)
-    {
-        var keyName = shortcut.KeyName;
-        if (keyName.Length == 2 && keyName[0] == 'D' && char.IsDigit(keyName[1]))
-        {
-            return Key.D0 + (keyName[1] - '0');
-        }
-        if (KeyboardShortcutService.IsFunctionKey(keyName))
-        {
-            return Key.F1 + (int.Parse(keyName[1..]) - 1);
-        }
-        return keyName switch
-        {
-            "S" => Key.S,
-            "K" => Key.K,
-            "R" => Key.R,
-            "Q" => Key.Q,
-            "L" => Key.L,
-            _ => Key.None
-        };
-    }
-
-    private static ModifierKeys ResolveModifiers(RouterPlus.Infrastructure.Storage.ParsedShortcut shortcut)
-    {
-        var modifiers = ModifierKeys.None;
-        if ((shortcut.ModifierFlags & 1) != 0) modifiers |= ModifierKeys.Control;
-        if ((shortcut.ModifierFlags & 2) != 0) modifiers |= ModifierKeys.Alt;
-        if ((shortcut.ModifierFlags & 4) != 0) modifiers |= ModifierKeys.Shift;
-        if ((shortcut.ModifierFlags & 8) != 0) modifiers |= ModifierKeys.Windows;
-        return modifiers;
-    }
-
     private void HelpMenu_Click(object sender, RoutedEventArgs e)
     {
         if (sender is WpfButton button && button.ContextMenu is not null)
@@ -250,7 +171,31 @@ public partial class MainWindow : Window
 
     private void ProfileList_OnMouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        ViewModel.LaunchSelectedCommand.Execute(null);
+        try
+        {
+            // Only launch if double-click is on an actual profile item, not on empty space
+            if (sender is not System.Windows.Controls.ListBox listBox || e.OriginalSource is not DependencyObject source)
+            {
+                return;
+            }
+
+            if (ItemsControl.ContainerFromElement(listBox, source) is System.Windows.Controls.ListBoxItem { DataContext: ProfileRowViewModel })
+            {
+                if (ViewModel.LaunchSelectedCommand.CanExecute(null))
+                {
+                    ViewModel.LaunchSelectedCommand.Execute(null);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                $"Lỗi khi mở profile:\n\n{ex.Message}\n\nStack trace:\n{ex.StackTrace}",
+                "Lỗi Double-Click",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private void ProfileList_OnPreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)

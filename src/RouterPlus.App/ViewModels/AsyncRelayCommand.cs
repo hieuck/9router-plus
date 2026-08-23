@@ -33,6 +33,18 @@ public sealed class AsyncRelayCommand : ICommand
         {
             await _execute();
         }
+        catch (Exception ex)
+        {
+            // Handle unhandled exceptions from async commands to prevent app crash
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                System.Windows.MessageBox.Show(
+                    $"Lỗi không mong đợi:\n\n{ex.Message}",
+                    "Lỗi",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            });
+        }
         finally
         {
             _isRunning = false;
@@ -72,6 +84,18 @@ public sealed class AsyncRelayCommand<T> : ICommand
         try
         {
             await _execute(value);
+        }
+        catch (Exception ex)
+        {
+            // Handle unhandled exceptions from async commands to prevent app crash
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                System.Windows.MessageBox.Show(
+                    $"Lỗi không mong đợi:\n\n{ex.Message}",
+                    "Lỗi",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            });
         }
         finally
         {

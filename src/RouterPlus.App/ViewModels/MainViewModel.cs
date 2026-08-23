@@ -63,7 +63,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _isAppearanceSectionExpanded = true;
     private bool _isDashboardSectionExpanded = true;
     private bool _isChromeSectionExpanded = true;
-    private bool _isKeyboardShortcutsSectionExpanded = true;
     private bool _isProfileSidebarCollapsed;
     private double _fontScale = 1d;
     private bool _useLightTheme = true;
@@ -72,9 +71,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _savedChromeUserDataDirectory = string.Empty;
     private double _savedFontScale = 1d;
     private bool _savedUseLightTheme = true;
-    private bool _enableKeyboardShortcuts;
-    private bool _savedEnableKeyboardShortcuts;
-    private readonly ShortcutBindingsViewModel _shortcutBindings = new();
     private WindowPlacement? _savedWindowPlacement;
     private string _connectionStatusText = "Chưa đồng bộ trạng thái provider.";
     private string _statusText = "Đang khởi tạo…";
@@ -128,8 +124,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ClearProfileSearchCommand = new AsyncRelayCommand(ClearProfileSearchAsync, () => CanClearProfileSearch);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         LaunchProfileCommand = new AsyncRelayCommand<ChromeProfile>(LaunchProfileAsync);
-        ApplyShortcutCommand = new AsyncRelayCommand<string>(ApplyShortcutAsync);
-        ResetShortcutsCommand = new AsyncRelayCommand(ResetAllShortcuts);
         LaunchRecentCommand = new AsyncRelayCommand<object>(LaunchRecentAsync);
         TogglePinProfileCommand = new AsyncRelayCommand<ChromeProfile>(TogglePinProfileAsync);
         ClearRecentProfilesCommand = new AsyncRelayCommand(ClearRecentProfilesAsync, () => RecentProfileRows.Count > 0);
@@ -157,7 +151,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ToggleAppearanceSectionCommand = new RelayCommand(ToggleAppearanceSection);
         ToggleDashboardSectionCommand = new RelayCommand(ToggleDashboardSection);
         ToggleChromeSectionCommand = new RelayCommand(ToggleChromeSection);
-        ToggleKeyboardShortcutsSectionCommand = new RelayCommand(ToggleKeyboardShortcutsSection);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -175,6 +168,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<RecentProfileRowViewModel> RecentProfileRows { get; } = new();
 
     public ObservableCollection<ChromeProfile> FilteredQuickLaunchProfiles { get; } = new();
+
+    public bool IsQuickLaunchFeatureEnabled => false;
 
     public bool IsQuickLaunchOpen
     {
@@ -458,17 +453,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool IsKeyboardShortcutsSectionExpanded
-    {
-        get => _isKeyboardShortcutsSectionExpanded;
-        set
-        {
-            if (_isKeyboardShortcutsSectionExpanded == value) return;
-            _isKeyboardShortcutsSectionExpanded = value;
-            OnPropertyChanged();
-        }
-    }
-
     public bool IsSettingsExpanded
     {
         get => _isSettingsExpanded;
@@ -614,24 +598,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool IsKeyboardShortcutsEnabled
-    {
-        get => _enableKeyboardShortcuts;
-        set
-        {
-            if (_enableKeyboardShortcuts == value)
-            {
-                return;
-            }
-
-            _enableKeyboardShortcuts = value;
-            OnPropertyChanged();
-            NotifySettingsStateChanged();
-        }
-    }
-
-    public ObservableCollection<ShortcutBindingRowViewModel> ShortcutRows => _shortcutBindings.Rows;
-
     public sealed record FontScaleOption(double Value, string Label)
     {
         public override string ToString() => Label;
@@ -769,13 +735,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AsyncRelayCommand ClearChromeUserDataCommand { get; }
 
     public AsyncRelayCommand ResetSettingsCommand { get; }
-    public AsyncRelayCommand<string> ApplyShortcutCommand { get; }
-    public AsyncRelayCommand ResetShortcutsCommand { get; }
 
     public RelayCommand ToggleAppearanceSectionCommand { get; }
     public RelayCommand ToggleDashboardSectionCommand { get; }
     public RelayCommand ToggleChromeSectionCommand { get; }
-    public RelayCommand ToggleKeyboardShortcutsSectionCommand { get; }
 
     private void ToggleAppearanceSection()
     {
@@ -790,11 +753,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void ToggleChromeSection()
     {
         IsChromeSectionExpanded = !IsChromeSectionExpanded;
-    }
-
-    private void ToggleKeyboardShortcutsSection()
-    {
-        IsKeyboardShortcutsSectionExpanded = !IsKeyboardShortcutsSectionExpanded;
     }
 
     private async Task ResetSettingsAsync()
@@ -1182,7 +1140,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             StatusText = index == 0
                 ? "Chưa có profile nào trong Quick Launch."
-                : $"Chưa có profile nào ở vị trí Ctrl+{index}.";
+                : $"Chưa có profile nào ở vị trí {index + 1}.";
             return;
         }
 
@@ -1247,11 +1205,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ChromeUserDataDirectory = settings.ChromeUserDataDirectory ?? string.Empty;
             FontScale = settings.FontScale;
             UseLightTheme = settings.UseLightTheme;
-            _enableKeyboardShortcuts = settings.EnableKeyboardShortcuts;
-        _savedEnableKeyboardShortcuts = _enableKeyboardShortcuts;
-            _shortcutBindings.Load(settings.KeyboardShortcuts);
-            OnPropertyChanged(nameof(IsKeyboardShortcutsEnabled));
-            OnPropertyChanged(nameof(ShortcutRows));
             _savedWindowPlacement = TryCreateWindowPlacement(
                 settings.WindowLeft,
                 settings.WindowTop,
@@ -2448,6 +2401,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     internal Task OpenQuickLaunchPalette()
     {
+        if (!IsQuickLaunchFeatureEnabled)
+        {
+            return Task.CompletedTask;
+        }
+
         if (Profiles.Count == 0)
         {
             StatusText = "Chưa có Chrome profile để hiển thị Quick Launch.";
@@ -2714,60 +2672,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return string.Equals(leftPath, rightPath, StringComparison.OrdinalIgnoreCase);
     }
 
-    public ICommand? ResolveShortcutCommand(string actionId) => actionId switch
-    {
-        "SaveSettings" => SaveSettingsCommand,
-        "OpenQuickLaunch" => OpenQuickLaunchPaletteCommand,
-        "ClearRecent" => ClearRecentProfilesCommand,
-        "RefreshProfiles" => RefreshCommand,
-        "OpenProviderCodex" => OpenProviderDashboardCommand,
-        "OpenProviderKiro" => OpenProviderDashboardCommand,
-        "OpenProviderOpenRouter" => OpenProviderDashboardCommand,
-        "OpenProviderOllama" => OpenProviderDashboardCommand,
-        "OpenProviderKimchi" => OpenProviderDashboardCommand,
-        _ => null
-    };
-
-    public object? ResolveShortcutParameter(string actionId) => actionId switch
-    {
-        "SaveSettings" or "OpenQuickLaunch" or "ClearRecent" or "RefreshProfiles" => null,
-        "OpenProviderCodex" => ProviderKind.Codex,
-        "OpenProviderKiro" => ProviderKind.Kiro,
-        "OpenProviderOpenRouter" => ProviderKind.OpenRouter,
-        "OpenProviderOllama" => ProviderKind.Ollama,
-        "OpenProviderKimchi" => ProviderKind.Kimchi,
-        _ => null
-    };
-
-    private async Task ApplyShortcutAsync(string actionId)
-    {
-        if (string.IsNullOrWhiteSpace(actionId)) return;
-
-        var row = _shortcutBindings.Rows.FirstOrDefault(r => r.ActionId == actionId);
-        if (row is null) return;
-
-        var error = _shortcutBindings.ValidateAndApply(actionId, row.Gesture);
-        if (error is not null)
-        {
-            row.ErrorMessage = error;
-            StatusText = error;
-            return;
-        }
-
-        row.ErrorMessage = null;
-        StatusText = $"Đã cập nhật phím tắt cho \"{row.DisplayName}\": {row.Gesture}.";
-        OnPropertyChanged(nameof(ShortcutRows));
-        await SaveSettingsAsync();
-    }
-
-    private async Task ResetAllShortcuts()
-    {
-        _shortcutBindings.ResetAll();
-        StatusText = "Đã khôi phục phím tắt mặc định.";
-        OnPropertyChanged(nameof(ShortcutRows));
-        await SaveSettingsAsync();
-    }
-
     private RouterSettings BuildSettings(WindowPlacement? windowPlacement = null)
     {
         var placement = windowPlacement ?? _savedWindowPlacement;
@@ -2783,8 +2687,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         placement?.Width,
         placement?.Height,
         _recentProfiles.ToArray(),
-        _enableKeyboardShortcuts,
-        _shortcutBindings.BuildSettingsDictionary(),
         _quotaAutoDisableMarkers);    }
 
     private static WindowPlacement? TryCreateWindowPlacement(
@@ -2835,8 +2737,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         && string.Equals(ChromeExecutablePath.Trim(), _savedChromeExecutablePath, StringComparison.Ordinal)
         && string.Equals(ChromeUserDataDirectory.Trim(), _savedChromeUserDataDirectory, StringComparison.Ordinal)
         && Math.Abs(FontScale - _savedFontScale) < 0.001d
-        && UseLightTheme == _savedUseLightTheme
-        && IsKeyboardShortcutsEnabled == _savedEnableKeyboardShortcuts;
+        && UseLightTheme == _savedUseLightTheme;
 
     private string GetSettingsValidationMessage()
     {
@@ -2871,7 +2772,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _savedChromeUserDataDirectory = ChromeUserDataDirectory.Trim();
         _savedFontScale = FontScale;
         _savedUseLightTheme = UseLightTheme;
-        _savedEnableKeyboardShortcuts = IsKeyboardShortcutsEnabled;
         NotifySettingsStateChanged();
     }
 
