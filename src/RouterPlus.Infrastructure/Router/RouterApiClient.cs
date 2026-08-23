@@ -307,6 +307,17 @@ public sealed class RouterApiClient : IRouterApiClient
         await EnsureSuccessAsync(response, cancellationToken);
     }
 
+    public async Task DeleteConnectionAsync(
+        string connectionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionId);
+        using var response = await _httpClient.DeleteAsync(
+            CreateUri($"api/providers/{Uri.EscapeDataString(connectionId)}"),
+            cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
     public async Task<ProviderConnection> WaitForNewConnectionAsync(
         ProviderKind provider,
         IReadOnlyDictionary<string, ProviderConnection> existingConnections,
