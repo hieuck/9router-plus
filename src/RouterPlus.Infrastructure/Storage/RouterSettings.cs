@@ -7,7 +7,7 @@ public sealed record RouterSettings(
     string? ChromeExecutablePath = null,
     string? ChromeUserDataDirectory = null,
     double FontScale = 1d,
-    bool UseLightTheme = false,
+    bool UseLightTheme = true,
     IReadOnlyList<ManagedChromeProfile>? ManagedProfiles = null,
     double? WindowLeft = null,
     double? WindowTop = null,
