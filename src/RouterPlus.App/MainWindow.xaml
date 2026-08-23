@@ -721,7 +721,7 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </ToggleButton.Style>
-                                        <TextBlock Text="{Binding DisplayName}" FontSize="11" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding DisplayNameWithCount}" FontSize="11" VerticalAlignment="Center" />
                                     </ToggleButton>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

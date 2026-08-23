@@ -406,6 +406,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ApplyProfileFilter();
     }
 
+    private void UpdateProviderFilterCounts()
+    {
+        var rowsByProfileId = ProfileRows.ToDictionary(row => row.Profile.Id, StringComparer.Ordinal);
+        foreach (var option in ProviderFilterOptions)
+        {
+            if (option.Kind is not { } kind)
+            {
+                continue;
+            }
+
+            var count = ProfileRows.Count(row =>
+                row.ProviderStatuses.Any(status =>
+                    status.Definition.Kind == kind && status.IsConnected));
+            option.SetProfileCount(count);
+        }
+    }
+
     public bool IsAppearanceSectionExpanded
     {
         get => _isAppearanceSectionExpanded;
@@ -1712,6 +1729,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             OnPropertyChanged(nameof(SelectedProfileRow));
             UpdateProviderCardStatuses();
+            UpdateProviderFilterCounts();
             ApplyProfileFilter();
 
             var matchedProfiles = ProfileRows.Count(row => row.ConnectedProviderCount > 0);
