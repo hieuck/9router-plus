@@ -1149,9 +1149,6 @@
                                                     <TextBlock Text="{Binding Workflow}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
-                                                    <Border Style="{StaticResource ProviderWorkflowTagStyle}">
-                                                        <TextBlock Text="{Binding Workflow}" Foreground="{DynamicResource MutedTextBrush}" FontSize="9" />
-                                                    </Border>
                                                     <Border Style="{StaticResource ProviderStatusBadgeStyle}" ToolTip="{Binding StatusTooltip}">
                                                         <StackPanel Orientation="Horizontal">
                                                             <Ellipse Width="7" Height="7" Margin="0,0,5,0" Style="{StaticResource ProviderStatusDotStyle}" />
