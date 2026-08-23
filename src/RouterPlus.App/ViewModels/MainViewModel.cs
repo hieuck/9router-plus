@@ -140,6 +140,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenProviderCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderAsync);
         OpenProviderDashboardCommand = new AsyncRelayCommand<ProviderKind>(OpenProviderDashboardAsync, _ => SelectedProfile is not null);
         TestConnectionCommand = new AsyncRelayCommand<ProviderKind>(TestConnectionAsync, _ => SelectedProfile is not null);
+        DeleteConnectionCommand = new AsyncRelayCommand<ProviderKind>(DeleteConnectionAsync, _ => SelectedProfile is not null);
         OpenQuickLinkCommand = new AsyncRelayCommand<ProviderKind>(OpenQuickLinkAsync);
         CancelWorkflowCommand = new AsyncRelayCommand(CancelWorkflowAsync, () => IsWorkflowInProgress);
         WaitForConnectionCommand = new AsyncRelayCommand(WaitForConnectionAsync, () => !_workflowInProgress && _currentWorkflowProvider is not null && SelectedProfile is not null);
@@ -254,6 +255,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             LaunchSelectedCommand.RaiseCanExecuteChanged();
             OpenProviderDashboardCommand.RaiseCanExecuteChanged();
             TestConnectionCommand.RaiseCanExecuteChanged();
+            DeleteConnectionCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
             _ = LoadSelectedProfileApiKeysAsync();
         }
@@ -1214,6 +1216,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AsyncRelayCommand<ProviderKind> OpenProviderDashboardCommand { get; }
 
     public AsyncRelayCommand<ProviderKind> TestConnectionCommand { get; }
+
+    public AsyncRelayCommand<ProviderKind> DeleteConnectionCommand { get; }
 
     public AsyncRelayCommand<ProviderKind> OpenQuickLinkCommand { get; }
 
@@ -2597,6 +2601,82 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 StatusText = $"Test connection failed for {definition.DisplayName} ({failedConnectionCount} connection(s)).";
                 ShowToast(StatusText, ToastType.Warning, 5);
             }
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    private async Task DeleteConnectionAsync(ProviderKind provider)
+    {
+        var profile = SelectedProfile;
+        if (profile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            ShowToast(StatusText, ToastType.Warning);
+            return;
+        }
+
+        try
+        {
+            var definition = ProviderCatalog.Get(provider);
+            var api = CreateApiClient();
+            var matchingConnections = (await api.ListConnectionsAsync(provider))
+                .Where(connection => string.Equals(
+                    connection.Name?.Trim(),
+                    profile.Name.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (matchingConnections.Length == 0)
+            {
+                StatusText = $"Không tìm thấy connection {definition.DisplayName} cho profile {profile.Name}.";
+                ShowToast(StatusText, ToastType.Warning, 5);
+                return;
+            }
+
+            var connectionList = matchingConnections.Length == 1
+                ? $"connection {matchingConnections[0].Email ?? matchingConnections[0].Id}"
+                : $"{matchingConnections.Length} connections";
+
+            var result = System.Windows.MessageBox.Show(
+                $"Bạn có chắc muốn xóa {connectionList} của {definition.DisplayName} cho profile {profile.Name}?\n\n" +
+                "Thao tác này không thể hoàn tác.",
+                "Xác nhận xóa connection",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning,
+                System.Windows.MessageBoxResult.No);
+
+            if (result != System.Windows.MessageBoxResult.Yes)
+            {
+                StatusText = "Đã hủy xóa connection.";
+                return;
+            }
+
+            var deletedCount = 0;
+            foreach (var connection in matchingConnections)
+            {
+                await api.DeleteConnectionAsync(connection.Id);
+                deletedCount++;
+
+                // Delete saved API key if exists
+                if (definition.Workflow == WorkflowKind.ApiKey)
+                {
+                    try
+                    {
+                        await _secretVault.RemoveAsync(ProfileSecretKey.Create(profile, provider));
+                    }
+                    catch
+                    {
+                        // Ignore vault deletion errors
+                    }
+                }
+            }
+
+            await RefreshConnectionStatusesAsync(showStatus: false);
+            StatusText = $"Đã xóa {deletedCount} connection {definition.DisplayName} cho profile {profile.Name}.";
+            ShowToast(StatusText, ToastType.Success, 5);
         }
         catch (Exception exception)
         {

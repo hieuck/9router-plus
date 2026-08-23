@@ -261,6 +261,7 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="7,4" />
+            <Setter Property="MinHeight" Value="26" />
             <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
 
@@ -277,6 +278,22 @@
                     <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
                 </DataTrigger>
             </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ProviderActionIconButtonStyle" TargetType="Border" BasedOn="{StaticResource ProviderWorkflowTagStyle}">
+            <Setter Property="Margin" Value="6,0,0,0" />
+            <Setter Property="MinWidth" Value="26" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <Style x:Key="ProviderHeaderIconButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
         <Style x:Key="ProviderStatusDotStyle" TargetType="Ellipse">
@@ -1141,6 +1158,28 @@
                                                             <TextBlock Text="{Binding StatusLabel}" Style="{StaticResource ProviderStatusTextStyle}" />
                                                         </StackPanel>
                                                     </Border>
+                                                    <Button Command="{Binding DataContext.TestConnectionCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                            CommandParameter="{Binding Kind}"
+                                                            Content="↻"
+                                                            FontSize="14"
+                                                            Width="28"
+                                                            Height="26"
+                                                            Padding="0"
+                                                            Cursor="Hand"
+                                                            ToolTip="Test connection"
+                                                            Style="{StaticResource ProviderHeaderIconButtonStyle}"
+                                                            Focusable="False" />
+                                                    <Button Command="{Binding DataContext.DeleteConnectionCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                            CommandParameter="{Binding Kind}"
+                                                            Content="×"
+                                                            FontSize="16"
+                                                            Width="28"
+                                                            Height="26"
+                                                            Padding="0"
+                                                            Cursor="Hand"
+                                                            ToolTip="Xóa connection"
+                                                            Style="{StaticResource ProviderHeaderIconButtonStyle}"
+                                                            Focusable="False" />
                                                 </StackPanel>
                                             </Grid>
                                             <Border Style="{StaticResource ProviderQuotaPanelStyle}">
@@ -1290,12 +1329,6 @@
                                                 <TextBlock Grid.Column="1" Text="DPAPI" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
                                             </Grid>
                                             <WrapPanel Margin="0,12,0,0" HorizontalAlignment="Left">
-                                                <Button Content="{DynamicResource ProviderTestConnectionText}"
-                                                        Command="{Binding DataContext.TestConnectionCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                                                        CommandParameter="{Binding Kind}"
-                                                        Style="{StaticResource ProviderActionButtonStyle}"
-                                                        Focusable="False"
-                                                        ToolTip="Test connection for the selected profile" />
                                                 <Button Content="{DynamicResource ProviderDashboardText}"
                                                         Command="{Binding DataContext.OpenProviderDashboardCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                         CommandParameter="{Binding Kind}"
