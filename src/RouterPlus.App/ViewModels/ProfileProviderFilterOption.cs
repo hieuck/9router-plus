@@ -7,6 +7,7 @@ namespace RouterPlus.App.ViewModels;
 public sealed class ProfileProviderFilterOption : INotifyPropertyChanged
 {
     private bool _isSelected;
+    private int _profileCount;
 
     public ProfileProviderFilterOption(ProviderKind? kind, string displayName, string glyph, string tooltip)
     {
@@ -26,6 +27,26 @@ public sealed class ProfileProviderFilterOption : INotifyPropertyChanged
 
     public string Tooltip { get; }
 
+    public int ProfileCount
+    {
+        get => _profileCount;
+        private set
+        {
+            if (_profileCount == value)
+            {
+                return;
+            }
+
+            _profileCount = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DisplayNameWithCount));
+        }
+    }
+
+    public string DisplayNameWithCount => ProfileCount > 0
+        ? $"{DisplayName} ({ProfileCount})"
+        : DisplayName;
+
     public bool IsSelected
     {
         get => _isSelected;
@@ -39,6 +60,11 @@ public sealed class ProfileProviderFilterOption : INotifyPropertyChanged
             _isSelected = value;
             OnPropertyChanged();
         }
+    }
+
+    public void SetProfileCount(int count)
+    {
+        ProfileCount = Math.Max(0, count);
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
