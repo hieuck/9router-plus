@@ -61,6 +61,19 @@ public sealed class GitHubReleaseClientTests
     }
 
     [Fact]
+    public async Task GetLatestRelease_promotes_prerelease_to_next_stable_version()
+    {
+        var handler = new ReleaseHandler(CreateReleaseJson("v0.2.0", prerelease: false));
+        using var httpClient = new HttpClient(handler);
+        var client = new GitHubReleaseClient(httpClient, ReleaseVersion.Parse("0.2.0-rc.1"));
+
+        var result = await client.GetLatestReleaseAsync();
+
+        Assert.True(result.IsUpdateAvailable);
+        Assert.Equal("0.2.0", result.AvailableVersion!.ToString());
+    }
+
+    [Fact]
     public async Task GetLatestRelease_returns_no_update_for_same_version()
     {
         var handler = new ReleaseHandler(CreateReleaseJson("v1.2.0", prerelease: false));
@@ -140,17 +153,24 @@ public sealed class GitHubReleaseClientTests
         await Assert.ThrowsAsync<InvalidDataException>(() => client.GetLatestReleaseAsync());
     }
 
-    private static string CreateReleaseJson(string tag, bool prerelease) => $$"""
-        {
-          "tag_name":"{{tag}}",
-          "prerelease":{{prerelease.ToString().ToLowerInvariant()}},
-          "body":"notes",
-          "assets":[
-            {"name":"RouterPlus-v1.3.0-win-x64.zip","browser_download_url":"https://github.com/hieuck/9router-plus/releases/download/v1.3.0/RouterPlus-v1.3.0-win-x64.zip","size":123},
-            {"name":"RouterPlus-v1.3.0-win-x64.zip.sha256","browser_download_url":"https://github.com/hieuck/9router-plus/releases/download/v1.3.0/RouterPlus-v1.3.0-win-x64.zip.sha256","size":64}
-          ]
-        }
-        """;
+    private static string CreateReleaseJson(string tag, bool prerelease)
+    {
+        var archiveName = $"RouterPlus-{tag}-win-x64.zip";
+        var checksumName = $"{archiveName}.sha256";
+        var releaseBaseUri = $"https://github.com/hieuck/9router-plus/releases/download/{tag}";
+        return $$"""
+            {
+              "tag_name":"{{tag}}",
+              "prerelease":{{prerelease.ToString().ToLowerInvariant()}},
+              "body":"notes",
+              "assets":[
+                {"name":"{{archiveName}}","browser_download_url":"{{releaseBaseUri}}/{{archiveName}}","size":123},
+                {"name":"{{checksumName}}","browser_download_url":"{{releaseBaseUri}}/{{checksumName}}","size":64}
+              ]
+            }
+            """;
+    }
+
 
     private sealed class ReleaseHandler(string responseBody) : HttpMessageHandler
     {

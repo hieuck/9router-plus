@@ -22,6 +22,22 @@ public sealed class MainViewModelUpdateTests
     }
 
     [Fact]
+    public void Application_version_preserves_prerelease_from_release_tag()
+    {
+        var version = ApplicationInfo.ParseVersion("v0.2.0-rc.1", new Version(0, 2, 0));
+
+        Assert.Equal("0.2.0-rc.1", version.ToString());
+    }
+
+    [Fact]
+    public void Application_version_falls_back_to_numeric_assembly_version_for_non_semver_metadata()
+    {
+        var version = ApplicationInfo.ParseVersion("commit-sha", new Version(0, 2, 0));
+
+        Assert.Equal("0.2.0", version.ToString());
+    }
+
+    [Fact]
     public async Task Help_command_opens_only_the_fixed_public_help_link()
     {
         var launcher = new RecordingLinkLauncher();
