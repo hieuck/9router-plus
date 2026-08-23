@@ -43,7 +43,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private DateTimeOffset _lastAutomaticUpdateCheck = DateTimeOffset.MinValue;
     private ChromeInstallation? _installation;
     private CancellationTokenSource? _workflowCancellation;
-    private HashSet<string> _workflowExistingIds = new(StringComparer.Ordinal);
+    private Dictionary<string, ProviderConnection> _workflowExistingConnections = new(StringComparer.Ordinal);
     private ProviderKind? _currentWorkflowProvider;
     private bool _workflowInProgress;
     private readonly List<ManagedChromeProfile> _managedProfiles = new();
@@ -1634,14 +1634,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch (OperationCanceledException) when (workflowCancellation.IsCancellationRequested)
         {
             _currentWorkflowProvider = null;
-            _workflowExistingIds.Clear();
+            _workflowExistingConnections.Clear();
             StatusText = $"Đã hủy thao tác thêm {definition.DisplayName}. Bạn có thể thử lại.";
             ShowToast(StatusText, ToastType.Warning, 5);
         }
         catch (Exception exception)
         {
             _currentWorkflowProvider = null;
-            _workflowExistingIds.Clear();
+            _workflowExistingConnections.Clear();
             SetError(exception);
         }
         finally
@@ -1803,7 +1803,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CancellationToken cancellationToken = default)
     {
         var existing = await api.ListConnectionsAsync(provider, cancellationToken);
-        _workflowExistingIds = existing.Select(connection => connection.Id).ToHashSet(StringComparer.Ordinal);
+        _workflowExistingConnections = existing.ToDictionary(connection => connection.Id, StringComparer.Ordinal);
         _currentWorkflowProvider = provider;
         WaitForConnectionCommand.RaiseCanExecuteChanged();
     }
@@ -1847,7 +1847,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         var connection = await api.WaitForNewConnectionAsync(
             provider,
-            _workflowExistingIds,
+            _workflowExistingConnections,
             TimeSpan.FromMinutes(2),
             TimeSpan.FromSeconds(2),
             cancellationToken);
@@ -1855,7 +1855,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             connection.Id,
             name: SelectedProfile.Name,
             cancellationToken: cancellationToken);
-        _workflowExistingIds.Add(connection.Id);
+        _workflowExistingConnections[connection.Id] = connection;
         _currentWorkflowProvider = null;
         await RefreshConnectionStatusesAsync(showStatus: false);
         StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {SelectedProfile.Name}.";
@@ -1906,340 +1906,59 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (_currentWorkflowProvider is null || SelectedProfile is null)
         {
             StatusText = "Chưa có workflow OAuth đang chờ.";
-            ShowToast(StatusText, ToastType.Warning);
             return;
         }
 
+        using var cancellation = new CancellationTokenSource();
+        _workflowCancellation = cancellation;
+        _workflowInProgress = true;
+        OnPropertyChanged(nameof(IsWorkflowInProgress));
+        CancelWorkflowCommand.RaiseCanExecuteChanged();
+        WaitForConnectionCommand.RaiseCanExecuteChanged();
         try
         {
+            var cancellationToken = cancellation.Token;
             var provider = _currentWorkflowProvider.Value;
             var api = CreateApiClient();
             StatusText = $"Đang chờ {ProviderCatalog.Get(provider).DisplayName} báo connection mới…";
             var connection = await api.WaitForNewConnectionAsync(
                 provider,
-                _workflowExistingIds,
+                _workflowExistingConnections,
                 TimeSpan.FromMinutes(10),
-                TimeSpan.FromSeconds(2));
-            await api.UpdateConnectionAsync(connection.Id, name: SelectedProfile.Name);
-            _workflowExistingIds.Add(connection.Id);
+                TimeSpan.FromSeconds(2),
+                cancellationToken);
+            await api.UpdateConnectionAsync(
+                connection.Id,
+                name: SelectedProfile.Name,
+                cancellationToken: cancellationToken);
+            _workflowExistingConnections[connection.Id] = connection;
             _currentWorkflowProvider = null;
             await RefreshConnectionStatusesAsync(showStatus: false);
             StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {SelectedProfile.Name}.";
             ShowToast(StatusText, ToastType.Success, 5);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            _currentWorkflowProvider = null;
+            _workflowExistingConnections.Clear();
+            StatusText = "Đã hủy thao tác chờ connection.";
+            ShowToast(StatusText, ToastType.Warning, 5);
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+        finally
+        {
+            if (ReferenceEquals(_workflowCancellation, cancellation))
+            {
+                _workflowCancellation = null;
+            }
+
+            _workflowInProgress = false;
+            OnPropertyChanged(nameof(IsWorkflowInProgress));
+            CancelWorkflowCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
-        }
-        catch (Exception exception)
-        {
-            SetError(exception);
-        }
-    }
-
-    public async Task OpenSelectedGoogleLoginAsync()
-    {
-        if (SelectedProfile is null)
-        {
-            StatusText = "Hãy chọn Chrome profile trước.";
-            return;
-        }
-
-        try
-        {
-            await LaunchUrlAsync("https://accounts.google.com/");
-            StatusText = $"Đã mở đăng nhập Google bằng profile {SelectedProfile.Name}.";
-        }
-        catch (Exception exception)
-        {
-            SetError(exception);
-        }
-    }
-
-    public async Task DeleteSelectedProfileAsync()
-    {
-        var profile = SelectedProfile;
-        if (profile is null)
-        {
-            StatusText = "Hãy chọn Chrome profile trước.";
-            return;
-        }
-
-        var removedManagedProfiles = _managedProfiles
-            .Where(managedProfile => IsManagedProfileFor(managedProfile, profile))
-            .ToArray();
-
-        try
-        {
-            _profileDeleter.Delete(profile, ChromeUserDataDirectory);
-            _managedProfiles.RemoveAll(managedProfile => IsManagedProfileFor(managedProfile, profile));
-            try
-            {
-                await _settingsStore.SaveAsync(BuildSettings());
-            }
-            catch
-            {
-                _managedProfiles.AddRange(removedManagedProfiles);
-                throw;
-            }
-
-            RefreshProfiles();
-            StatusText = $"Đã xóa profile {profile.Name}.";
-        }
-        catch (Exception exception)
-        {
-            SetError(exception);
-        }
-    }
-
-    private void TrackProfileLaunch(ChromeProfile profile)
-    {
-        var existing = _recentProfiles.FirstOrDefault(r => 
-            r.ProfileId == profile.Id && 
-            r.UserDataDirectory.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
-
-        if (existing != null)
-        {
-            _recentProfiles.Remove(existing);
-            _recentProfiles.Insert(0, existing with 
-            { 
-                LastUsedUtc = DateTime.UtcNow, 
-                LaunchCount = existing.LaunchCount + 1 
-            });
-        }
-        else
-        {
-            _recentProfiles.Insert(0, new RecentProfile(
-                profile.Id,
-                profile.Name,
-                profile.UserDataDirectory,
-                DateTime.UtcNow,
-                1,
-                false));
-        }
-
-        // Keep only top MaxRecentSlots recent profiles
-        while (_recentProfiles.Count > MaxRecentSlots)
-        {
-            _recentProfiles.RemoveAt(_recentProfiles.Count - 1);
-        }
-
-        UpdateRecentProfilesList();
-    }
-
-    public AsyncRelayCommand<ChromeProfile> TogglePinProfileCommand { get; }
-
-    private async Task TogglePinProfileAsync(ChromeProfile? profile)
-    {
-        if (profile is null) return;
-
-        var recent = _recentProfiles.FirstOrDefault(r => 
-            r.ProfileId == profile.Id && 
-            r.UserDataDirectory.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
-
-        if (recent != null)
-        {
-            var index = _recentProfiles.IndexOf(recent);
-            _recentProfiles[index] = recent with { IsPinned = !recent.IsPinned };
-            
-            // Sort: pinned first, then by last used
-            var sorted = _recentProfiles
-                .OrderByDescending(r => r.IsPinned)
-                .ThenByDescending(r => r.LastUsedUtc)
-                .ToList();
-            _recentProfiles.Clear();
-            _recentProfiles.AddRange(sorted);
-            
-            UpdateRecentProfilesList();
-            await SaveSettingsAsync();
-        }
-    }
-
-    private void UpdateRecentProfilesList()
-    {
-        RecentProfileRows.Clear();
-        var slot = 0;
-        foreach (var recent in _recentProfiles.Take(MaxRecentSlots))
-        {
-            var profile = Profiles.FirstOrDefault(p =>
-                p.Id == recent.ProfileId &&
-                p.UserDataDirectory.Equals(recent.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
-            if (profile is null)
-            {
-                continue;
-            }
-            RecentProfileRows.Add(new RecentProfileRowViewModel(recent, profile, slot));
-            slot++;
-        }
-        ClearRecentProfilesCommand.RaiseCanExecuteChanged();
-        RebuildQuickLaunchProfiles();
-    }
-
-    internal async Task ClearRecentProfilesAsync()
-    {
-        if (_recentProfiles.Count == 0) return;
-        _recentProfiles.Clear();
-        UpdateRecentProfilesList();
-        StatusText = "Đã xoá danh sách profile dùng gần đây.";
-        await SaveSettingsAsync();
-    }
-
-    internal Task OpenQuickLaunchPalette()
-    {
-        if (Profiles.Count == 0)
-        {
-            StatusText = "Chưa có Chrome profile để hiển thị Quick Launch.";
-            return Task.CompletedTask;
-        }
-        QuickLaunchFilterText = string.Empty;
-        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles.FirstOrDefault();
-        IsQuickLaunchOpen = true;
-        QuickLaunchVisibilityRequested?.Invoke(this, EventArgs.Empty);
-        return Task.CompletedTask;
-    }
-
-    internal Task CloseQuickLaunchPalette()
-    {
-        IsQuickLaunchOpen = false;
-        QuickLaunchFilterText = string.Empty;
-        return Task.CompletedTask;
-    }
-
-    public event EventHandler? QuickLaunchVisibilityRequested;
-
-    private void RebuildQuickLaunchProfiles()
-    {
-        FilteredQuickLaunchProfiles.Clear();
-        var filter = QuickLaunchFilterText?.Trim() ?? string.Empty;
-        IEnumerable<ChromeProfile> source = Profiles;
-        if (!string.IsNullOrEmpty(filter))
-        {
-            source = source.Where(p => p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
-        }
-        foreach (var profile in source.Take(MaxQuickLaunchResults))
-        {
-            FilteredQuickLaunchProfiles.Add(profile);
-        }
-        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles.FirstOrDefault();
-    }
-
-    internal Task MoveQuickLaunchSelection(int delta)
-    {
-        if (FilteredQuickLaunchProfiles.Count == 0)
-        {
-            SelectedQuickLaunchProfile = null;
-            return Task.CompletedTask;
-        }
-        var currentIndex = SelectedQuickLaunchProfile is null
-            ? -1
-            : FilteredQuickLaunchProfiles.IndexOf(SelectedQuickLaunchProfile);
-        var count = FilteredQuickLaunchProfiles.Count;
-        var nextIndex = ((currentIndex + delta) % count + count) % count;
-        SelectedQuickLaunchProfile = FilteredQuickLaunchProfiles[nextIndex];
-        return Task.CompletedTask;
-    }
-
-    private async Task ConfirmQuickLaunchSelectionAsync(ChromeProfile? profile)
-    {
-        var target = profile ?? SelectedQuickLaunchProfile;
-        if (target is null)
-        {
-            await CloseQuickLaunchPalette();
-            return;
-        }
-        await LaunchProfileAsync(target);
-        await CloseQuickLaunchPalette();
-    }
-
-    private async Task LaunchSelectedProfileAsync()
-    {
-        if (SelectedProfile is null)
-        {
-            StatusText = "Hãy chọn Chrome profile trước.";
-            return;
-        }
-
-        try
-        {
-            TrackProfileLaunch(SelectedProfile);
-            await LaunchUrlAsync(DashboardBaseUrl);
-            StatusText = $"Đã mở 9Router bằng profile {SelectedProfile.Name}.";
-        }
-        catch (Exception exception)
-        {
-            SetError(exception);
-        }
-    }
-
-    private async Task OpenProviderDashboardAsync(ProviderKind provider)
-    {
-        if (SelectedProfile is null)
-        {
-            StatusText = "Hãy chọn Chrome profile trước.";
-            return;
-        }
-
-        try
-        {
-            var definition = ProviderCatalog.Get(provider);
-            await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
-            StatusText = $"Đã mở dashboard {definition.DisplayName} cho profile {SelectedProfile.Name}.";
-            ShowToast(StatusText, ToastType.Success);
-        }
-        catch (Exception exception)
-        {
-            SetError(exception);
-        }
-    }
-
-    private async Task TestConnectionAsync(ProviderKind provider)
-    {
-        var profile = SelectedProfile;
-        if (profile is null)
-        {
-            StatusText = "Select a Chrome profile first.";
-            return;
-        }
-
-        try
-        {
-            var definition = ProviderCatalog.Get(provider);
-            var api = CreateApiClient();
-            var matchingConnections = (await api.ListConnectionsAsync(provider))
-                .Where(connection => string.Equals(
-                    connection.Name?.Trim(),
-                    profile.Name.Trim(),
-                    StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-
-            if (matchingConnections.Length == 0)
-            {
-                StatusText = $"No {definition.DisplayName} connection found for profile {profile.Name}.";
-                ShowToast(StatusText, ToastType.Warning, 5);
-                return;
-            }
-
-            var failedConnectionCount = 0;
-            foreach (var connection in matchingConnections)
-            {
-                var result = await api.TestConnectionAsync(connection.Id);
-                if (!result.Valid)
-                {
-                    failedConnectionCount++;
-                }
-            }
-
-            if (failedConnectionCount == 0)
-            {
-                StatusText = $"Test connection succeeded for {definition.DisplayName} on profile {profile.Name}.";
-                ShowToast(StatusText, ToastType.Success);
-            }
-            else
-            {
-                StatusText = $"Test connection failed for {definition.DisplayName} ({failedConnectionCount} connection(s)).";
-                ShowToast(StatusText, ToastType.Warning, 5);
-            }
-        }
-        catch (Exception exception)
-        {
-            SetError(exception);
         }
     }
 

@@ -303,12 +303,12 @@ public sealed class RouterApiClient : IRouterApiClient
 
     public async Task<ProviderConnection> WaitForNewConnectionAsync(
         ProviderKind provider,
-        IReadOnlySet<string> existingConnectionIds,
+        IReadOnlyDictionary<string, ProviderConnection> existingConnections,
         TimeSpan timeout,
         TimeSpan pollInterval,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(existingConnectionIds);
+        ArgumentNullException.ThrowIfNull(existingConnections);
         if (timeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(timeout));
@@ -322,14 +322,29 @@ public sealed class RouterApiClient : IRouterApiClient
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var current = await ListConnectionsAsync(provider, cancellationToken);
-            var newConnection = current.FirstOrDefault(connection => !existingConnectionIds.Contains(connection.Id));
-            if (newConnection is not null)
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            using var pollCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            pollCancellation.CancelAfter(remaining);
+
+            IReadOnlyList<ProviderConnection> current;
+            try
             {
-                return newConnection;
+                current = await ListConnectionsAsync(provider, pollCancellation.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && pollCancellation.IsCancellationRequested)
+            {
+                break;
             }
 
-            var remaining = deadline - DateTimeOffset.UtcNow;
+            var changedConnection = current.FirstOrDefault(connection =>
+                !existingConnections.TryGetValue(connection.Id, out var previous)
+                || HasConnectionChanged(previous, connection));
+            if (changedConnection is not null)
+            {
+                return changedConnection;
+            }
+
+            remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining > TimeSpan.Zero)
             {
                 await Task.Delay(remaining < pollInterval ? remaining : pollInterval, cancellationToken);
@@ -338,6 +353,11 @@ public sealed class RouterApiClient : IRouterApiClient
 
         throw new TimeoutException($"Timed out waiting for a new {ProviderCatalog.Get(provider).DisplayName} connection.");
     }
+
+    private static bool HasConnectionChanged(ProviderConnection previous, ProviderConnection current) =>
+        (current.LastRefreshAt.HasValue &&
+         (!previous.LastRefreshAt.HasValue || current.LastRefreshAt > previous.LastRefreshAt))
+        || !string.Equals(current.Email, previous.Email, StringComparison.OrdinalIgnoreCase);
 
     private async Task<JsonDocument> ReadDocumentAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
