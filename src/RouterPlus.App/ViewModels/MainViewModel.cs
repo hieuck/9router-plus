@@ -65,12 +65,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _isKeyboardShortcutsSectionExpanded = true;
     private bool _isProfileSidebarCollapsed;
     private double _fontScale = 1d;
-    private bool _useLightTheme;
+    private bool _useLightTheme = true;
     private string _savedDashboardBaseUrl = "http://localhost:20128";
     private string _savedChromeExecutablePath = string.Empty;
     private string _savedChromeUserDataDirectory = string.Empty;
     private double _savedFontScale = 1d;
-    private bool _savedUseLightTheme;
+    private bool _savedUseLightTheme = true;
     private bool _enableKeyboardShortcuts;
     private bool _savedEnableKeyboardShortcuts;
     private readonly ShortcutBindingsViewModel _shortcutBindings = new();
@@ -787,8 +787,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ChromeExecutablePath = string.Empty;
         ChromeUserDataDirectory = string.Empty;
         FontScale = 1.0d;
-        UseLightTheme = false;
-        
+        UseLightTheme = true;
+
         StatusText = "Đã khôi phục cài đặt về mặc định.";
         await Task.CompletedTask;
     }

@@ -5,6 +5,33 @@ namespace RouterPlus.Core.Tests;
 public sealed class SettingsStoreTests
 {
     [Fact]
+    public async Task Missing_settings_default_to_light_theme()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            var settings = await new SettingsStore(filePath).LoadAsync();
+
+            Assert.True(settings.UseLightTheme);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Router_settings_default_to_light_theme()
+    {
+        Assert.True(new RouterSettings().UseLightTheme);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_preserves_window_placement()
     {
         var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));

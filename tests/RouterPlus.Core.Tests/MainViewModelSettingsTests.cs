@@ -6,6 +6,14 @@ namespace RouterPlus.Core.Tests;
 public sealed class MainViewModelSettingsTests
 {
     [Fact]
+    public void New_view_model_starts_with_light_theme()
+    {
+        var viewModel = new MainViewModel();
+
+        Assert.True(viewModel.UseLightTheme);
+    }
+
+    [Fact]
     public async Task SaveWindowPlacement_preserves_unsaved_settings_and_updates_placement()
     {
         var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
