@@ -763,7 +763,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Question,
             System.Windows.MessageBoxResult.No);
-        
+
         if (result != System.Windows.MessageBoxResult.Yes)
         {
             return;
@@ -775,8 +775,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         FontScale = 1.0d;
         UseLightTheme = true;
 
+        // Save to file so wizard appears on next app start
+        await SaveSettingsAsync();
+
         StatusText = "Đã khôi phục cài đặt về mặc định.";
-        await Task.CompletedTask;
     }
 
     private async Task ClearDashboardUrl(){await Task.CompletedTask;

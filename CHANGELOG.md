@@ -4,6 +4,19 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 
 ## Unreleased
 
+### Added
+
+- First-run setup wizard now checks Node.js, npm, and 9Router separately.
+- The wizard can install Node.js LTS with WinGet, open the official Node.js download page when WinGet is unavailable, install 9Router with npm, and launch 9Router.
+- Chrome auto-detection in the wizard reuses the installation-selection dialog from Settings.
+
+### Fixed
+
+- The wizard keeps the application alive when it is skipped, so the main window opens instead of the process exiting.
+- Long wizard content is placed in a vertical scroll viewer.
+- First-run setup is now a single scrollable page; users configure 9Router and Chrome without step navigation.
+- Windows setup detection now runs npm and 9Router through their `.cmd` shims, so installed Node.js/npm tools are detected correctly.
+
 ## [v0.1.0] - 2026-08-22
 
 ### Added

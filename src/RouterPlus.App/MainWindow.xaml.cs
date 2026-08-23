@@ -133,6 +133,18 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
+    private async void RunSetupWizard_Click(object sender, RoutedEventArgs e)
+    {
+        var wizard = new WelcomeWizardWindow(new SettingsStore());
+        var result = wizard.ShowDialog();
+
+        if (result == true)
+        {
+            // User completed wizard, reload all settings
+            await ViewModel.InitializeAsync();
+        }
+    }
+
     private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.InstallUpdateCommand.CanExecute(null) || ViewModel.AvailableVersion is null)

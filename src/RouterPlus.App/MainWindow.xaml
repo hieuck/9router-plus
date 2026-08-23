@@ -976,6 +976,7 @@
                             <MenuItem Header="Kiểm tra cập nhật" Command="{Binding CheckForUpdatesCommand}" />
                             <MenuItem Header="Cài đặt bản cập nhật" IsEnabled="{Binding CanInstallUpdate}" Click="InstallUpdate_Click" />
                             <Separator />
+                            <MenuItem Header="Chạy lại thiết lập ban đầu..." Click="RunSetupWizard_Click" />
                             <MenuItem Header="Mở hướng dẫn" Command="{Binding OpenHelpCommand}" />
                             <MenuItem Header="Báo cáo lỗ hổng" Command="{Binding OpenSecurityCommand}" />
                             <Separator />

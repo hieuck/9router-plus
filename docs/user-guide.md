@@ -33,15 +33,36 @@ RouterPlus giúp mở Chrome profile đúng ngữ cảnh và quản lý connecti
 
 ## 3. Thiết lập lần đầu
 
-1. Nhấn `⚙ Cài đặt`.
-2. Ở `Chrome executable`, chọn đúng file `chrome.exe`.
-3. Ở `Chrome User Data`, chọn thư mục User Data của Chrome/Chromium, không chọn thư mục `Profile 1` riêng lẻ.
-4. Kiểm tra `Dashboard URL`; mặc định là `http://localhost:20128`.
-5. Nếu có nhiều bản Chrome/Chromium, nhấn `⚡ Tự động phát hiện`, chọn installation hợp lệ, rồi bấm `Chọn`. Nút `Quét lại` dùng để tìm lại các installation; bạn cũng có thể mở trực tiếp vị trí executable hoặc User Data từ hộp chọn.
-6. Nhấn `Lưu cài đặt`.
-7. Chọn một profile trong danh sách. Khi đọc thành công, app hiển thị trạng thái Chrome và danh sách provider.
+Khi chạy lần đầu, RouterPlus mở wizard thiết lập. Wizard không yêu cầu máy phải có sẵn Node.js, npm hoặc 9Router.
 
-Nếu Chrome được cài ở vị trí chuẩn, app sẽ tự thử tìm executable và User Data. Đường dẫn có dấu ✓ khi file/thư mục tồn tại; nếu không hợp lệ, sửa lại trước khi lưu. Bạn vẫn có thể chọn lại thủ công trong settings.
+### 3.1. Cài Node.js, npm và 9Router
+
+Tất cả nội dung nằm trên một trang cuộn; không cần chuyển trang hoặc nhấn `Tiếp tục`.
+
+1. Nhấn `Kiểm tra Node.js / npm / 9Router` để xem trạng thái từng thành phần.
+2. Nếu thiếu Node.js:
+   - Khi có WinGet, nhấn `Cài Node.js LTS`; wizard chạy `winget install --id OpenJS.NodeJS.LTS --exact`.
+   - Khi không có WinGet, wizard mở trang tải Node.js chính thức. Cài Node.js LTS xong, quay lại wizard và nhấn kiểm tra lại.
+3. Khi npm đã sẵn sàng nhưng chưa có 9Router, nhấn `Cài 9Router bằng npm`. Lệnh được dùng là `npm install --global 9router`.
+4. Nếu 9Router đã cài nhưng chưa chạy, nhấn `Khởi chạy 9Router`.
+5. Sau khi cài và khởi chạy 9Router, nhập hoặc kiểm tra `Dashboard URL` (mặc định `http://localhost:20128`).
+6. Nhấn `Kiểm tra 9Router`. Khi dashboard phản hồi thành công, hoàn thiện phần Chrome ngay bên dưới.
+
+Wizard chỉ cài Node.js LTS và 9Router. Nó không tự cài Python, Visual Studio Build Tools hoặc Chocolatey. Các công cụ build native chỉ cần nếu npm báo package yêu cầu biên dịch C/C++.
+
+Nếu không muốn thiết lập ngay, nhấn `Bỏ qua`; RouterPlus vẫn mở để bạn cấu hình thủ công sau. Có thể chạy lại wizard trong `Trợ giúp` → `Chạy lại thiết lập ban đầu...`.
+
+### 3.2. Cấu hình Chrome
+
+Phần cấu hình Chrome nằm trên cùng một trang với phần 9Router; không cần chuyển sang trang hoặc nhấn `Tiếp tục`:
+
+1. Ở `Chrome executable`, chọn đúng file `chrome.exe`.
+2. Ở `Chrome User Data`, chọn thư mục User Data của Chrome/Chromium, không chọn thư mục `Profile 1` riêng lẻ.
+3. Nếu có nhiều bản Chrome/Chromium, nhấn `⚡ Tự động phát hiện Chrome`, chọn installation hợp lệ từ danh sách, rồi bấm `Chọn`.
+4. Kiểm tra các dấu ✓ của executable và User Data.
+5. Khi 9Router đã được kiểm tra thành công và Chrome hợp lệ, nhấn `Lưu cài đặt và bắt đầu` ở cuối wizard.
+
+Nếu Chrome được cài ở vị trí chuẩn, app có thể tự tìm executable và User Data. Đường dẫn có dấu ✓ khi file/thư mục tồn tại; nếu không hợp lệ, sửa lại trước khi lưu. Bạn vẫn có thể chọn lại thủ công trong settings.
 
 ## 4. Quản lý Chrome profile
 

@@ -22,11 +22,16 @@ Bản zip chưa có installer. Menu `Trợ giúp` có About, hướng dẫn và 
 
 ## Bắt đầu nhanh
 
-1. Mở `⚙ Cài đặt` và chọn `chrome.exe` cùng thư mục Chrome User Data.
-2. Kiểm tra dashboard URL, mặc định `http://localhost:20128`, rồi nhấn `Lưu cài đặt`.
-3. Chọn Chrome profile cần dùng.
-4. Nhấn `Đồng bộ` hoặc nháy đúp profile để mở dashboard.
-5. Thêm provider bằng OAuth/device code hoặc API key theo [User Guide](docs/user-guide.md).
+1. Mở `RouterPlus.exe`. Lần đầu chạy, wizard sẽ kiểm tra 9Router trước khi sang bước cấu hình Chrome.
+2. Nếu máy mới chưa có Node.js/npm, wizard ưu tiên cài Node.js LTS bằng WinGet. Nếu máy không có WinGet, wizard mở trang tải Node.js chính thức để cài thủ công.
+3. Khi npm đã sẵn sàng, nhấn `Cài 9Router bằng npm` để chạy `npm install --global 9router`, sau đó nhấn `Khởi chạy 9Router` và kiểm tra lại dashboard.
+4. Trong bước Chrome, chọn `chrome.exe` cùng thư mục Chrome User Data. Nếu có nhiều installation, dùng `Tự động phát hiện Chrome` để chọn từ danh sách.
+5. Kiểm tra dashboard URL, mặc định `http://localhost:20128`, rồi nhấn `Lưu cài đặt`/`Bắt đầu`.
+6. Chọn Chrome profile cần dùng.
+7. Nhấn `Đồng bộ` hoặc nháy đúp profile để mở dashboard.
+8. Thêm provider bằng OAuth/device code hoặc API key theo [User Guide](docs/user-guide.md).
+
+Wizard không tự cài Python, Visual Studio Build Tools hoặc Chocolatey. Các công cụ đó chỉ cần cho một số npm package có native module; nếu npm báo yêu cầu build tools, hãy cài theo hướng dẫn chính thức của Node.js.
 
 ## Tài liệu cho người dùng
 

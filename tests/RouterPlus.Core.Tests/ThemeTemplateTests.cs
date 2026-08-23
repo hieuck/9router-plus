@@ -56,6 +56,20 @@ public sealed class ThemeTemplateTests
     }
 
     [Fact]
+    public void Welcome_wizard_is_single_scrollable_page_without_step_navigation()
+    {
+        var wizardDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "WelcomeWizardWindow.xaml")));
+        var wizardText = wizardDocument.ToString();
+
+        Assert.DoesNotContain("Tiếp tục", wizardText);
+        Assert.DoesNotContain("Quay lại", wizardText);
+        Assert.DoesNotContain("x:Name=\"Step1Panel\"", wizardText);
+        Assert.DoesNotContain("x:Name=\"Step2Panel\"", wizardText);
+        Assert.DoesNotContain("x:Name=\"Step3Panel\"", wizardText);
+        Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", wizardText);
+    }
+
+    [Fact]
     public void Settings_toggle_labels_define_explicit_accent_content_foreground()
     {
         var mainWindowDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "MainWindow.xaml")));

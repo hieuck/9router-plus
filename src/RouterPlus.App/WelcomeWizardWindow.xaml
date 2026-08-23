@@ -1,0 +1,260 @@
+<Window x:Class="RouterPlus.App.WelcomeWizardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Chào mừng đến với 9RouterPlus"
+        Width="700" Height="700"
+        MinWidth="600" MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        Background="{DynamicResource SurfaceBrush}">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Styles/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="MinWidth" Value="100"/>
+                <Setter Property="Margin" Value="5"/>
+                <Setter Property="Padding" Value="10,5"/>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="🚀 Thiết lập lần đầu"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource TextBrush}"
+                       HorizontalAlignment="Center"/>
+            <TextBlock Text="Hoàn thành các mục bên dưới để bắt đầu"
+                       FontSize="14"
+                       Foreground="{DynamicResource MutedTextBrush}"
+                       HorizontalAlignment="Center"
+                       Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <Border Background="{DynamicResource PanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="1. Cài đặt và khởi chạy 9Router"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,15"/>
+                        <TextBlock Text="Kiểm tra Node.js và npm trước. Nếu thiếu Node.js, wizard sẽ cài Node.js LTS bằng WinGet hoặc mở trang tải chính thức."
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,10"/>
+                        <Button x:Name="CheckSetupButton"
+                                Content="🔎 Kiểm tra Node.js / npm / 9Router"
+                                Click="CheckSetupButton_Click"
+                                HorizontalAlignment="Left"/>
+                        <TextBlock x:Name="SetupStatusText"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,8,0,8"/>
+                        <StackPanel x:Name="NodeSetupActionsPanel"
+                                    Visibility="Collapsed">
+                            <Button x:Name="InstallNodeButton"
+                                    Content="Cài Node.js LTS"
+                                    Click="InstallNodeButton_Click"
+                                    HorizontalAlignment="Left"/>
+                            <Button x:Name="InstallRouterButton"
+                                    Content="Cài 9Router bằng npm"
+                                    Click="InstallRouterButton_Click"
+                                    HorizontalAlignment="Left"
+                                    Visibility="Collapsed"/>
+                            <Button x:Name="LaunchRouterButton"
+                                    Content="Khởi chạy 9Router"
+                                    Click="LaunchRouterButton_Click"
+                                    HorizontalAlignment="Left"
+                                    Visibility="Collapsed"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{DynamicResource PanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="20"
+                        Margin="0,16,0,0">
+                    <StackPanel>
+                        <TextBlock Text="2. Kiểm tra kết nối 9Router"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,15"/>
+                        <TextBlock Text="Chỉ kiểm tra kết nối sau khi 9Router đã được cài và khởi chạy."
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   Margin="0,0,0,10"/>
+                        <TextBlock Text="Dashboard URL:"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,5"/>
+                        <TextBox x:Name="DashboardUrlTextBox"
+                                 Text="http://localhost:20128"
+                                 Padding="8"
+                                 FontFamily="Consolas"/>
+                        <Button x:Name="CheckRouterButton"
+                                Content="🔍 Kiểm tra 9Router"
+                                Click="CheckRouterButton_Click"
+                                HorizontalAlignment="Left"
+                                Margin="0,10,0,0"/>
+                        <StackPanel x:Name="RouterCheckingPanel"
+                                    Orientation="Horizontal"
+                                    Margin="0,8,0,0"
+                                    Visibility="Collapsed">
+                            <TextBlock Text="⏳" FontSize="16" Margin="0,0,8,0"/>
+                            <TextBlock Text="Đang kiểm tra..."
+                                       Foreground="{DynamicResource TextBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Border x:Name="RouterNotFoundPanel"
+                                Background="#FFF3CD"
+                                BorderBrush="#FFC107"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="12"
+                                Margin="0,8,0,0"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="⚠️ Không tìm thấy 9Router"
+                                           FontWeight="SemiBold"
+                                           Foreground="#856404"/>
+                                <TextBlock x:Name="RouterNotFoundMessageText"
+                                           TextWrapping="Wrap"
+                                           Foreground="#856404"
+                                           Margin="0,5,0,0"
+                                           Text="9Router chưa chạy hoặc URL không đúng."/>
+                                <TextBlock Text="Vui lòng khởi động 9Router rồi nhấn kiểm tra lại."
+                                           TextWrapping="Wrap"
+                                           Foreground="#856404"/>
+                            </StackPanel>
+                        </Border>
+                        <Border x:Name="RouterFoundPanel"
+                                Background="#D4EDDA"
+                                BorderBrush="#28A745"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="12"
+                                Margin="0,8,0,0"
+                                Visibility="Collapsed">
+                            <TextBlock Text="✅ 9Router đang chạy và dashboard phản hồi."
+                                       FontWeight="SemiBold"
+                                       Foreground="#155724"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{DynamicResource PanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="20"
+                        Margin="0,16,0,0">
+                    <StackPanel>
+                        <TextBlock Text="3. Cấu hình Chrome"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,15"/>
+                        <TextBlock Text="Chọn chrome.exe và thư mục Chrome User Data. Nếu có nhiều installation, hãy chọn một installation từ danh sách."
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   Margin="0,0,0,10"/>
+                        <TextBlock Text="Chrome Executable:"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,5"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="ChromeExeTextBox"
+                                     Grid.Column="0"
+                                     IsReadOnly="True"
+                                     Padding="8"
+                                     FontFamily="Consolas"
+                                     FontSize="11"/>
+                            <Button Grid.Column="1"
+                                    Content="Chọn..."
+                                    Click="BrowseChrome_Click"
+                                    Margin="5,0,0,0"/>
+                        </Grid>
+                        <TextBlock x:Name="ChromeExeStatus"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,15"
+                                   FontSize="12"/>
+                        <TextBlock Text="Chrome User Data:"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,5"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="ChromeUserDataTextBox"
+                                     Grid.Column="0"
+                                     IsReadOnly="True"
+                                     Padding="8"
+                                     FontFamily="Consolas"
+                                     FontSize="11"/>
+                            <Button Grid.Column="1"
+                                    Content="Chọn..."
+                                    Click="BrowseUserData_Click"
+                                    Margin="5,0,0,0"/>
+                        </Grid>
+                        <TextBlock x:Name="ChromeUserDataStatus"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,15"
+                                   FontSize="12"/>
+                        <Button x:Name="AutoDetectButton"
+                                Content="⚡ Tự động phát hiện Chrome"
+                                Click="AutoDetect_Click"
+                                HorizontalAlignment="Left"/>
+                        <Border x:Name="ChromeValidPanel"
+                                Background="#D4EDDA"
+                                BorderBrush="#28A745"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="12"
+                                Margin="0,15,0,0"
+                                Visibility="Collapsed">
+                            <TextBlock Text="✅ Cấu hình Chrome hợp lệ"
+                                       FontWeight="SemiBold"
+                                       Foreground="#155724"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="SkipButton"
+                    Content="Bỏ qua"
+                    Click="SkipButton_Click"/>
+            <Button x:Name="SaveButton"
+                    Content="Lưu cài đặt và bắt đầu"
+                    Click="SaveButton_Click"
+                    IsEnabled="False"/>
+        </StackPanel>
+    </Grid>
+</Window>
