@@ -36,6 +36,7 @@ public sealed class MainViewModelDashboardCommandTests
     [Theory]
     [InlineData(ProviderKind.Codex, "codex-1")]
     [InlineData(ProviderKind.Ollama, "ollama-1")]
+    [InlineData(ProviderKind.Kiro, "kiro-1")]
     public async Task Refresh_statuses_disables_active_connection_when_quota_is_exhausted(
         ProviderKind provider,
         string connectionId)
