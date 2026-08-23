@@ -7,6 +7,7 @@ using System.Windows.Input;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Core.Providers;
 using RouterPlus.App.ViewModels;
+using RouterPlus.App.Views;
 using WpfButton = System.Windows.Controls.Button;
 
 namespace RouterPlus.App;
@@ -238,6 +239,21 @@ public partial class MainWindow : Window
     private async void ProfileGoogleLogin_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.OpenSelectedGoogleLoginAsync();
+    }
+
+    private void ProfileGoogleAutoLogin_Click(object sender, RoutedEventArgs e)
+    {
+        var dialogViewModel = ViewModel.CreateGoogleAutoLoginViewModel();
+        if (dialogViewModel is null)
+        {
+            return;
+        }
+
+        var dialog = new GoogleAutoLoginDialog(dialogViewModel)
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
     }
 
     private void ProfileFolder_Click(object sender, RoutedEventArgs e)

@@ -32,6 +32,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ChromeLauncher _chromeLauncher = new();
     private readonly SettingsStore _settingsStore;
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
+    private readonly IGoogleLoginVaultStore _googleLoginVaultStore;
+    private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
     private readonly HttpClient _httpClient;
     private readonly IUpdateService _updateService;
     private readonly IExternalLinkLauncher _linkLauncher;
@@ -90,7 +92,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         HttpClient? httpClient = null,
         IUpdateService? updateService = null,
         IExternalLinkLauncher? linkLauncher = null,
-        bool runStartupUpdateCheck = false)
+        bool runStartupUpdateCheck = false,
+        IGoogleLoginVaultStore? googleLoginVaultStore = null,
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
@@ -99,6 +103,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
         _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
         _runStartupUpdateCheck = runStartupUpdateCheck;
+        _googleLoginVaultStore = googleLoginVaultStore ?? new GoogleLoginVaultStore(new GoogleLoginVaultPaths());
+        _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _quotaPollingService = new QuotaPollingService(
             RefreshForQuotaPollingAsync,
             QuotaPollingOptions.Default);
@@ -2256,7 +2262,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task OpenSelectedGoogleLoginAsync()
     {
-        if (SelectedProfile is null)
+        var profile = SelectedProfile;
+        if (profile is null)
         {
             StatusText = "Hãy chọn Chrome profile trước.";
             return;
@@ -2265,12 +2272,92 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             await LaunchUrlAsync("https://accounts.google.com/");
-            StatusText = $"Đã mở đăng nhập Google bằng profile {SelectedProfile.Name}.";
+            StatusText = $"Đã mở đăng nhập Google bằng profile {profile.Name}.";
         }
         catch (Exception exception)
         {
             SetError(exception);
         }
+    }
+
+    public GoogleAutoLoginViewModel? CreateGoogleAutoLoginViewModel()
+    {
+        if (SelectedProfile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return null;
+        }
+
+        return new GoogleAutoLoginViewModel(SelectedProfile, _googleLoginVaultStore, _googleLoginAutomation);
+    }
+
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> CreateDefaultGoogleLoginAutomation()
+    {
+        return async (profile, credential, cancellationToken) =>
+        {
+            var installation = _installation ?? throw new InvalidOperationException("Chrome installation not configured.");
+
+            ChromeManagedSession? session = null;
+            IGoogleLoginBrowser? browser = null;
+            try
+            {
+                session = await _chromeLauncher.LaunchManagedAsync(
+                    installation,
+                    profile,
+                    new Uri("https://accounts.google.com/"),
+                    cancellationToken);
+
+                browser = await session.ConnectGoogleLoginAsync(cancellationToken);
+
+                var result = await GoogleLoginStateMachine.RunAsync(browser, credential, cancellationToken);
+
+                // Leave Chrome open for manual intervention; dispose on all other outcomes
+                if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
+                {
+                    // Transfer ownership: do not dispose session or browser
+                    // User continues manually in the live Chrome instance
+                    return result;
+                }
+
+                // Success, timeout, or other failure: clean up
+                if (browser is not null)
+                {
+                    await browser.DisposeAsync();
+                    browser = null;
+                }
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                    session = null;
+                }
+
+                return result;
+            }
+            catch (OperationCanceledException)
+            {
+                if (browser is not null)
+                {
+                    await browser.DisposeAsync();
+                }
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                }
+                return GoogleLoginResult.Cancelled();
+            }
+            catch (Exception)
+            {
+                if (browser is not null)
+                {
+                    await browser.DisposeAsync();
+                }
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                }
+                return GoogleLoginResult.BrowserDisconnected();
+            }
+        };
     }
 
     public async Task DeleteSelectedProfileAsync()

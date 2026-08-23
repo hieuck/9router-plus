@@ -815,6 +815,7 @@
                                     <Grid.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Header="Đăng nhập Google bằng Chrome" Click="ProfileGoogleLogin_Click" />
+                                            <MenuItem Header="{DynamicResource ProfileMenuGoogleAutoLogin}" Click="ProfileGoogleAutoLogin_Click" />
                                             <MenuItem Header="Mở thư mục profile" Click="ProfileFolder_Click" />
                                             <MenuItem Header="Sao chép tên profile" Click="CopyProfileName_Click" />
                                             <Separator />
