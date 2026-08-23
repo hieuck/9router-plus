@@ -43,6 +43,56 @@ public sealed class ProviderCardQuotaTests
     }
 
     [Fact]
+    public void Connection_is_over_limit_when_any_quota_window_is_exhausted()
+    {
+        var connection = new ProviderConnection(
+            "codex-1",
+            ProviderKind.Codex,
+            "Work",
+            1,
+            true,
+            Quotas:
+            [
+                new ProviderQuota("daily", 1m, 10m, 9m, null),
+                new ProviderQuota("monthly", null, null, 0m, null)
+            ]);
+
+        Assert.True(connection.IsOverLimit);
+    }
+
+    [Fact]
+    public void Connection_is_over_limit_when_remaining_is_zero_without_percentage()
+    {
+        var connection = new ProviderConnection(
+            "ollama-1",
+            ProviderKind.Ollama,
+            "Work",
+            1,
+            true,
+            Quotas: [new ProviderQuota("session", null, null, 0m, null)]);
+
+        Assert.True(connection.IsOverLimit);
+    }
+
+    [Fact]
+    public void Connection_is_not_over_limit_when_all_quota_windows_have_remaining_capacity()
+    {
+        var connection = new ProviderConnection(
+            "codex-1",
+            ProviderKind.Codex,
+            "Work",
+            1,
+            true,
+            Quotas:
+            [
+                new ProviderQuota("daily", 1m, 10m, 9m, null),
+                new ProviderQuota("monthly", 5m, 10m, 5m, null)
+            ]);
+
+        Assert.False(connection.IsOverLimit);
+    }
+
+    [Fact]
     public void Provider_card_exposes_selected_profile_quota_rows()
     {
         var card = new ProviderCardViewModel(ProviderCatalog.Get(ProviderKind.Kiro));

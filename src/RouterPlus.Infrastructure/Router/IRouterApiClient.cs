@@ -61,7 +61,8 @@ public interface IRouterApiClient
         string? name = null,
         int? priority = null,
         string? apiKey = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool? isActive = null);
 
     Task<ProviderConnection> WaitForNewConnectionAsync(
         ProviderKind provider,
