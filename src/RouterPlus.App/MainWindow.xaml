@@ -14,6 +14,7 @@
         Background="{DynamicResource SurfaceBrush}"
         app:FontScaleBehavior.Scale="{Binding FontScale}"
         Loaded="Window_OnLoaded"
+        StateChanged="Window_OnStateChanged"
         Closing="Window_OnClosing">
     <!-- Global key bindings are generated dynamically by RebuildKeyboardBindings()
          in MainWindow.xaml.cs so users can remap or disable them in Settings.
