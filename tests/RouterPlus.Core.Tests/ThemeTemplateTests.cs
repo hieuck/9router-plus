@@ -5,6 +5,15 @@ namespace RouterPlus.Core.Tests;
 public sealed class ThemeTemplateTests
 {
     [Fact]
+    public void Theme_resources_start_with_light_palette()
+    {
+        var themeDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "Styles", "Theme.xaml")));
+
+        Assert.Equal("#F5F7FB", themeDocument.Descendants().Single(element => element.Attributes().SingleOrDefault(attribute => attribute.Name.LocalName == "Key")?.Value == "SurfaceColor").Value);
+        Assert.Equal("#172033", themeDocument.Descendants().Single(element => element.Attributes().SingleOrDefault(attribute => attribute.Name.LocalName == "Key")?.Value == "TextColor").Value);
+    }
+
+    [Fact]
     public void ToggleButton_template_forwards_foreground_to_content_presenter()
     {
         var themeDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "Styles", "Theme.xaml")));
