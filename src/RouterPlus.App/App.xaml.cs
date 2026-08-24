@@ -13,16 +13,23 @@ public partial class App : System.Windows.Application
         DebugLogger.Log(DiagnosticCategories.Startup, "Application startup began");
         base.OnStartup(e);
 
-        var settingsStore = new SettingsStore();
-        var settings = settingsStore.Load();
+        var settingsStore = HarnessEnvironment.CreateSettingsStore();
+        var settings = HarnessEnvironment.IsEnabled
+            ? HarnessEnvironment.CreateSettings()
+            : settingsStore.Load();
+        if (HarnessEnvironment.IsEnabled)
+        {
+            settingsStore.SaveAsync(settings).GetAwaiter().GetResult();
+        }
         DebugLogger.Log(DiagnosticCategories.Startup, $"Initial settings loaded; setup required: {string.IsNullOrWhiteSpace(settings.ChromeExecutablePath) || string.IsNullOrWhiteSpace(settings.ChromeUserDataDirectory)}");
 
         // Keep the application alive while the setup wizard is the only open window.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         // Show wizard if first-time user (no Chrome paths configured)
-        if (string.IsNullOrWhiteSpace(settings.ChromeExecutablePath) ||
-            string.IsNullOrWhiteSpace(settings.ChromeUserDataDirectory))
+        if (!HarnessEnvironment.IsEnabled &&
+            (string.IsNullOrWhiteSpace(settings.ChromeExecutablePath) ||
+             string.IsNullOrWhiteSpace(settings.ChromeUserDataDirectory)))
         {
             var wizard = new WelcomeWizardWindow(settingsStore);
             var result = wizard.ShowDialog();

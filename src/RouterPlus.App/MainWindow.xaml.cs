@@ -20,7 +20,12 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        DataContext = new MainViewModel(runStartupUpdateCheck: true);
+        DataContext = HarnessEnvironment.IsEnabled
+            ? new MainViewModel(
+                settingsStore: HarnessEnvironment.CreateSettingsStore(),
+                runStartupUpdateCheck: false,
+                harnessProfiles: HarnessEnvironment.CreateProfiles())
+            : new MainViewModel(runStartupUpdateCheck: true);
         ViewModel.LoadWindowPlacementSync();
         ApplySavedWindowPlacement();
         InitializeComponent();

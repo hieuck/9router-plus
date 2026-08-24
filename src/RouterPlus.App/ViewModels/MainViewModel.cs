@@ -39,6 +39,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IUpdateService _updateService;
     private readonly IExternalLinkLauncher _linkLauncher;
     private readonly bool _runStartupUpdateCheck;
+    private readonly IReadOnlyList<ChromeProfile>? _harnessProfiles;
+    private readonly bool _harnessMode;
     private bool _isUpdateChecking;
     private bool _isUpdateInstalling;
     private ReleaseCheckResult? _latestRelease;
@@ -95,7 +97,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IExternalLinkLauncher? linkLauncher = null,
         bool runStartupUpdateCheck = false,
         IGoogleLoginVaultStore? googleLoginVaultStore = null,
-        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null)
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null,
+        IReadOnlyList<ChromeProfile>? harnessProfiles = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
@@ -104,6 +107,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
         _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
         _runStartupUpdateCheck = runStartupUpdateCheck;
+        _harnessProfiles = harnessProfiles;
+        _harnessMode = harnessProfiles is not null;
         _googleLoginVaultStore = googleLoginVaultStore ?? new GoogleLoginVaultStore(new GoogleLoginVaultPaths());
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _quotaPollingService = new QuotaPollingService(
@@ -1234,11 +1239,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _recentProfiles.AddRange(settings.RecentProfiles ?? []);
             RefreshProfiles();
             MarkSettingsSaved();
-            await LoadSelectedProfileApiKeysAsync();
+            if (!_harnessMode)
+            {
+                await LoadSelectedProfileApiKeysAsync();
+            }
             StatusText = Profiles.Count == 0
                 ? "Chưa tìm thấy Chrome profile. Hãy kiểm tra đường dẫn rồi nhấn Làm mới."
                 : $"Đã đọc {Profiles.Count} Chrome profile.";
-            await RefreshConnectionStatusesAsync(showStatus: true);
+            if (_harnessMode)
+            {
+                ConnectionStatusText = "Harness mode: provider sync disabled.";
+            }
+            else
+            {
+                await RefreshConnectionStatusesAsync(showStatus: true);
+            }
             DebugLogger.Log(DiagnosticCategories.Startup, $"Initialization completed: {Profiles.Count} profiles");
             if (_runStartupUpdateCheck)
             {
@@ -1393,6 +1408,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Chrome, "RefreshProfiles");
         var previousProfileId = SelectedProfile?.Id;
+
+        if (_harnessMode)
+        {
+            RefreshHarnessProfiles(previousProfileId);
+            return;
+        }
         _installation = _chromeLocator.Find(
             string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath,
             string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory);
@@ -1434,6 +1455,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenProviderDashboardCommand.RaiseCanExecuteChanged();
         TestConnectionCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
+    }
+
+    private void RefreshHarnessProfiles(string? previousProfileId)
+    {
+        var profiles = _harnessProfiles ?? Array.Empty<ChromeProfile>();
+        Profiles.Clear();
+        ProfileRows.Clear();
+        foreach (var profile in profiles)
+        {
+            Profiles.Add(profile);
+            ProfileRows.Add(new ProfileRowViewModel(profile, Providers));
+        }
+
+        ApplyProfileFilter();
+        SelectedProfile = Profiles.FirstOrDefault(profile => profile.Id == previousProfileId)
+            ?? Profiles.FirstOrDefault();
+        OnPropertyChanged(nameof(SelectedProfileRow));
+        UpdateProviderCardStatuses();
+        LaunchSelectedCommand.RaiseCanExecuteChanged();
+        OpenProviderDashboardCommand.RaiseCanExecuteChanged();
+        TestConnectionCommand.RaiseCanExecuteChanged();
+        WaitForConnectionCommand.RaiseCanExecuteChanged();
+        DebugLogger.Log(DiagnosticCategories.Chrome, $"Harness profile refresh loaded {profiles.Count} synthetic profiles");
     }
 
     public async Task AddProfileAsync()
