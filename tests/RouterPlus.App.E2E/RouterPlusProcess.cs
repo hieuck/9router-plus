@@ -8,17 +8,20 @@ namespace RouterPlus.App.E2E;
 public sealed class RouterPlusProcess : IAsyncDisposable
 {
     private readonly UIA3Automation _automation;
+    private readonly int _processId;
 
     private RouterPlusProcess(
         Application application,
         UIA3Automation automation,
         Window mainWindow,
-        TestEnvironment environment)
+        TestEnvironment environment,
+        int processId)
     {
         Application = application;
         _automation = automation;
         MainWindow = mainWindow;
         Environment = environment;
+        _processId = processId;
     }
 
     public Application Application { get; }
@@ -44,6 +47,7 @@ public sealed class RouterPlusProcess : IAsyncDisposable
         startInfo.Environment["ROUTERPLUS_HARNESS_ROOT"] = environment.RootPath;
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("RouterPlus process could not be started.");
+        var processId = process.Id;
         var application = Application.Attach(process);
         application.WaitWhileMainHandleIsMissing();
 
@@ -53,7 +57,7 @@ public sealed class RouterPlusProcess : IAsyncDisposable
             var mainWindow = application.GetMainWindow(automation)
                 ?? throw new InvalidOperationException("RouterPlus main window was not found.");
             await WaitForTitleAsync(mainWindow, "9Router Profile Tool", TimeSpan.FromSeconds(10));
-            return new RouterPlusProcess(application, automation, mainWindow, environment);
+            return new RouterPlusProcess(application, automation, mainWindow, environment, processId);
         }
         catch
         {
@@ -68,6 +72,16 @@ public sealed class RouterPlusProcess : IAsyncDisposable
         try
         {
             Application.Close();
+            using var process = Process.GetProcessById(_processId);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+        }
+        catch (ArgumentException)
+        {
+            // The child exited during normal teardown.
         }
         finally
         {
