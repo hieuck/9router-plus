@@ -799,6 +799,7 @@
                         </Grid>
                     </Border>
                     <ListBox Grid.Row="6" x:Name="ProfileList"
+                             AutomationProperties.AutomationId="ProfileList"
                              ItemsSource="{Binding FilteredProfileRows}"
                              SelectedValue="{Binding SelectedProfile, Mode=TwoWay}"
                              SelectedValuePath="Profile"

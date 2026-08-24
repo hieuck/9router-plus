@@ -22,6 +22,7 @@ public sealed class RouterPlusProcess : IAsyncDisposable
     }
 
     public Application Application { get; }
+    public UIA3Automation Automation => _automation;
     public Window MainWindow { get; private set; }
     public TestEnvironment Environment { get; }
 

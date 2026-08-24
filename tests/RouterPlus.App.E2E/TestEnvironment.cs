@@ -40,6 +40,11 @@ public sealed class TestEnvironment : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        if (string.Equals(Environment.GetEnvironmentVariable("ROUTERPLUS_HARNESS_KEEP_ARTIFACTS"), "1", StringComparison.Ordinal))
+        {
+            return ValueTask.CompletedTask;
+        }
+
         try
         {
             if (Directory.Exists(RootPath))
