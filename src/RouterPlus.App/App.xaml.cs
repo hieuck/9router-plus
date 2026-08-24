@@ -9,17 +9,21 @@ public partial class App : System.Windows.Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
+        HarnessEnvironment.Trace("OnStartup entered");
         DebugLogger.LogSeparator(DiagnosticCategories.Startup);
         DebugLogger.Log(DiagnosticCategories.Startup, "Application startup began");
         base.OnStartup(e);
+        HarnessEnvironment.Trace("WPF base startup completed");
 
         var settingsStore = HarnessEnvironment.CreateSettingsStore();
+        HarnessEnvironment.Trace("Settings store created");
         var settings = HarnessEnvironment.IsEnabled
             ? HarnessEnvironment.CreateSettings()
             : settingsStore.Load();
+        HarnessEnvironment.Trace("Settings loaded");
         if (HarnessEnvironment.IsEnabled)
         {
-            settingsStore.SaveAsync(settings).GetAwaiter().GetResult();
+            HarnessEnvironment.Trace("Using synthetic harness settings");
         }
         DebugLogger.Log(DiagnosticCategories.Startup, $"Initial settings loaded; setup required: {string.IsNullOrWhiteSpace(settings.ChromeExecutablePath) || string.IsNullOrWhiteSpace(settings.ChromeUserDataDirectory)}");
 
@@ -48,10 +52,13 @@ public partial class App : System.Windows.Application
         try
         {
             DebugLogger.Log(DiagnosticCategories.Startup, "Creating main window");
+            HarnessEnvironment.Trace("Creating main window");
             var mainWindow = new MainWindow();
+            HarnessEnvironment.Trace("Main window constructed");
             MainWindow = mainWindow;
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             mainWindow.Show();
+            HarnessEnvironment.Trace("Main window shown");
             DebugLogger.Log(DiagnosticCategories.Startup, "Main window shown");
         }
         catch (Exception ex)

@@ -43,6 +43,18 @@ internal static class HarnessEnvironment
     public static SettingsStore CreateSettingsStore() =>
         new(IsEnabled ? SettingsPath : null);
 
+    public static void Trace(string message)
+    {
+        if (!IsEnabled || string.IsNullOrWhiteSpace(RootPath))
+        {
+            return;
+        }
+
+        File.AppendAllText(
+            Path.Combine(GetRequiredRootPath(), "startup.trace"),
+            $"[{DateTimeOffset.UtcNow:O}] {message}{Environment.NewLine}");
+    }
+
     public static RouterSettings CreateSettings() =>
         new(
             DashboardBaseUrl: "http://127.0.0.1:20128",
