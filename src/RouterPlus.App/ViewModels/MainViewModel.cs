@@ -10,6 +10,7 @@ using RouterPlus.Core.Security;
 using RouterPlus.Core.Updates;
 using RouterPlus.App;
 using RouterPlus.App.Views;
+using RouterPlus.App.Diagnostics;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Router;
 using RouterPlus.Infrastructure.Security;
@@ -244,54 +245,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _selectedProfile;
         set
         {
-#if DEBUG
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-#endif
+            using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.ViewModel, "SelectedProfile.set");
+
             if (Equals(_selectedProfile, value))
             {
-#if DEBUG
-                System.Diagnostics.Debug.WriteLine($"[SelectedProfile] Same profile, skipping. Time: {sw.ElapsedMilliseconds}ms");
-#endif
+                DebugLogger.Log(DiagnosticCategories.ViewModel, "SelectedProfile unchanged, skipping");
                 return;
             }
 
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] Setting new profile: {value?.Name}");
-#endif
+            DebugLogger.Log(DiagnosticCategories.ViewModel, $"SelectedProfile changing to: {value?.Name ?? "null"}");
             _selectedProfile = value;
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After assignment: {sw.ElapsedMilliseconds}ms");
-#endif
-
             OnPropertyChanged();
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After OnPropertyChanged(): {sw.ElapsedMilliseconds}ms");
-#endif
-
             OnPropertyChanged(nameof(SelectedProfileRow));
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After OnPropertyChanged(SelectedProfileRow): {sw.ElapsedMilliseconds}ms");
-#endif
-
             UpdateProviderCardStatuses();
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After UpdateProviderCardStatuses(): {sw.ElapsedMilliseconds}ms");
-#endif
-
             LaunchSelectedCommand.RaiseCanExecuteChanged();
             OpenProviderDashboardCommand.RaiseCanExecuteChanged();
             TestConnectionCommand.RaiseCanExecuteChanged();
             DeleteConnectionCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After RaiseCanExecuteChanged() calls: {sw.ElapsedMilliseconds}ms");
-#endif
-
             _ = LoadSelectedProfileApiKeysAsync();
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After LoadSelectedProfileApiKeysAsync() (fire-and-forget): {sw.ElapsedMilliseconds}ms");
-            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] TOTAL TIME: {sw.ElapsedMilliseconds}ms");
-#endif
         }
     }
 
@@ -1190,6 +1162,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task LaunchProfileAsync(ChromeProfile? profile)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Chrome, "LaunchProfile");
         if (profile is null)
         {
             StatusText = "Profile không hợp lệ.";
@@ -1199,9 +1172,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             // Set as selected and track
+            DebugLogger.Log(DiagnosticCategories.Chrome, $"Launching profile: {profile.Name}");
             SelectedProfile = profile;
             TrackProfileLaunch(profile);
             await LaunchUrlAsync(DashboardBaseUrl);
+            DebugLogger.Log(DiagnosticCategories.Chrome, $"Profile launch completed: {profile.Name}");
             StatusText = $"Đã mở 9Router bằng profile {profile.Name}.";
         }
         catch (Exception exception)
@@ -1236,6 +1211,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task InitializeAsync()
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Startup, "MainViewModel.InitializeAsync");
+        DebugLogger.Log(DiagnosticCategories.Startup, "Loading application settings and profiles");
         try
         {
             var settings = await _settingsStore.LoadAsync();
@@ -1262,6 +1239,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ? "Chưa tìm thấy Chrome profile. Hãy kiểm tra đường dẫn rồi nhấn Làm mới."
                 : $"Đã đọc {Profiles.Count} Chrome profile.";
             await RefreshConnectionStatusesAsync(showStatus: true);
+            DebugLogger.Log(DiagnosticCategories.Startup, $"Initialization completed: {Profiles.Count} profiles");
             if (_runStartupUpdateCheck)
             {
                 _ = RunStartupUpdateCheckAsync();
@@ -1269,6 +1247,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception exception)
         {
+            DebugLogger.LogError(DiagnosticCategories.Startup, "Initialization failed", exception);
             SetError(exception);
         }
     }
@@ -1305,6 +1284,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task CheckForUpdatesAsync()
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Updates, "CheckForUpdatesAsync");
         if (IsUpdateChecking)
         {
             return;
@@ -1316,6 +1296,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var release = await _updateService.CheckAsync();
+            DebugLogger.Log(DiagnosticCategories.Updates, $"Update check completed; available: {release.IsUpdateAvailable}");
             _latestRelease = release;
             OnPropertyChanged(nameof(IsUpdateAvailable));
             OnPropertyChanged(nameof(AvailableVersion));
@@ -1361,6 +1342,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task<bool> InstallUpdateAsync(bool confirmedByUser)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Updates, "InstallUpdateAsync");
         if (!confirmedByUser || !CanInstallUpdate || _latestRelease is null)
         {
             return false;
@@ -1372,7 +1354,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         InstallUpdateCommand.RaiseCanExecuteChanged();
         try
         {
+            DebugLogger.Log(DiagnosticCategories.Updates, "Downloading and staging update package");
             var package = await _updateService.DownloadAndStageAsync(_latestRelease);
+            DebugLogger.Log(DiagnosticCategories.Updates, "Update package staged; launching updater");
             UpdateState = UpdateState.Installing;
             UpdateStatusText = "Bản cập nhật đã được xác minh. Đang chuẩn bị khởi động lại…";
             if (!await _updateService.LaunchUpdaterAsync(package))
@@ -1407,6 +1391,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void RefreshProfiles()
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Chrome, "RefreshProfiles");
         var previousProfileId = SelectedProfile?.Id;
         _installation = _chromeLocator.Find(
             string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath,
@@ -1414,6 +1399,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         if (_installation is null)
         {
+            DebugLogger.LogWarning(DiagnosticCategories.Chrome, "Profile refresh could not find a Chrome installation");
             return;
         }
 
@@ -1429,6 +1415,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             discoveredProfiles,
             managedProfiles,
             _installation.UserDataDirectory);
+        DebugLogger.Log(DiagnosticCategories.Chrome, $"Profile refresh discovered {profiles.Count} profiles");
         Profiles.Clear();
         ProfileRows.Clear();
         foreach (var profile in profiles)
@@ -1605,6 +1592,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         bool forceLog = false,
         CancellationToken cancellationToken = default)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Providers, "RefreshConnectionStatusesAsync");
+        DebugLogger.Log(DiagnosticCategories.Providers, $"Provider sync requested; profiles: {ProfileRows.Count}");
         await _connectionRefreshGate.WaitAsync(cancellationToken);
         try
         {
@@ -1618,8 +1607,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task LoadSelectedProfileApiKeysAsync()
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "LoadSelectedProfileApiKeysAsync");
         var loadVersion = Interlocked.Increment(ref _apiKeyLoadVersion);
         var profile = SelectedProfile;
+        DebugLogger.Log(DiagnosticCategories.Security, $"Loading saved provider credentials for profile selected: {profile is not null}");
         foreach (var card in ProviderCards.Where(card => card.Workflow == WorkflowKind.ApiKey))
         {
             card.LoadSavedApiKey(null);
@@ -1648,9 +1639,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 GetProviderCard(value.Kind).LoadSavedApiKey(value.Value);
             }
+
+            DebugLogger.Log(DiagnosticCategories.Security, $"Saved provider credentials loaded for {values.Length} providers");
         }
         catch (Exception exception)
         {
+            DebugLogger.LogError(DiagnosticCategories.Security, "Saved provider credentials could not be loaded", exception);
             if (loadVersion == Volatile.Read(ref _apiKeyLoadVersion))
             {
                 AppendLog("WARN", $"Không thể đọc API key đã lưu: {SafeError(exception)}");
@@ -1679,7 +1673,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var api = CreateApiClient();
+            DebugLogger.Log(DiagnosticCategories.Providers, "Loading provider connections");
             var connections = await api.ListAllConnectionsAsync(cancellationToken);
+            DebugLogger.Log(DiagnosticCategories.Providers, $"Provider connections loaded: {connections.Count}");
             var exhaustedConnections = connections
                 .Where(connection =>
                     connection.IsActive &&
@@ -1911,27 +1907,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void UpdateProviderCardStatuses()
     {
-#if DEBUG
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-#endif
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.ViewModel, "UpdateProviderCardStatuses");
         var row = SelectedProfileRow;
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[UpdateProviderCardStatuses] Got SelectedProfileRow: {sw.ElapsedMilliseconds}ms");
-#endif
-
         foreach (var card in ProviderCards)
         {
             var status = row?.ProviderStatuses.FirstOrDefault(item => item.Definition.Kind == card.Kind);
             card.UpdateProviderStatus(status);
         }
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[UpdateProviderCardStatuses] TOTAL TIME: {sw.ElapsedMilliseconds}ms");
-#endif
     }
 
     private async Task OpenProviderAsync(ProviderKind provider)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Providers, "OpenProviderAsync");
         var definition = ProviderCatalog.Get(provider);
+        DebugLogger.Log(DiagnosticCategories.Providers, $"Provider workflow started: {provider} ({definition.Workflow})");
         if (SelectedProfile is null)
         {
             StatusText = "Hãy chọn Chrome profile trước.";
@@ -1986,6 +1975,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
+            DebugLogger.Log(DiagnosticCategories.Providers, $"Provider workflow finished: {provider}");
             if (ReferenceEquals(_workflowCancellation, workflowCancellation))
             {
                 _workflowCancellation = null;
@@ -2344,9 +2334,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IGoogleLoginBrowser? browser = null;
             try
             {
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Step 1: Starting automation for profile: {profile.DirectoryName}");
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Chrome path: {installation.ExecutablePath}");
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] User data: {installation.UserDataDirectory}");
+                DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login started for profile: {profile.DirectoryName}");
+                DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launch requested");
 
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
@@ -2354,15 +2343,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     new Uri("https://accounts.google.com/"),
                     cancellationToken);
 
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Step 2: Chrome launched successfully, CDP endpoint: {session.DevToolsBaseUri}");
+                DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launched and CDP endpoint is available");
 
                 browser = await session.ConnectGoogleLoginAsync(cancellationToken);
 
-                System.Diagnostics.Debug.WriteLine("[AutoLogin] Step 3: CDP connected successfully, running state machine...");
+                DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login CDP connected; state machine starting");
 
                 var result = await GoogleLoginStateMachine.RunAsync(browser, credential, cancellationToken);
 
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Step 4: State machine completed with result: {result.Category}");
+                DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login state machine completed: {result.Category}");
 
                 // Leave Chrome open for manual intervention; dispose on all other outcomes
                 if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
@@ -2386,9 +2375,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
                 return result;
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException)
             {
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] User cancelled: {ex.Message}");
+                DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login cancelled");
                 if (browser is not null)
                 {
                     await browser.DisposeAsync();
@@ -2401,10 +2390,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] EXCEPTION DETAILS:");
-                System.Diagnostics.Debug.WriteLine($"  Type: {ex.GetType().FullName}");
-                System.Diagnostics.Debug.WriteLine($"  Message: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"  Stack: {ex.StackTrace}");
+                DebugLogger.LogError(DiagnosticCategories.Security, "Google auto-login failed", ex);
 
                 if (browser is not null)
                 {

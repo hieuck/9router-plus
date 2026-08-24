@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using RouterPlus.App.Diagnostics;
 
 namespace RouterPlus.App.ViewModels;
 
@@ -21,7 +22,11 @@ public sealed class RelayCommand : ICommand
 
     public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
 
-    public void Execute(object? parameter) => _execute();
+    public void Execute(object? parameter)
+    {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Commands, "RelayCommand.Execute");
+        _execute();
+    }
 
     public void RaiseCanExecuteChanged()
     {

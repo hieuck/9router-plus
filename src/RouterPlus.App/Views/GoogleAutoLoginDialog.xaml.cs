@@ -1,4 +1,5 @@
 using RouterPlus.App.ViewModels;
+using RouterPlus.App.Diagnostics;
 using RouterPlus.Infrastructure.Security;
 using System.IO;
 using System.Windows;
@@ -15,6 +16,7 @@ public partial class GoogleAutoLoginDialog : Window
 
     public GoogleAutoLoginDialog(GoogleAutoLoginViewModel viewModel)
     {
+        UIEventLogger.LogDialogOpen("GoogleAutoLogin");
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         DataContext = _viewModel;
         InitializeComponent();
@@ -38,12 +40,14 @@ public partial class GoogleAutoLoginDialog : Window
 
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        UIEventLogger.LogDialogClose("GoogleAutoLogin");
         _cts.Cancel();
         await _viewModel.DisposeAsync();
     }
 
     private async void Unlock_Click(object sender, RoutedEventArgs e)
     {
+        UIEventLogger.LogClick("GoogleAutoLogin.Unlock");
         var password = VaultPasswordBox.Password;
         var remember = RememberCheckBox.IsChecked ?? false;
 
@@ -104,6 +108,7 @@ public partial class GoogleAutoLoginDialog : Window
 
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
+        UIEventLogger.LogClick("GoogleAutoLogin.Save");
         var email = EmailTextBox.Text;
         var password = PasswordBox.Visibility == Visibility.Visible ? PasswordBox.Password : PasswordTextBox.Text;
         var totpSecret = TotpSecretBox.Visibility == Visibility.Visible ? TotpSecretBox.Password : TotpTextBox.Text;

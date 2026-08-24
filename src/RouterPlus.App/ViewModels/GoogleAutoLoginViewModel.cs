@@ -1,5 +1,6 @@
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
+using RouterPlus.App.Diagnostics;
 using RouterPlus.Infrastructure.Security;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -142,6 +143,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task UnlockVaultAsync(string vaultPassword, bool remember, CancellationToken cancellationToken)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "UnlockVaultAsync");
         ArgumentException.ThrowIfNullOrWhiteSpace(vaultPassword);
 
         IsBusy = true;
@@ -169,6 +171,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             }
 
             IsVaultUnlocked = true;
+            DebugLogger.Log(DiagnosticCategories.Security, "Google login vault unlocked");
             StatusText = "Vault unlocked successfully";
 
             if (remember)
@@ -178,6 +181,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         }
         catch (Exception ex)
         {
+            DebugLogger.LogError(DiagnosticCategories.Security, "Google login vault unlock failed", ex);
             StatusText = $"Failed to unlock vault: {GetSafeErrorMessage(ex)}";
             IsVaultUnlocked = false;
             throw;
@@ -190,6 +194,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task SaveInformationAsync(string email, string password, string totpSecret, CancellationToken cancellationToken)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "SaveInformationAsync");
         if (_session == null)
             throw new InvalidOperationException("Vault is not unlocked");
 
@@ -213,10 +218,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             Email = email;
             Password = password;
             TotpSecret = totpSecret;
+            DebugLogger.Log(DiagnosticCategories.Security, "Google login credential record saved");
             StatusText = "Information saved successfully";
         }
         catch (Exception ex)
         {
+            DebugLogger.LogError(DiagnosticCategories.Security, "Google login credential save failed", ex);
             StatusText = $"Failed to save: {GetSafeErrorMessage(ex)}";
             throw;
         }
@@ -228,6 +235,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task<GoogleLoginResult> AutoLoginAsync(string email, string password, string totpSecret, CancellationToken cancellationToken)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "AutoLoginAsync");
         if (_session == null)
             throw new InvalidOperationException("Vault is not unlocked");
 
@@ -274,12 +282,14 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             // Run automation with current fields
             var result = await _runAutomation(_profile, credential, cancellationToken);
 
+            DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login result: {result.Category}");
             StatusText = MapResultToStatus(result);
 
             return result;
         }
         catch (Exception ex)
         {
+            DebugLogger.LogError(DiagnosticCategories.Security, "Google auto-login operation failed", ex);
             var errorMessage = GetSafeErrorMessage(ex);
             StatusText = $"Auto-login failed: {errorMessage}";
             throw;
@@ -292,6 +302,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task ImportAsync(string sourcePath, string sourcePassword, CancellationToken cancellationToken)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "ImportVaultAsync");
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePassword);
 
@@ -310,10 +321,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             }
 
             IsVaultUnlocked = false;
+            DebugLogger.Log(DiagnosticCategories.Security, "Google login vault imported");
             StatusText = "Vault imported successfully. Please unlock the new vault.";
         }
         catch (Exception ex)
         {
+            DebugLogger.LogError(DiagnosticCategories.Security, "Google login vault import failed", ex);
             StatusText = $"Import failed: {GetSafeErrorMessage(ex)}";
             throw;
         }
@@ -325,6 +338,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task ExportAsync(string destinationPath, string exportPassword, CancellationToken cancellationToken)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "ExportVaultAsync");
         if (_session == null)
             throw new InvalidOperationException("Vault is not unlocked");
 
@@ -335,10 +349,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         try
         {
             await _vaultStore.ExportAsync(_session, destinationPath, exportPassword, cancellationToken);
+            DebugLogger.Log(DiagnosticCategories.Security, "Google login vault exported");
             StatusText = "Vault exported successfully";
         }
         catch (Exception ex)
         {
+            DebugLogger.LogError(DiagnosticCategories.Security, "Google login vault export failed", ex);
             StatusText = $"Export failed: {GetSafeErrorMessage(ex)}";
             throw;
         }
@@ -350,6 +366,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task LockVaultAsync(CancellationToken cancellationToken)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "LockVaultAsync");
         if (_session != null)
         {
             await _session.DisposeAsync();

@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using RouterPlus.App.Diagnostics;
 
 namespace RouterPlus.App.ViewModels;
 
@@ -22,8 +23,10 @@ public sealed class AsyncRelayCommand : ICommand
 
     public async void Execute(object? parameter)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Commands, "AsyncRelayCommand.Execute");
         if (!CanExecute(parameter))
         {
+            DebugLogger.Log(DiagnosticCategories.Commands, "Async command skipped because CanExecute returned false");
             return;
         }
 
@@ -35,6 +38,7 @@ public sealed class AsyncRelayCommand : ICommand
         }
         catch (Exception ex)
         {
+            DebugLogger.LogError(DiagnosticCategories.Commands, "Async command failed", ex);
             // Handle unhandled exceptions from async commands to prevent app crash
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
@@ -74,8 +78,10 @@ public sealed class AsyncRelayCommand<T> : ICommand
 
     public async void Execute(object? parameter)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Commands, "AsyncRelayCommand<T>.Execute");
         if (parameter is not T value || !CanExecute(parameter))
         {
+            DebugLogger.Log(DiagnosticCategories.Commands, "Generic async command skipped because parameter or CanExecute was invalid");
             return;
         }
 
@@ -87,6 +93,7 @@ public sealed class AsyncRelayCommand<T> : ICommand
         }
         catch (Exception ex)
         {
+            DebugLogger.LogError(DiagnosticCategories.Commands, "Generic async command failed", ex);
             // Handle unhandled exceptions from async commands to prevent app crash
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {

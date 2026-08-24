@@ -1,4 +1,5 @@
 using RouterPlus.Infrastructure.Chrome;
+using RouterPlus.App.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -53,6 +54,7 @@ public partial class ChromeSelectionDialog : Window, INotifyPropertyChanged
 
     private void Select_Click(object sender, RoutedEventArgs e)
     {
+        UIEventLogger.LogClick("ChromeSelection.Select");
         if (SelectedInstallation != null)
         {
             Result = SelectedInstallation.Installation;
@@ -63,13 +65,17 @@ public partial class ChromeSelectionDialog : Window, INotifyPropertyChanged
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
+        UIEventLogger.LogClick("ChromeSelection.Cancel");
         DialogResult = false;
         Close();
     }
 
     private void Rescan_Click(object sender, RoutedEventArgs e)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Chrome, "ChromeSelection.Rescan");
+        UIEventLogger.LogClick("ChromeSelection.Rescan");
         var installations = _chromeLocator.FindAll();
+        DebugLogger.Log(DiagnosticCategories.Chrome, $"Chrome rescan found {installations.Count} installation(s)");
         LoadInstallations(installations);
 
         if (Installations.Count == 0)

@@ -8,6 +8,7 @@ using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Core.Providers;
 using RouterPlus.App.ViewModels;
 using RouterPlus.App.Views;
+using RouterPlus.App.Diagnostics;
 using WpfButton = System.Windows.Controls.Button;
 
 namespace RouterPlus.App;
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
 
     private async void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Startup, "Window_OnLoaded");
         await ViewModel.InitializeAsync();
         ViewModel.StartQuotaPolling();
     }
@@ -40,6 +42,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        DebugLogger.Log(DiagnosticCategories.UI, $"Window state changed: {WindowState}");
         try
         {
             if (WindowState == WindowState.Minimized)
@@ -53,9 +56,11 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            DebugLogger.Log(DiagnosticCategories.UI, "Window state transition cancelled");
         }
-        catch
+        catch (Exception exception)
         {
+            DebugLogger.LogError(DiagnosticCategories.UI, "Window state transition failed", exception);
             // Swallow background polling errors to avoid crashing the app.
         }
     }
@@ -192,8 +197,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (ItemsControl.ContainerFromElement(listBox, source) is System.Windows.Controls.ListBoxItem { DataContext: ProfileRowViewModel })
+            if (ItemsControl.ContainerFromElement(listBox, source) is System.Windows.Controls.ListBoxItem { DataContext: ProfileRowViewModel row })
             {
+                UIEventLogger.LogDoubleClick("ProfileListItem", row.Name);
                 if (ViewModel.LaunchSelectedCommand.CanExecute(null))
                 {
                     ViewModel.LaunchSelectedCommand.Execute(null);
@@ -202,6 +208,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            DebugLogger.LogError(DiagnosticCategories.UI, "ProfileList double-click failed", ex);
             System.Windows.MessageBox.Show(
                 this,
                 $"Lỗi khi mở profile:\n\n{ex.Message}\n\nStack trace:\n{ex.StackTrace}",
@@ -213,9 +220,8 @@ public partial class MainWindow : Window
 
     private void ProfileList_OnPreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-#if DEBUG
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-#endif
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.UX, "ProfileList_RightClick");
+
         if (sender is not System.Windows.Controls.ListBox listBox || e.OriginalSource is not DependencyObject source)
         {
             return;
@@ -223,36 +229,34 @@ public partial class MainWindow : Window
 
         if (ItemsControl.ContainerFromElement(listBox, source) is System.Windows.Controls.ListBoxItem { DataContext: ProfileRowViewModel row } item)
         {
+            UIEventLogger.LogRightClick("ProfileListItem", row.Name);
             item.IsSelected = true;
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[Profile RightClick] Before SelectProfileForContextMenu: {sw.ElapsedMilliseconds}ms");
-#endif
             ViewModel.SelectProfileForContextMenu(row.Profile);
-#if DEBUG
-            System.Diagnostics.Debug.WriteLine($"[Profile RightClick] After SelectProfileForContextMenu: {sw.ElapsedMilliseconds}ms");
-            System.Diagnostics.Debug.WriteLine($"[Profile RightClick] Total PreviewMouseRightButtonDown: {sw.ElapsedMilliseconds}ms");
-#endif
         }
     }
 
     private async void ProfileGoogleLogin_Click(object sender, RoutedEventArgs e)
     {
+        UIEventLogger.LogClick("ProfileGoogleLogin");
         await ViewModel.OpenSelectedGoogleLoginAsync();
     }
 
     private void ProfileGoogleAutoLogin_Click(object sender, RoutedEventArgs e)
     {
+        UIEventLogger.LogClick("ProfileGoogleAutoLogin");
         var dialogViewModel = ViewModel.CreateGoogleAutoLoginViewModel();
         if (dialogViewModel is null)
         {
             return;
         }
 
+        UIEventLogger.LogDialogOpen("GoogleAutoLogin");
         var dialog = new GoogleAutoLoginDialog(dialogViewModel)
         {
             Owner = this
         };
-        dialog.ShowDialog();
+        var result = dialog.ShowDialog();
+        UIEventLogger.LogDialogClose("GoogleAutoLogin", result);
     }
 
     private void ProfileFolder_Click(object sender, RoutedEventArgs e)
@@ -265,6 +269,7 @@ public partial class MainWindow : Window
 
         try
         {
+            UIEventLogger.LogClick("ProfileFolder", profile.Name);
             if (!Directory.Exists(profile.ProfilePath))
             {
                 throw new DirectoryNotFoundException($"Không tìm thấy thư mục profile: {profile.ProfilePath}");
@@ -279,6 +284,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            DebugLogger.LogError(DiagnosticCategories.UI, "Failed to open profile folder", exception);
             ViewModel.MarkProfileActionFailed(exception);
         }
     }
@@ -293,11 +299,13 @@ public partial class MainWindow : Window
 
         try
         {
+            UIEventLogger.LogClick("CopyProfileName", profile.Name);
             System.Windows.Clipboard.SetText(profile.Name);
             ViewModel.MarkProfileNameCopied();
         }
         catch (Exception exception)
         {
+            DebugLogger.LogError(DiagnosticCategories.UI, "Failed to copy profile name", exception);
             ViewModel.MarkProfileActionFailed(exception);
         }
     }
@@ -310,6 +318,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        UIEventLogger.LogClick("DeleteProfile", profile.Name);
         var result = System.Windows.MessageBox.Show(
             this,
             $"Bạn có chắc muốn xóa profile \"{profile.Name}\"?\n\nThư mục sẽ bị xóa:\n{profile.ProfilePath}\n\nChỉ thư mục profile này bị xóa; thư mục User Data vẫn được giữ lại.",
@@ -317,11 +326,14 @@ public partial class MainWindow : Window
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);
+
         if (result != MessageBoxResult.Yes)
         {
+            DebugLogger.Log(DiagnosticCategories.UI, "Delete profile cancelled by user");
             return;
         }
 
+        DebugLogger.Log(DiagnosticCategories.UI, $"Deleting profile: {profile.Name}");
         await ViewModel.DeleteSelectedProfileAsync();
     }
 
