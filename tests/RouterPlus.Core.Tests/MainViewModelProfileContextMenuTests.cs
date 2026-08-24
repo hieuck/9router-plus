@@ -102,7 +102,7 @@ public sealed class MainViewModelProfileContextMenuTests
         var dialogViewModel = viewModel.CreateGoogleAutoLoginViewModel();
 
         Assert.NotNull(dialogViewModel);
-        Assert.Equal("Work", dialogViewModel.ProfileName);
+        Assert.Equal("Profile 1", dialogViewModel.ProfileName);
     }
 
     [Fact]

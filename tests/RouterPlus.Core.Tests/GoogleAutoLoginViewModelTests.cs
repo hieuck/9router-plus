@@ -9,7 +9,7 @@ namespace RouterPlus.Core.Tests;
 public sealed class GoogleAutoLoginViewModelTests
 {
     [Fact]
-    public async Task New_record_defaults_email_to_profile_name()
+    public async Task New_record_leaves_email_empty_until_saved()
     {
         var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
         var vaultStore = new FakeVaultStore();
@@ -17,7 +17,7 @@ public sealed class GoogleAutoLoginViewModelTests
 
         await viewModel.UnlockVaultAsync("vault-password", false, CancellationToken.None);
 
-        Assert.Equal("test.user@example.com", viewModel.Email);
+        Assert.Equal(string.Empty, viewModel.Email);
     }
 
     [Fact]
