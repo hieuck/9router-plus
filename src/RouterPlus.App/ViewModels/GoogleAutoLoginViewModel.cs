@@ -18,6 +18,8 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     private GoogleLoginVaultSession? _session;
     private string _email = string.Empty;
+    private string _password = string.Empty;
+    private string _totpSecret = string.Empty;
     private string _statusText = string.Empty;
     private bool _isVaultUnlocked;
     private bool _isBusy;
@@ -53,11 +55,33 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         }
     }
 
+    public string Password
+    {
+        get => _password;
+        set
+        {
+            if (_password != value)
+            {
+                _password = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public string TotpSecret
+    {
+        get => _totpSecret;
+        set
+        {
+            if (_totpSecret != value)
+            {
+                _totpSecret = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public string VaultPasswordStatus => IsVaultUnlocked ? "Unlocked" : "Locked";
-
-    public string PasswordStatus => "Hidden";
-
-    public string TotpStatus => "Hidden";
 
     public string StatusText
     {
@@ -136,11 +160,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                 _session = await _vaultStore.CreateAsync(vaultPath, vaultPassword, cancellationToken);
             }
 
-            // Load existing credential or leave email empty
             var existingCredential = _session.Vault.Find(_profile.Id);
             if (existingCredential != null)
             {
                 Email = existingCredential.Email;
+                Password = existingCredential.Password;
+                TotpSecret = existingCredential.TotpSecret;
             }
 
             IsVaultUnlocked = true;
@@ -186,6 +211,8 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             await _vaultStore.SaveAsync(_session, cancellationToken);
 
             Email = email;
+            Password = password;
+            TotpSecret = totpSecret;
             StatusText = "Information saved successfully";
         }
         catch (Exception ex)
@@ -366,6 +393,8 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                 if (existingCredential != null)
                 {
                     Email = existingCredential.Email;
+                    Password = existingCredential.Password;
+                    TotpSecret = existingCredential.TotpSecret;
                 }
 
                 IsVaultUnlocked = true;
@@ -410,6 +439,8 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
         // Clear sensitive state
         _email = string.Empty;
+        _password = string.Empty;
+        _totpSecret = string.Empty;
         _statusText = string.Empty;
     }
 }

@@ -19,6 +19,21 @@ public partial class GoogleAutoLoginDialog : Window
         DataContext = _viewModel;
         InitializeComponent();
         Closing += OnClosing;
+
+        // Subscribe to property changes to sync password fields
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(_viewModel.Password))
+        {
+            PasswordBox.Password = _viewModel.Password;
+        }
+        else if (e.PropertyName == nameof(_viewModel.TotpSecret))
+        {
+            TotpSecretBox.Password = _viewModel.TotpSecret;
+        }
     }
 
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -90,8 +105,8 @@ public partial class GoogleAutoLoginDialog : Window
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
         var email = EmailTextBox.Text;
-        var password = PasswordBox.Password;
-        var totpSecret = TotpSecretBox.Password;
+        var password = PasswordBox.Visibility == Visibility.Visible ? PasswordBox.Password : PasswordTextBox.Text;
+        var totpSecret = TotpSecretBox.Visibility == Visibility.Visible ? TotpSecretBox.Password : TotpTextBox.Text;
 
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         {
@@ -131,8 +146,8 @@ public partial class GoogleAutoLoginDialog : Window
     private async void AutoLogin_Click(object sender, RoutedEventArgs e)
     {
         var email = EmailTextBox.Text;
-        var password = PasswordBox.Password;
-        var totpSecret = TotpSecretBox.Password;
+        var password = PasswordBox.Visibility == Visibility.Visible ? PasswordBox.Password : PasswordTextBox.Text;
+        var totpSecret = TotpSecretBox.Visibility == Visibility.Visible ? TotpSecretBox.Password : TotpTextBox.Text;
 
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -463,5 +478,41 @@ public partial class GoogleAutoLoginDialog : Window
     {
         DialogResult = false;
         Close();
+    }
+
+    private void TogglePasswordVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if (PasswordBox.Visibility == Visibility.Visible)
+        {
+            // Switch to visible TextBox
+            PasswordTextBox.Text = PasswordBox.Password;
+            PasswordBox.Visibility = Visibility.Collapsed;
+            PasswordTextBox.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            // Switch back to PasswordBox
+            PasswordBox.Password = PasswordTextBox.Text;
+            PasswordTextBox.Visibility = Visibility.Collapsed;
+            PasswordBox.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void ToggleTotpVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if (TotpSecretBox.Visibility == Visibility.Visible)
+        {
+            // Switch to visible TextBox
+            TotpTextBox.Text = TotpSecretBox.Password;
+            TotpSecretBox.Visibility = Visibility.Collapsed;
+            TotpTextBox.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            // Switch back to PasswordBox
+            TotpSecretBox.Password = TotpTextBox.Text;
+            TotpTextBox.Visibility = Visibility.Collapsed;
+            TotpSecretBox.Visibility = Visibility.Visible;
+        }
     }
 }

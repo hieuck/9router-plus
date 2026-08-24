@@ -105,11 +105,37 @@
 
                 <TextBlock Text="{DynamicResource GoogleAutoLoginPasswordLabel}"
                            FontSize="10" Margin="0,0,0,4" />
-                <PasswordBox x:Name="PasswordBox" Margin="0,0,0,8" />
+                <Grid Margin="0,0,0,8">
+                    <TextBox x:Name="PasswordTextBox"
+                             Text="{Binding Password, Mode=TwoWay}"
+                             Visibility="Collapsed" />
+                    <PasswordBox x:Name="PasswordBox"
+                                 Visibility="Visible" />
+                    <Button Content="👁"
+                            Width="30" Height="24"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="0,0,4,0"
+                            Click="TogglePasswordVisibility_Click"
+                            ToolTip="Show/Hide password" />
+                </Grid>
 
                 <TextBlock Text="{DynamicResource GoogleAutoLoginTotpLabel}"
                            FontSize="10" Margin="0,0,0,4" />
-                <PasswordBox x:Name="TotpSecretBox" Margin="0,0,0,8" />
+                <Grid Margin="0,0,0,8">
+                    <TextBox x:Name="TotpTextBox"
+                             Text="{Binding TotpSecret, Mode=TwoWay}"
+                             Visibility="Collapsed" />
+                    <PasswordBox x:Name="TotpSecretBox"
+                                 Visibility="Visible" />
+                    <Button Content="👁"
+                            Width="30" Height="24"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="0,0,4,0"
+                            Click="ToggleTotpVisibility_Click"
+                            ToolTip="Show/Hide TOTP secret" />
+                </Grid>
 
                 <Button Content="{DynamicResource GoogleAutoLoginSave}"
                         Style="{StaticResource DialogButtonStyle}"
