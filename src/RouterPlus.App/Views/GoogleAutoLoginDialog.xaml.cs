@@ -134,14 +134,30 @@ public partial class GoogleAutoLoginDialog : Window
         var password = PasswordBox.Password;
         var totpSecret = TotpSecretBox.Password;
 
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(totpSecret))
+        if (string.IsNullOrWhiteSpace(email))
         {
             MessageBox.Show(
-                "Please fill in all credential fields.",
+                "Please enter your email address.",
                 "Auto Login",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return;
+        }
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            MessageBox.Show(
+                "Please enter your password.",
+                "Auto Login",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        // TOTP is optional - default to placeholder if not provided
+        if (string.IsNullOrWhiteSpace(totpSecret))
+        {
+            totpSecret = "AAAAAAAAAAAAAAAAAAAAAAAA";
         }
 
         try
