@@ -82,6 +82,11 @@
                             Style="{StaticResource CompactButtonStyle}"
                             Click="RemoveRemembered_Click"
                             IsEnabled="{Binding IsVaultUnlocked}"
+                            Margin="0,0,8,0" />
+                    <Button Content="{DynamicResource GoogleAutoLoginResetVault}"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="ResetVault_Click"
+                            IsEnabled="{Binding IsVaultUnlocked, Converter={StaticResource InverseBooleanConverter}}"
                             Margin="0" />
                 </StackPanel>
             </StackPanel>

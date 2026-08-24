@@ -1,4 +1,6 @@
 using RouterPlus.App.ViewModels;
+using RouterPlus.Infrastructure.Security;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using MessageBox = System.Windows.MessageBox;
@@ -399,6 +401,43 @@ public partial class GoogleAutoLoginDialog : Window
             MessageBox.Show(
                 "Failed to remove remembered unlock.",
                 "Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ResetVault_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "This will permanently delete the vault and all stored credentials.\n\n" +
+            "You will need to create a new vault with a new password.\n\n" +
+            "This action cannot be undone. Continue?",
+            "Reset Vault",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            var vaultPaths = new GoogleLoginVaultPaths();
+            if (File.Exists(vaultPaths.VaultPath))
+                File.Delete(vaultPaths.VaultPath);
+            if (File.Exists(vaultPaths.RememberedKeyPath))
+                File.Delete(vaultPaths.RememberedKeyPath);
+
+            MessageBox.Show(
+                "Vault has been reset. Please enter a new password to create a new vault.",
+                "Reset Complete",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Failed to reset vault: {ex.Message}",
+                "Reset Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }

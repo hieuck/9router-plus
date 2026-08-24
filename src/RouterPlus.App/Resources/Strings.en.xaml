@@ -33,6 +33,7 @@
     <sys:String x:Key="GoogleAutoLoginImport">Import</sys:String>
     <sys:String x:Key="GoogleAutoLoginExport">Export</sys:String>
     <sys:String x:Key="GoogleAutoLoginRemoveRemembered">Remove remembered</sys:String>
+    <sys:String x:Key="GoogleAutoLoginResetVault">Reset vault</sys:String>
     <sys:String x:Key="GoogleAutoLoginCredentialsSection">Login Credentials</sys:String>
     <sys:String x:Key="GoogleAutoLoginEmailLabel">Gmail Email</sys:String>
     <sys:String x:Key="GoogleAutoLoginPasswordLabel">Password</sys:String>

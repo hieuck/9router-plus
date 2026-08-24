@@ -33,6 +33,7 @@
     <sys:String x:Key="GoogleAutoLoginImport">Nhập</sys:String>
     <sys:String x:Key="GoogleAutoLoginExport">Xuất</sys:String>
     <sys:String x:Key="GoogleAutoLoginRemoveRemembered">Xóa ghi nhớ</sys:String>
+    <sys:String x:Key="GoogleAutoLoginResetVault">Xóa kho lưu trữ</sys:String>
     <sys:String x:Key="GoogleAutoLoginCredentialsSection">Thông tin đăng nhập</sys:String>
     <sys:String x:Key="GoogleAutoLoginEmailLabel">Email Gmail</sys:String>
     <sys:String x:Key="GoogleAutoLoginPasswordLabel">Mật khẩu</sys:String>
