@@ -213,6 +213,9 @@ public partial class MainWindow : Window
 
     private void ProfileList_OnPreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+#if DEBUG
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+#endif
         if (sender is not System.Windows.Controls.ListBox listBox || e.OriginalSource is not DependencyObject source)
         {
             return;
@@ -221,7 +224,14 @@ public partial class MainWindow : Window
         if (ItemsControl.ContainerFromElement(listBox, source) is System.Windows.Controls.ListBoxItem { DataContext: ProfileRowViewModel row } item)
         {
             item.IsSelected = true;
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[Profile RightClick] Before SelectProfileForContextMenu: {sw.ElapsedMilliseconds}ms");
+#endif
             ViewModel.SelectProfileForContextMenu(row.Profile);
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[Profile RightClick] After SelectProfileForContextMenu: {sw.ElapsedMilliseconds}ms");
+            System.Diagnostics.Debug.WriteLine($"[Profile RightClick] Total PreviewMouseRightButtonDown: {sw.ElapsedMilliseconds}ms");
+#endif
         }
     }
 

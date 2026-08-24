@@ -244,21 +244,54 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _selectedProfile;
         set
         {
+#if DEBUG
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+#endif
             if (Equals(_selectedProfile, value))
             {
+#if DEBUG
+                System.Diagnostics.Debug.WriteLine($"[SelectedProfile] Same profile, skipping. Time: {sw.ElapsedMilliseconds}ms");
+#endif
                 return;
             }
 
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] Setting new profile: {value?.Name}");
+#endif
             _selectedProfile = value;
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After assignment: {sw.ElapsedMilliseconds}ms");
+#endif
+
             OnPropertyChanged();
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After OnPropertyChanged(): {sw.ElapsedMilliseconds}ms");
+#endif
+
             OnPropertyChanged(nameof(SelectedProfileRow));
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After OnPropertyChanged(SelectedProfileRow): {sw.ElapsedMilliseconds}ms");
+#endif
+
             UpdateProviderCardStatuses();
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After UpdateProviderCardStatuses(): {sw.ElapsedMilliseconds}ms");
+#endif
+
             LaunchSelectedCommand.RaiseCanExecuteChanged();
             OpenProviderDashboardCommand.RaiseCanExecuteChanged();
             TestConnectionCommand.RaiseCanExecuteChanged();
             DeleteConnectionCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After RaiseCanExecuteChanged() calls: {sw.ElapsedMilliseconds}ms");
+#endif
+
             _ = LoadSelectedProfileApiKeysAsync();
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] After LoadSelectedProfileApiKeysAsync() (fire-and-forget): {sw.ElapsedMilliseconds}ms");
+            System.Diagnostics.Debug.WriteLine($"[SelectedProfile] TOTAL TIME: {sw.ElapsedMilliseconds}ms");
+#endif
         }
     }
 
@@ -1878,12 +1911,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void UpdateProviderCardStatuses()
     {
+#if DEBUG
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+#endif
         var row = SelectedProfileRow;
+#if DEBUG
+        System.Diagnostics.Debug.WriteLine($"[UpdateProviderCardStatuses] Got SelectedProfileRow: {sw.ElapsedMilliseconds}ms");
+#endif
+
         foreach (var card in ProviderCards)
         {
             var status = row?.ProviderStatuses.FirstOrDefault(item => item.Definition.Kind == card.Kind);
             card.UpdateProviderStatus(status);
         }
+#if DEBUG
+        System.Diagnostics.Debug.WriteLine($"[UpdateProviderCardStatuses] TOTAL TIME: {sw.ElapsedMilliseconds}ms");
+#endif
     }
 
     private async Task OpenProviderAsync(ProviderKind provider)
@@ -2301,7 +2344,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IGoogleLoginBrowser? browser = null;
             try
             {
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Starting automation for profile: {profile.DirectoryName}");
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Step 1: Starting automation for profile: {profile.DirectoryName}");
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Chrome path: {installation.ExecutablePath}");
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] User data: {installation.UserDataDirectory}");
 
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
@@ -2309,15 +2354,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     new Uri("https://accounts.google.com/"),
                     cancellationToken);
 
-                System.Diagnostics.Debug.WriteLine("[AutoLogin] Chrome launched, connecting CDP...");
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Step 2: Chrome launched successfully, CDP endpoint: {session.DevToolsBaseUri}");
 
                 browser = await session.ConnectGoogleLoginAsync(cancellationToken);
 
-                System.Diagnostics.Debug.WriteLine("[AutoLogin] CDP connected, running state machine...");
+                System.Diagnostics.Debug.WriteLine("[AutoLogin] Step 3: CDP connected successfully, running state machine...");
 
                 var result = await GoogleLoginStateMachine.RunAsync(browser, credential, cancellationToken);
 
-                System.Diagnostics.Debug.WriteLine($"[AutoLogin] State machine completed: {result.Category}");
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Step 4: State machine completed with result: {result.Category}");
 
                 // Leave Chrome open for manual intervention; dispose on all other outcomes
                 if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
@@ -2341,8 +2386,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
                 return result;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] User cancelled: {ex.Message}");
                 if (browser is not null)
                 {
                     await browser.DisposeAsync();
@@ -2355,6 +2401,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] EXCEPTION DETAILS:");
+                System.Diagnostics.Debug.WriteLine($"  Type: {ex.GetType().FullName}");
+                System.Diagnostics.Debug.WriteLine($"  Message: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"  Stack: {ex.StackTrace}");
+
                 if (browser is not null)
                 {
                     await browser.DisposeAsync();
@@ -2363,13 +2414,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 {
                     await session.DisposeAsync();
                 }
-                // Log the actual exception for debugging
-                System.Diagnostics.Debug.WriteLine($"Google login automation failed: {ex}");
+
+                // Check for specific known errors
                 if (ex is InvalidOperationException &&
                     ex.Message.Contains("selected profile may already be open", StringComparison.OrdinalIgnoreCase))
                 {
                     return GoogleLoginResult.BrowserDisconnected(
                         "The selected Chrome profile is already open. Close all Chrome windows using this profile and retry.");
+                }
+
+                if (ex is TimeoutException)
+                {
+                    return GoogleLoginResult.Timeout();
                 }
 
                 return GoogleLoginResult.BrowserDisconnected();
