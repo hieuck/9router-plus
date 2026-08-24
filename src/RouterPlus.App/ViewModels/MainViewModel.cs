@@ -2301,15 +2301,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IGoogleLoginBrowser? browser = null;
             try
             {
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] Starting automation for profile: {profile.DirectoryName}");
+
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
                     profile,
                     new Uri("https://accounts.google.com/"),
                     cancellationToken);
 
+                System.Diagnostics.Debug.WriteLine("[AutoLogin] Chrome launched, connecting CDP...");
+
                 browser = await session.ConnectGoogleLoginAsync(cancellationToken);
 
+                System.Diagnostics.Debug.WriteLine("[AutoLogin] CDP connected, running state machine...");
+
                 var result = await GoogleLoginStateMachine.RunAsync(browser, credential, cancellationToken);
+
+                System.Diagnostics.Debug.WriteLine($"[AutoLogin] State machine completed: {result.Category}");
 
                 // Leave Chrome open for manual intervention; dispose on all other outcomes
                 if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
