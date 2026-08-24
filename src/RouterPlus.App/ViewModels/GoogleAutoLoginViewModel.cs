@@ -40,7 +40,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
     public string Email
     {
         get => _email;
-        private set
+        set
         {
             if (_email != value)
             {
