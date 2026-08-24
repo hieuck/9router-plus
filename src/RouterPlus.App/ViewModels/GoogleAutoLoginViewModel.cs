@@ -33,6 +33,9 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         _runAutomation = runAutomation ?? throw new ArgumentNullException(nameof(runAutomation));
 
         _email = profile.Name;
+
+        // Try to open remembered vault automatically
+        _ = TryAutoUnlockAsync();
     }
 
     public string ProfileName => _profile.Name;
@@ -171,7 +174,11 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
-        ArgumentException.ThrowIfNullOrWhiteSpace(totpSecret);
+        // TOTP is optional for save - user might not have 2FA enabled yet
+        if (string.IsNullOrWhiteSpace(totpSecret))
+        {
+            totpSecret = "AAAAAAAAAAAAAAAAAAAAAAAA"; // Valid Base32 placeholder
+        }
 
         IsBusy = true;
         try
@@ -348,6 +355,33 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             GoogleLoginResultCategory.UnsupportedPage => "Unsupported page or navigation blocked",
             _ => "Unknown result"
         };
+    }
+
+    private async Task TryAutoUnlockAsync()
+    {
+        try
+        {
+            var vaultPaths = new GoogleLoginVaultPaths();
+            _session = await _vaultStore.TryOpenRememberedAsync(vaultPaths.VaultPath, CancellationToken.None);
+
+            if (_session != null)
+            {
+                var existingCredential = _session.Vault.Find(_profile.Id);
+                if (existingCredential != null)
+                {
+                    Email = existingCredential.Email;
+                }
+
+                IsVaultUnlocked = true;
+                StatusText = "Vault unlocked from remembered device";
+            }
+        }
+        catch
+        {
+            // Silently ignore remembered unlock failures
+            _session = null;
+            IsVaultUnlocked = false;
+        }
     }
 
     private static string GetSafeErrorMessage(Exception ex)

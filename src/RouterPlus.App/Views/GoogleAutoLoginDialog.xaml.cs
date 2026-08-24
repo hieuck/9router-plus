@@ -93,10 +93,10 @@ public partial class GoogleAutoLoginDialog : Window
         var password = PasswordBox.Password;
         var totpSecret = TotpSecretBox.Password;
 
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(totpSecret))
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         {
             MessageBox.Show(
-                "Please fill in all credential fields.",
+                "Please fill in at least email and password.",
                 "Save Information",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
