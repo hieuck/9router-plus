@@ -20,6 +20,9 @@
     <sys:String x:Key="ChromeSelectionToolTipChrome">Open Chrome location</sys:String>
     <sys:String x:Key="ChromeSelectionToolTipData">Open User Data location</sys:String>
 
+    <!-- Profile Context Menu -->
+    <sys:String x:Key="ProfileMenuGoogleAutoLogin">Google Auto-Login</sys:String>
+
     <!-- Google Auto-Login Dialog -->
     <sys:String x:Key="GoogleAutoLoginDialogTitle">Google Auto-Login</sys:String>
     <sys:String x:Key="GoogleAutoLoginProfileLabel">Chrome Profile</sys:String>

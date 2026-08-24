@@ -20,6 +20,9 @@
     <sys:String x:Key="ChromeSelectionToolTipChrome">Mở vị trí Chrome</sys:String>
     <sys:String x:Key="ChromeSelectionToolTipData">Mở vị trí User Data</sys:String>
 
+    <!-- Profile Context Menu -->
+    <sys:String x:Key="ProfileMenuGoogleAutoLogin">Tự động đăng nhập Google</sys:String>
+
     <!-- Google Auto-Login Dialog -->
     <sys:String x:Key="GoogleAutoLoginDialogTitle">Tự động đăng nhập Google</sys:String>
     <sys:String x:Key="GoogleAutoLoginProfileLabel">Profile Chrome</sys:String>
