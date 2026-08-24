@@ -244,6 +244,41 @@ public sealed class GoogleLoginVaultStoreTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => store.OpenAsync(paths.VaultPath, "password"));
     }
 
+    [Fact]
+    public async Task Dispose_blocks_new_operations_after_gate_acquired()
+    {
+        using var root = new TemporaryDirectory();
+        var paths = new GoogleLoginVaultPaths(root.Path);
+        var store = new GoogleLoginVaultStore(paths);
+        await using var session = await store.CreateAsync(paths.VaultPath, "password");
+        await store.SaveAsync(session);
+
+        store.Dispose();
+
+        // Operations after dispose should throw ObjectDisposedException, not hang
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => store.OpenAsync(paths.VaultPath, "password"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => store.SaveAsync(session));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => store.CreateAsync(paths.VaultPath + ".new", "password"));
+    }
+
+    [Fact]
+    public async Task Dispose_can_be_called_multiple_times_safely()
+    {
+        using var root = new TemporaryDirectory();
+        var paths = new GoogleLoginVaultPaths(root.Path);
+        var store = new GoogleLoginVaultStore(paths);
+        await using var session = await store.CreateAsync(paths.VaultPath, "password");
+        await store.SaveAsync(session);
+
+        // Multiple dispose calls should not throw or deadlock
+        store.Dispose();
+        store.Dispose();
+        store.Dispose();
+
+        // Operations should still be rejected
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => store.OpenAsync(paths.VaultPath, "password"));
+    }
+
     private sealed class TemporaryDirectory : IDisposable
     {
         public TemporaryDirectory()

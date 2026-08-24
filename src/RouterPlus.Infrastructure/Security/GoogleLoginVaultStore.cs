@@ -22,7 +22,9 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
     private readonly GoogleLoginVaultPaths _paths;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly SemaphoreSlim _operationGate = new(1, 1);
-    private int _activeOperations;
+    private readonly object _disposalLock = new();
+    private int _pendingOperations;
+    private bool _disposalStarted;
     private bool _disposed;
 
     public GoogleLoginVaultStore(GoogleLoginVaultPaths paths)
@@ -33,47 +35,71 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
 
     private async Task<T> ExecuteOperationAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken)
     {
-        await _operationGate.WaitAsync(cancellationToken);
+        EnterOperation();
         try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            Interlocked.Increment(ref _activeOperations);
-        }
-        finally
-        {
-            _operationGate.Release();
-        }
-
-        try
-        {
+            await EnterGateAsync(cancellationToken);
             return await operation();
         }
         finally
         {
-            Interlocked.Decrement(ref _activeOperations);
+            ExitOperation();
         }
     }
 
     private async Task ExecuteOperationAsync(Func<Task> operation, CancellationToken cancellationToken)
     {
+        EnterOperation();
+        try
+        {
+            await EnterGateAsync(cancellationToken);
+            await operation();
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
+    private void EnterOperation()
+    {
+        lock (_disposalLock)
+        {
+            ThrowIfDisposalStarted();
+            _pendingOperations++;
+        }
+    }
+
+    private async Task EnterGateAsync(CancellationToken cancellationToken)
+    {
         await _operationGate.WaitAsync(cancellationToken);
         try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            Interlocked.Increment(ref _activeOperations);
+            lock (_disposalLock)
+            {
+                ThrowIfDisposalStarted();
+            }
         }
         finally
         {
             _operationGate.Release();
         }
+    }
 
-        try
+    private void ThrowIfDisposalStarted()
+    {
+        if (_disposalStarted)
         {
-            await operation();
+            throw new ObjectDisposedException(GetType().Name);
         }
-        finally
+    }
+
+    private void ExitOperation()
+    {
+        lock (_disposalLock)
         {
-            Interlocked.Decrement(ref _activeOperations);
+            _pendingOperations--;
+            Monitor.PulseAll(_disposalLock);
         }
     }
 
@@ -661,31 +687,37 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
 
     public void Dispose()
     {
-        if (Volatile.Read(ref _disposed))
-        {
-            return;
-        }
-
-        _operationGate.Wait();
-        try
+        lock (_disposalLock)
         {
             if (_disposed)
             {
                 return;
             }
-            _disposed = true;
-        }
-        finally
-        {
-            _operationGate.Release();
-        }
 
-        var spinWait = new SpinWait();
-        while (Volatile.Read(ref _activeOperations) > 0)
-        {
-            spinWait.SpinOnce();
+            if (_disposalStarted)
+            {
+                while (!_disposed)
+                {
+                    Monitor.Wait(_disposalLock);
+                }
+
+                return;
+            }
+
+            _disposalStarted = true;
+            while (_pendingOperations > 0)
+            {
+                Monitor.Wait(_disposalLock);
+            }
         }
 
         _writeLock.Dispose();
+        _operationGate.Dispose();
+
+        lock (_disposalLock)
+        {
+            _disposed = true;
+            Monitor.PulseAll(_disposalLock);
+        }
     }
 }
