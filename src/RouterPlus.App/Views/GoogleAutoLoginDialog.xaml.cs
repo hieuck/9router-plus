@@ -200,7 +200,7 @@ public partial class GoogleAutoLoginDialog : Window
             else
             {
                 MessageBox.Show(
-                    "Auto-login failed. Please check your credentials or try again.",
+                    $"Auto-login failed: {result.Category}\n\n{result.Message}\n\nCheck the Output window for details.",
                     "Auto-login Error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);

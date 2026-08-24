@@ -2345,7 +2345,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
                 return GoogleLoginResult.Cancelled();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 if (browser is not null)
                 {
@@ -2355,6 +2355,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 {
                     await session.DisposeAsync();
                 }
+                // Log the actual exception for debugging
+                System.Diagnostics.Debug.WriteLine($"Google login automation failed: {ex}");
                 return GoogleLoginResult.BrowserDisconnected();
             }
         };
