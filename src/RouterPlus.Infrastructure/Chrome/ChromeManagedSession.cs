@@ -25,6 +25,7 @@ public sealed class ChromeManagedSession : IAsyncDisposable
     public Process Process => _process;
     public Uri DevToolsBaseUri => _devToolsBaseUri;
 
+
     /// <summary>
     /// Connects to the single accounts.google.com target created by the managed run.
     /// </summary>
@@ -45,25 +46,45 @@ public sealed class ChromeManagedSession : IAsyncDisposable
             {
                 var response = await client.CallAsync("Target.getTargets", null, cancellationToken);
                 var targetInfos = response.GetProperty("targetInfos");
+                var markedTargets = new List<string>();
+                var googleTargets = new List<string>();
 
                 foreach (var target in targetInfos.EnumerateArray())
                 {
-                    var type = target.GetProperty("type").GetString();
-                    var url = target.GetProperty("url").GetString();
-
-                    // Look for our session marker in the URL (before or after redirect)
-                    if (type == "page" && url != null && url.Contains(_sessionMarker))
+                    if (target.GetProperty("type").GetString() != "page")
                     {
-                        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host == "accounts.google.com")
-                        {
-                            if (targetId != null)
-                            {
-                                throw new InvalidOperationException("Multiple accounts.google.com targets with session marker found; exactly one is required.");
-                            }
-                            targetId = target.GetProperty("targetId").GetString();
-                        }
+                        continue;
+                    }
+
+                    var url = target.GetProperty("url").GetString();
+                    if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IsAllowedGoogleHost(uri.Host))
+                    {
+                        continue;
+                    }
+
+                    var currentTargetId = target.GetProperty("targetId").GetString();
+                    if (string.IsNullOrWhiteSpace(currentTargetId))
+                    {
+                        continue;
+                    }
+
+                    googleTargets.Add(currentTargetId);
+                    if (url.Contains(_sessionMarker, StringComparison.Ordinal))
+                    {
+                        markedTargets.Add(currentTargetId);
                     }
                 }
+
+                if (markedTargets.Count > 1)
+                {
+                    throw new InvalidOperationException("Multiple Google targets with session marker found; exactly one is required.");
+                }
+
+                // Chrome may remove the URL fragment during its first navigation.
+                // A random loopback CDP port belongs only to this managed process,
+                // so a single allowed Google page is the safe fallback association.
+                targetId = markedTargets.SingleOrDefault()
+                    ?? (googleTargets.Count == 1 ? googleTargets[0] : null);
 
                 if (targetId == null)
                 {
@@ -132,7 +153,7 @@ public sealed class ChromeManagedSession : IAsyncDisposable
                 var exitCode = process.ExitCode;
                 if (exitCode == 0)
                 {
-                    throw new InvalidOperationException("Chrome exited immediately with code 0. The profile may be in use by another Chrome instance. Close the existing Chrome and retry.");
+                    throw new InvalidOperationException("Chrome exited immediately with code 0. The selected profile may already be open. Close all Chrome windows using this profile and retry.");
                 }
                 throw new InvalidOperationException($"Chrome exited with code {exitCode} before the CDP endpoint became available.");
             }
@@ -166,6 +187,13 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         }
 
         throw new TimeoutException($"Chrome CDP endpoint did not become available within {pollTimeout.TotalSeconds} seconds.");
+    }
+
+    private static bool IsAllowedGoogleHost(string host)
+    {
+        return host == "accounts.google.com"
+            || host == "myaccount.google.com"
+            || host == "www.google.com";
     }
 
     internal static int GetAvailableLoopbackPort()

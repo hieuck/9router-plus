@@ -51,7 +51,13 @@ public sealed record GoogleLoginResult
         => new(GoogleLoginResultCategory.Cancelled, "Login automation was cancelled.");
 
     public static GoogleLoginResult BrowserDisconnected()
-        => new(GoogleLoginResultCategory.BrowserDisconnected, "Browser connection was lost.");
+        => BrowserDisconnected("Browser connection was lost.");
+
+    public static GoogleLoginResult BrowserDisconnected(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        return new(GoogleLoginResultCategory.BrowserDisconnected, message);
+    }
 
     public static GoogleLoginResult UnsupportedPage(string reason)
         => new(GoogleLoginResultCategory.UnsupportedPage, reason);

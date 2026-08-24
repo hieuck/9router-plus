@@ -192,6 +192,11 @@ public static class GoogleLoginStateMachine
         {
             return GoogleLoginResult.BrowserDisconnected();
         }
+        catch (InvalidOperationException)
+        {
+            return GoogleLoginResult.UnsupportedPage(
+                "Google sign-in page could not be controlled safely.");
+        }
     }
 
     private static async Task<GoogleLoginPageState> ReadStateWithTimeoutAsync(

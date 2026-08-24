@@ -379,7 +379,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             GoogleLoginResultCategory.InvalidCredentials => "Invalid credentials",
             GoogleLoginResultCategory.Timeout => "Login timed out",
             GoogleLoginResultCategory.Cancelled => "Login cancelled",
-            GoogleLoginResultCategory.BrowserDisconnected => "Browser disconnected",
+            GoogleLoginResultCategory.BrowserDisconnected => result.Message,
             GoogleLoginResultCategory.UnsupportedPage => "Unsupported page or navigation blocked",
             _ => "Unknown result"
         };

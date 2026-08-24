@@ -427,6 +427,31 @@ public class GoogleLoginStateMachineTests
     }
 
     [Fact]
+    public async Task RunAsync_returns_unsupported_page_for_control_failure()
+    {
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        var browser = new FakeBrowser()
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin"),
+                HasEmailField: true,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ThrowOnFill(new InvalidOperationException("Field not found"));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.UnsupportedPage, result.Category);
+        Assert.DoesNotContain("Browser disconnected", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RunAsync_does_not_record_secret_values_in_fake_browser()
     {
         var credential = new GoogleLoginCredential(

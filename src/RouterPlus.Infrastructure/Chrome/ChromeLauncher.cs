@@ -89,6 +89,9 @@ public sealed class ChromeLauncher
         startInfo.ArgumentList.Add($"--profile-directory={profile.DirectoryName}");
         startInfo.ArgumentList.Add("--remote-debugging-address=127.0.0.1");
         startInfo.ArgumentList.Add($"--remote-debugging-port={port}");
+        startInfo.ArgumentList.Add("--no-first-run");
+        startInfo.ArgumentList.Add("--no-default-browser-check");
+        startInfo.ArgumentList.Add("--new-window");
         startInfo.ArgumentList.Add(markedUri.ToString());
 
         var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Chrome did not start.");

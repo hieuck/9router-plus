@@ -2365,6 +2365,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
                 // Log the actual exception for debugging
                 System.Diagnostics.Debug.WriteLine($"Google login automation failed: {ex}");
+                if (ex is InvalidOperationException &&
+                    ex.Message.Contains("selected profile may already be open", StringComparison.OrdinalIgnoreCase))
+                {
+                    return GoogleLoginResult.BrowserDisconnected(
+                        "The selected Chrome profile is already open. Close all Chrome windows using this profile and retry.");
+                }
+
                 return GoogleLoginResult.BrowserDisconnected();
             }
         };

@@ -153,7 +153,8 @@ function(selector) {
             _ => throw new ArgumentOutOfRangeException(nameof(field))
         };
 
-        // Submit using Runtime.callFunctionOn with JSON-encoded arguments
+        // Google uses step-specific div buttons rather than submit buttons.
+        // Keep the function static and pass only the field selector as data.
         const string submitFunction = @"
 function(selector) {
     const element = document.querySelector(selector);
@@ -161,15 +162,20 @@ function(selector) {
         throw new Error('Field not found');
     }
 
-    // Find the submit button
-    const form = element.closest('form');
-    const button = form ? form.querySelector('button[type=""submit""]') :
+    const nextButtonId = selector.includes('email')
+        ? '#identifierNext'
+        : selector.includes('password')
+            ? '#passwordNext'
+            : '#totpNext';
+    const button = document.querySelector(nextButtonId) ||
+                   document.querySelector('[role=""button""][data-primary-action-label]') ||
                    document.querySelector('button[type=""submit""]');
+    const form = element.closest('form');
 
     if (button) {
         button.click();
     } else if (form) {
-        form.submit();
+        form.requestSubmit ? form.requestSubmit() : form.submit();
     } else {
         throw new Error('Submit button not found');
     }
