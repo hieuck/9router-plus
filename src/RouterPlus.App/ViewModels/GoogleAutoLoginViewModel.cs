@@ -32,13 +32,13 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         _vaultStore = vaultStore ?? throw new ArgumentNullException(nameof(vaultStore));
         _runAutomation = runAutomation ?? throw new ArgumentNullException(nameof(runAutomation));
 
-        _email = profile.Name;
+        _email = string.Empty; // Don't default to profile name
 
         // Try to open remembered vault automatically
         _ = TryAutoUnlockAsync();
     }
 
-    public string ProfileName => _profile.Name;
+    public string ProfileName => _profile.DirectoryName;
 
     public string Email
     {
@@ -136,15 +136,11 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                 _session = await _vaultStore.CreateAsync(vaultPath, vaultPassword, cancellationToken);
             }
 
-            // Load existing credential or default to profile name
+            // Load existing credential or leave email empty
             var existingCredential = _session.Vault.Find(_profile.Id);
             if (existingCredential != null)
             {
                 Email = existingCredential.Email;
-            }
-            else
-            {
-                Email = _profile.Name;
             }
 
             IsVaultUnlocked = true;
