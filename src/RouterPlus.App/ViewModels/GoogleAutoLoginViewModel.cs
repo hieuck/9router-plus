@@ -233,7 +233,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
-        ArgumentException.ThrowIfNullOrWhiteSpace(totpSecret);
+
+        // TOTP is optional - use placeholder if not provided
+        if (string.IsNullOrWhiteSpace(totpSecret))
+        {
+            totpSecret = "AAAAAAAAAAAAAAAAAAAAAAAA";
+        }
 
         IsBusy = true;
         try

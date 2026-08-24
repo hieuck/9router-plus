@@ -121,8 +121,7 @@ public partial class GoogleAutoLoginDialog : Window
         try
         {
             await _viewModel.SaveInformationAsync(email, password, totpSecret, _cts.Token);
-            PasswordBox.Clear();
-            TotpSecretBox.Clear();
+            // Don't clear - credentials are now displayed from ViewModel
         }
         catch (OperationCanceledException)
         {
