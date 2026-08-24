@@ -225,17 +225,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ProfileRow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: ProfileRowViewModel row })
-        {
-            ViewModel.SelectProfileForContextMenu(row.Profile);
-            return;
-        }
-
-        e.Handled = true;
-    }
-
     private async void ProfileGoogleLogin_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.OpenSelectedGoogleLoginAsync();
