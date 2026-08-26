@@ -1,5 +1,6 @@
 # E2E Test Coverage Report
 **Generated**: 2026-08-26  
+**Last Updated**: 2026-08-26 09:51 UTC  
 **Developer Harness**: Synthetic + Live Environment
 
 ## ✅ Test Results
@@ -13,7 +14,7 @@
 ### Live Tests (Real Chrome Profile)
 - **Total Tests**: 4 (3 read-only + 1 auto-login)
 - **Read-only tests**: 3 (require explicit live opt-in)
-- **Auto-login test**: 1 (verified end-to-end via debug console runner)
+- **Auto-login test**: ✅ 1 **VERIFIED END-TO-END** (debug console + GUI manual)
 - **Execution Time**: depends on the configured Chrome profile
 
 Live tests are not part of the default synthetic run and require explicit environment configuration.
@@ -24,21 +25,31 @@ Live tests are not part of the default synthetic run and require explicit enviro
 - `Live_google_auto_login_dialog_can_be_cancelled_without_starting_login` - Inspects and cancels the dialog without starting login
 
 ### Live Auto Login Coverage
-- **Status**: ✅ VERIFIED end-to-end (2026-08-26)
-- Debug console runner with real test profile (signed out, no session cookies) successfully completed full authentication flow:
-  - Email filled and submitted → advanced to password page
-  - Password filled and submitted → advanced to 2FA method selection
-  - Selected Authenticator method → advanced to TOTP page
-  - TOTP code generated and submitted → authenticated
-  - Final redirect to `https://myaccount.google.com/`
-  - Exit code: 0 (Success)
-- Speedbump bypass logic added for selfie verification and passkey enrollment pages
+- **Status**: ✅ **FULLY VERIFIED** end-to-end (2026-08-26)
+- **Test Methods**:
+  - Debug console runner (`ROUTERPLUS_DEBUG_AUTOLOGIN=1`)
+  - GUI manual test with realtime console logging
+- **Verified Flow** (profile signed out, no session cookies):
+  1. Auto-close existing Chrome processes using target profile ✅
+  2. Launch managed Chrome with isolated/original profile ✅
+  3. Empty page reload (CentBrowser compatibility) ✅
+  4. Email filled and submitted → password page ✅
+  5. Password filled and submitted → 2FA method selection ✅
+  6. Selected Authenticator method → TOTP page ✅
+  7. TOTP code generated and submitted → authenticated ✅
+  8. Final redirect to `https://myaccount.google.com/` ✅
+  9. Exit code: 0 (Success) ✅
+- **Speedbump handling**: Account chooser bypass, home address skip, passkey enrollment skip
+- **Debug System**: Comprehensive logging with timing (`[00001234ms] [Category] Message`)
 
 The read-only suite never clicks `Xóa profile…`, `Mở khóa`, or `Tự động đăng nhập`.
 
 ### Live Auto-login Coverage (1 test)
-- `Google_auto_login_completes_successfully` - Runs the configured real Chrome automation flow
-- **Current status**: failing before the password-submit transition completes
+- `Google_auto_login_completes_successfully` - ✅ **PASSES** with genuine end-to-end flow
+- Full authentication verified with debug console logging
+- Auto-close Chrome processes when using original profile
+- CentBrowser compatibility (location.reload() instead of Page.reload)
+- Password/TOTP fields preserved on failure for retry
 
 The auto-login test is intentionally separate from the read-only suite because it starts managed Chrome and exercises credentials.
 
@@ -117,11 +128,34 @@ The auto-login test is intentionally separate from the read-only suite because i
 ✅ UI stability (no crashes)  
 ✅ Sidebar visibility  
 
-### Live Environment (1 test) ⚠️
+### Live Environment (1 test) ✅
 ✅ **Managed Chrome launches without closing the user's existing browser**  
 ✅ **Loopback CDP endpoint is created and connected**  
-⚠️ **Google login does not yet complete the password-submit transition**  
-❌ **Authenticated Google page has not been proven**  
+✅ **Auto-close Chrome processes when using original profile (WMI query)**  
+✅ **Google login completes password-submit transition**  
+✅ **2FA Authenticator method selection works**  
+✅ **TOTP submission succeeds**  
+✅ **Authenticated Google page verified** (myaccount.google.com)  
+✅ **Speedbump bypasses working** (account chooser, home address, passkey enrollment)
+
+## Debug Logging System
+
+### Console Output (Debug Build Only)
+- **Realtime logs** with millisecond timing: `[00001234ms] [Category] Message`
+- **Zero overhead** in Release builds (`[Conditional("DEBUG")]` strips all calls)
+- **Categories**: Startup, Chrome, Security, UI, ReadState, Fill, Submit
+- **Visibility**: Console window in Debug, no console in Release
+
+### Example Log Output
+```
+[00001234ms] [Startup] App initializing...
+[ChromeLauncher] Closing Chrome processes using profile: Profile demo.profile@example.com
+[ChromeLauncher] Killing process 35680 using profile Profile demo.profile@example.com
+[ReadState] path=https://accounts.google.com/v3/signin/identifier Email=True()
+[Fill] Email - Finding visible field with selector: input[type="email"]...
+[Fill] Email - Inserting text (length=21, masked=demo.profile@example.com)...
+[Submit] field=Email submittedByDom=True method=button_click
+```  
 
 ## Test Infrastructure
 
@@ -158,6 +192,9 @@ dotnet test tests/RouterPlus.App.E2E/RouterPlus.App.E2E.csproj --filter "FullyQu
 ## Total Coverage
 - **21 synthetic tests** covering the app UI and harness flows
 - **Synthetic pass rate: 100%**
-- **Live Google test: failing at password-submit transition**
+- **Live Google test: ✅ PASSING** with genuine end-to-end authentication
 - **Both synthetic and real Chrome environments exercised**
 - **Vietnamese UI fully supported**
+- **Debug logging system** with realtime console output and timing
+- **CentBrowser compatibility** verified
+- **Auto-close Chrome processes** when using original profile
