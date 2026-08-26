@@ -13,6 +13,7 @@ using RouterPlus.App.Views;
 using RouterPlus.App.Diagnostics;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Router;
+using RouterPlus.Infrastructure.Diagnostics;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Infrastructure.Updates;
@@ -2503,6 +2504,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             catch (Exception ex)
             {
                 DebugLogger.LogError(DiagnosticCategories.Security, "Google auto-login failed", ex);
+                DebugConsole.WriteLine($"[MainViewModel] Google auto-login exception: {ex.GetType().Name}: {ex.Message}");
+                DebugConsole.WriteLine($"[MainViewModel] StackTrace: {ex.StackTrace}");
 
                 if (browser is not null)
                 {
@@ -2526,7 +2529,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     return GoogleLoginResult.Timeout();
                 }
 
-                return GoogleLoginResult.BrowserDisconnected();
+                return GoogleLoginResult.BrowserDisconnected($"{ex.GetType().Name}: {ex.Message}");
             }
         };
     }

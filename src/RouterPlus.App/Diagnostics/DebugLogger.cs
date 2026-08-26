@@ -18,7 +18,9 @@ public static class DebugLogger
     [Conditional("DEBUG")]
     public static void Log(string category, string message)
     {
-        Debug.WriteLine($"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] {message}");
+        var logMessage = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] {message}";
+        Debug.WriteLine(logMessage);
+        Console.WriteLine(logMessage);
     }
 
     /// <summary>
@@ -27,7 +29,9 @@ public static class DebugLogger
     [Conditional("DEBUG")]
     public static void LogStart(string category, string operation, [CallerMemberName] string? caller = null)
     {
-        Debug.WriteLine($"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] START {operation} (from {caller})");
+        var logMessage = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] START {operation} (from {caller})";
+        Debug.WriteLine(logMessage);
+        Console.WriteLine(logMessage);
     }
 
     /// <summary>
@@ -36,7 +40,9 @@ public static class DebugLogger
     [Conditional("DEBUG")]
     public static void LogEnd(string category, string operation, long elapsedMs, [CallerMemberName] string? caller = null)
     {
-        Debug.WriteLine($"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] END {operation} ({elapsedMs}ms) (from {caller})");
+        var logMessage = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] END {operation} ({elapsedMs}ms) (from {caller})";
+        Debug.WriteLine(logMessage);
+        Console.WriteLine(logMessage);
     }
 
     /// <summary>
@@ -45,11 +51,17 @@ public static class DebugLogger
     [Conditional("DEBUG")]
     public static void LogError(string category, string message, Exception? exception = null)
     {
-        Debug.WriteLine($"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] ERROR: {message}");
+        var logMessage = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] ERROR: {message}";
+        Debug.WriteLine(logMessage);
+        Console.WriteLine(logMessage);
         if (exception != null)
         {
-            Debug.WriteLine($"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}]   ExceptionType: {exception.GetType().Name}");
-            Debug.WriteLine($"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}]   HResult: 0x{exception.HResult:X8}");
+            var exTypeMsg = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}]   ExceptionType: {exception.GetType().Name}";
+            var hResultMsg = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}]   HResult: 0x{exception.HResult:X8}";
+            Debug.WriteLine(exTypeMsg);
+            Debug.WriteLine(hResultMsg);
+            Console.WriteLine(exTypeMsg);
+            Console.WriteLine(hResultMsg);
         }
     }
 

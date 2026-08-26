@@ -1,4 +1,5 @@
 using RouterPlus.Core.Security;
+using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
@@ -147,7 +148,7 @@ public static class GoogleLoginStateMachine
                             "Could not select Authenticator method from 2FA picker.");
                     }
 
-                    System.Console.WriteLine($"[GoogleLogin] Selected Authenticator method, reading state...");
+                    DebugConsole.WriteLine($"[GoogleLogin] Selected Authenticator method, reading state...");
 
                     state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RouterPlus.Core.Security;
+using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
@@ -46,8 +47,13 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 if (isEmpty && state.PageUri.Host == "accounts.google.com" && emptyPageAttempts < 2)
                 {
                     emptyPageAttempts++;
-                    System.Console.WriteLine($"[ReadState] Empty page detected (attempt {emptyPageAttempts}), reloading...");
-                    await _client.CallAsync("Page.reload", new { ignoreCache = true }, renderCts.Token);
+                    DebugConsole.WriteLine($"[ReadState] Empty page detected (attempt {emptyPageAttempts}), reloading...");
+                    // Use Runtime.evaluate instead of Page.reload for CentBrowser compatibility
+                    await _client.CallAsync("Runtime.evaluate", new
+                    {
+                        expression = "window.location.reload(true)",
+                        awaitPromise = false
+                    }, renderCts.Token, _sessionId);
                     await Task.Delay(2000, renderCts.Token);
                     continue;
                 }
@@ -172,7 +178,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 var hasTotp = vobj.GetProperty("hasTotpField").GetBoolean();
                 var hasEmail = vobj.GetProperty("hasEmailField").GetBoolean();
                 var emailValue = vobj.TryGetProperty("emailValue", out var ev) ? ev.GetString() : "";
-                System.Console.WriteLine($"[ReadState] path={path?.Substring(0, Math.Min(60, path?.Length ?? 0))} Email={hasEmail}({emailValue}) 2FA={has2FA} Pwd={hasPwd} Totp={hasTotp}");
+                DebugConsole.WriteLine($"[ReadState] path={path?.Substring(0, Math.Min(60, path?.Length ?? 0))} Email={hasEmail}({emailValue}) 2FA={has2FA} Pwd={hasPwd} Totp={hasTotp}");
             }
             catch { }
         }
@@ -387,7 +393,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     {
         try
         {
-            System.Console.WriteLine("[GoogleLogin] Detected potential home address speedbump, attempting to skip...");
+            DebugConsole.WriteLine("[GoogleLogin] Detected potential home address speedbump, attempting to skip...");
 
             const string script = @"
 (function() {
@@ -448,7 +454,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 var x = centerX.GetDouble();
                 var y = centerY.GetDouble();
 
-                System.Console.WriteLine($"[GoogleLogin] Clicking skip button at ({x:F0}, {y:F0}), text=\"{text}\"");
+                DebugConsole.WriteLine($"[GoogleLogin] Clicking skip button at ({x:F0}, {y:F0}), text=\"{text}\"");
 
                 // Click using CDP mouse events
                 await _client.CallAsync("Input.dispatchMouseEvent", new
@@ -471,20 +477,20 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     clickCount = 1
                 }, cancellationToken, _sessionId);
 
-                System.Console.WriteLine("[GoogleLogin] Home address skip button clicked");
+                DebugConsole.WriteLine("[GoogleLogin] Home address skip button clicked");
                 return true;
             }
 
             if (value.TryGetProperty("reason", out var reason))
             {
-                System.Console.WriteLine($"[GoogleLogin] Home address skip not needed: {reason.GetString()}");
+                DebugConsole.WriteLine($"[GoogleLogin] Home address skip not needed: {reason.GetString()}");
             }
 
             return false;
         }
         catch (Exception ex)
         {
-            System.Console.WriteLine($"[GoogleLogin] Failed to skip home address: {ex.Message}");
+            DebugConsole.WriteLine($"[GoogleLogin] Failed to skip home address: {ex.Message}");
             return false;
         }
     }
@@ -497,7 +503,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     {
         try
         {
-            System.Console.WriteLine("[GoogleLogin] Detected passkey enrollment page, attempting to skip...");
+            DebugConsole.WriteLine("[GoogleLogin] Detected passkey enrollment page, attempting to skip...");
 
             const string script = @"
 (function() {
@@ -507,8 +513,17 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     };
 
     // Find skip/not-now buttons
-    const skipKeywords = ['skip', 'not now', 'bỏ qua', 'để sau', 'remind me later', 'nhắc tôi sau'];
+    const skipKeywords = ['skip', 'not now', 'bỏ qua', 'để sau', 'remind me later', 'nhắc tôi sau', 'maybe later', 'no thanks'];
     const buttons = Array.from(document.querySelectorAll('button, [role=""button""], a'));
+
+    // Diagnostic: dump all visible buttons
+    const allButtons = buttons
+        .filter(isVisible)
+        .map(btn => ({
+            tag: btn.tagName,
+            text: (btn.innerText || '').substring(0, 80),
+            ariaLabel: (btn.getAttribute('aria-label') || '').substring(0, 80)
+        }));
 
     for (const btn of buttons) {
         if (!isVisible(btn)) continue;
@@ -519,12 +534,13 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 found: true,
                 text: (btn.innerText || '').substring(0, 50),
                 centerX: rect.left + rect.width / 2,
-                centerY: rect.top + rect.height / 2
+                centerY: rect.top + rect.height / 2,
+                allButtons: allButtons
             };
         }
     }
 
-    return { found: false };
+    return { found: false, allButtons: allButtons };
 })()
 ";
             var result = await _client.CallAsync("Runtime.evaluate", new
@@ -548,7 +564,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 var x = centerX.GetDouble();
                 var y = centerY.GetDouble();
 
-                System.Console.WriteLine($"[GoogleLogin] Clicking skip button at ({x:F0}, {y:F0}), text=\"{text}\"");
+                DebugConsole.WriteLine($"[GoogleLogin] Clicking skip button at ({x:F0}, {y:F0}), text=\"{text}\"");
 
                 // Click using CDP mouse events
                 await _client.CallAsync("Input.dispatchMouseEvent", new
@@ -571,16 +587,31 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     clickCount = 1
                 }, cancellationToken, _sessionId);
 
-                System.Console.WriteLine("[GoogleLogin] Passkey enrollment skip button clicked");
+                DebugConsole.WriteLine("[GoogleLogin] Passkey enrollment skip button clicked");
                 return true;
             }
 
-            System.Console.WriteLine("[GoogleLogin] No skip button found on passkey enrollment page");
+            // Dump available buttons for debugging
+            if (value.TryGetProperty("allButtons", out var allButtons) && allButtons.ValueKind == JsonValueKind.Array)
+            {
+                DebugConsole.WriteLine($"[GoogleLogin] No skip button found. Available buttons ({allButtons.GetArrayLength()}):");
+                foreach (var btn in allButtons.EnumerateArray())
+                {
+                    var tag = btn.TryGetProperty("tag", out var t) ? t.GetString() : "";
+                    var text = btn.TryGetProperty("text", out var txt) ? txt.GetString() : "";
+                    var aria = btn.TryGetProperty("ariaLabel", out var a) ? a.GetString() : "";
+                    DebugConsole.WriteLine($"  {tag}: text=\"{text}\" aria=\"{aria}\"");
+                }
+            }
+            else
+            {
+                DebugConsole.WriteLine("[GoogleLogin] No skip button found on passkey enrollment page");
+            }
             return false;
         }
         catch (Exception ex)
         {
-            System.Console.WriteLine($"[GoogleLogin] Failed to skip passkey enrollment: {ex.Message}");
+            DebugConsole.WriteLine($"[GoogleLogin] Failed to skip passkey enrollment: {ex.Message}");
             return false;
         }
     }
@@ -591,7 +622,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     /// </summary>
     public async Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
     {
-        System.Console.WriteLine("[GoogleLogin] Entering TrySelectAuthenticatorMethodAsync");
+        DebugConsole.WriteLine("[GoogleLogin] Entering TrySelectAuthenticatorMethodAsync");
 
         // First, wait for loading spinner to disappear (up to 5 seconds)
         for (int waitAttempt = 1; waitAttempt <= 10; waitAttempt++)
@@ -626,13 +657,13 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     && checkValue.TryGetProperty("isLoading", out var isLoadingProp)
                     && isLoadingProp.ValueKind == JsonValueKind.False)
                 {
-                    System.Console.WriteLine($"[GoogleLogin] Loading complete after {waitAttempt * 500}ms");
+                    DebugConsole.WriteLine($"[GoogleLogin] Loading complete after {waitAttempt * 500}ms");
                     break;
                 }
 
                 if (waitAttempt == 1)
                 {
-                    System.Console.WriteLine($"[GoogleLogin] Page is loading, waiting for spinner to disappear...");
+                    DebugConsole.WriteLine($"[GoogleLogin] Page is loading, waiting for spinner to disappear...");
                 }
             }
             catch { }
@@ -718,7 +749,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                         var x = centerX.GetDouble();
                         var y = centerY.GetDouble();
 
-                        System.Console.WriteLine($"[GoogleLogin] Using CDP mouse click at ({x:F0}, {y:F0}), text=\"{clickedText}\"");
+                        DebugConsole.WriteLine($"[GoogleLogin] Using CDP mouse click at ({x:F0}, {y:F0}), text=\"{clickedText}\"");
 
                         // Dispatch mouse events via CDP
                         await _client.CallAsync("Input.dispatchMouseEvent", new
@@ -741,7 +772,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                             clickCount = 1
                         }, cancellationToken, _sessionId);
 
-                        System.Console.WriteLine($"[GoogleLogin] CDP mouse click dispatched (attempt {attempt})");
+                        DebugConsole.WriteLine($"[GoogleLogin] CDP mouse click dispatched (attempt {attempt})");
                         return true;
                     }
 
@@ -749,24 +780,24 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                         && clicked.ValueKind == JsonValueKind.True)
                     {
                         var clickedText = value.TryGetProperty("clickedText", out var ct) ? ct.GetString() : "(no text)";
-                        System.Console.WriteLine($"[GoogleLogin] Clicked Authenticator method (attempt {attempt}), text=\"{clickedText}\"");
+                        DebugConsole.WriteLine($"[GoogleLogin] Clicked Authenticator method (attempt {attempt}), text=\"{clickedText}\"");
                         return true;
                     }
                 }
 
-                System.Console.WriteLine($"[GoogleLogin] Attempt {attempt}: no click result returned");
+                DebugConsole.WriteLine($"[GoogleLogin] Attempt {attempt}: no click result returned");
 
                 if (result.TryGetProperty("result", out var robj)
                     && robj.TryGetProperty("value", out var vobj)
                     && vobj.TryGetProperty("reason", out var reason)
                     && reason.ValueKind == JsonValueKind.String)
                 {
-                    System.Console.WriteLine($"[GoogleLogin] Attempt {attempt}: {reason.GetString()}");
+                    DebugConsole.WriteLine($"[GoogleLogin] Attempt {attempt}: {reason.GetString()}");
 
                     // Log available options for debugging
                     if (vobj.TryGetProperty("allClickable", out var allClickableArray) && allClickableArray.ValueKind == JsonValueKind.Array)
                     {
-                        System.Console.WriteLine($"[GoogleLogin] All clickable elements on 2FA page:");
+                        DebugConsole.WriteLine($"[GoogleLogin] All clickable elements on 2FA page:");
                         foreach (var item in allClickableArray.EnumerateArray())
                         {
                             try
@@ -778,7 +809,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                                 var jsname = item.TryGetProperty("jsname", out var jn) ? jn.GetString() : "";
                                 var ariaLabel = item.TryGetProperty("ariaLabel", out var al) ? al.GetString() : "";
 
-                                System.Console.WriteLine($"  - tag={tag} role={role} text=\"{text}\" dataChallenge={dataChallenge} jsname={jsname} ariaLabel=\"{ariaLabel}\"");
+                                DebugConsole.WriteLine($"  - tag={tag} role={role} text=\"{text}\" dataChallenge={dataChallenge} jsname={jsname} ariaLabel=\"{ariaLabel}\"");
                             }
                             catch { }
                         }
@@ -811,7 +842,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             _ => throw new ArgumentOutOfRangeException(nameof(field))
         };
 
-        System.Console.WriteLine($"[Fill] {field} - Finding visible field with selector: {selector}");
+        DebugConsole.WriteLine($"[Fill] {field} - Finding visible field with selector: {selector}");
 
         // Use Runtime.evaluate for compatibility with Chromium variants that
         // reject Runtime.callFunctionOn before the document execution context settles.
@@ -846,17 +877,17 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 var name = focusValue.TryGetProperty("name", out var n) ? n.GetString() : "";
                 var id = focusValue.TryGetProperty("id", out var i) ? i.GetString() : "";
                 var placeholder = focusValue.TryGetProperty("placeholder", out var p) ? p.GetString() : "";
-                System.Console.WriteLine($"[Fill] {field} - Found: tagName={tagName} type={type} name={name} id={id} placeholder={placeholder}");
+                DebugConsole.WriteLine($"[Fill] {field} - Found: tagName={tagName} type={type} name={name} id={id} placeholder={placeholder}");
             }
             catch { }
         }
 
-        System.Console.WriteLine($"[Fill] {field} - Field focused, waiting 500ms before clear...");
+        DebugConsole.WriteLine($"[Fill] {field} - Field focused, waiting 500ms before clear...");
         await Task.Delay(500, cancellationToken);
 
         // The application vault is the source of truth for this flow. Clear
         // browser autofill before inserting the vault value.
-        System.Console.WriteLine($"[Fill] {field} - Clearing field with Ctrl+A...");
+        DebugConsole.WriteLine($"[Fill] {field} - Clearing field with Ctrl+A...");
         // Clear existing content with Ctrl+A
         await _client.CallAsync("Input.dispatchKeyEvent", new
         {
@@ -894,7 +925,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             try
             {
                 var valueLength = checkValue.TryGetProperty("valueLength", out var vl) ? vl.GetInt32() : 0;
-                System.Console.WriteLine($"[Fill] {field} - After Ctrl+A, field value length: {valueLength}");
+                DebugConsole.WriteLine($"[Fill] {field} - After Ctrl+A, field value length: {valueLength}");
             }
             catch { }
         }
@@ -903,7 +934,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         var maskedValue = field == GoogleLoginField.Password || field == GoogleLoginField.Totp
             ? new string('*', value.Length)
             : value;
-        System.Console.WriteLine($"[Fill] {field} - Inserting text (length={value.Length}, masked={maskedValue})...");
+        DebugConsole.WriteLine($"[Fill] {field} - Inserting text (length={value.Length}, masked={maskedValue})...");
         await _client.CallAsync("Input.insertText", new { text = value }, cancellationToken, _sessionId);
 
         await Task.Delay(1000, cancellationToken);
@@ -930,15 +961,15 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             try
             {
                 var finalLength = triggerValue.TryGetProperty("finalValueLength", out var fl) ? fl.GetInt32() : 0;
-                System.Console.WriteLine($"[Fill] {field} - Events triggered, final value length: {finalLength} (expected: {value.Length})");
+                DebugConsole.WriteLine($"[Fill] {field} - Events triggered, final value length: {finalLength} (expected: {value.Length})");
 
                 if (finalLength != value.Length)
                 {
-                    System.Console.WriteLine($"[Fill] {field} - WARNING: Value length mismatch! Field may have been cleared by browser.");
+                    DebugConsole.WriteLine($"[Fill] {field} - WARNING: Value length mismatch! Field may have been cleared by browser.");
                 }
 
                 // Wait to let the value stabilize before submit
-                System.Console.WriteLine($"[Fill] {field} - Waiting 1000ms for field to stabilize before submit...");
+                DebugConsole.WriteLine($"[Fill] {field} - Waiting 1000ms for field to stabilize before submit...");
                 await Task.Delay(1000, cancellationToken);
             }
             catch { }
@@ -1005,7 +1036,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             && submitted.ValueKind == JsonValueKind.True;
         var method = submitValue.TryGetProperty("method", out var m) ? m.GetString() : "none";
 
-        System.Console.WriteLine($"[Submit] field={field} submittedByDom={submittedByDom} method={method}");
+        DebugConsole.WriteLine($"[Submit] field={field} submittedByDom={submittedByDom} method={method}");
 
         if (submittedByDom)
         {
@@ -1054,11 +1085,11 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     state.PageUri.Host == "accounts.google.com" &&
                     state.PageUri.AbsolutePath.Contains("/speedbump"))
                 {
-                    System.Console.WriteLine("[WaitForNextState] Detected speedbump page after TOTP, attempting skip...");
+                    DebugConsole.WriteLine("[WaitForNextState] Detected speedbump page after TOTP, attempting skip...");
                     if (await TrySkipPasskeyEnrollmentAsync(cancellationToken))
                     {
                         triedSkipPasskey = true;
-                        System.Console.WriteLine("[WaitForNextState] Skip succeeded, waiting for navigation...");
+                        DebugConsole.WriteLine("[WaitForNextState] Skip succeeded, waiting for navigation...");
                         await Task.Delay(2000, cancellationToken);
                         // Reset deadline to give time for final navigation
                         deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);

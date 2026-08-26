@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Management;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
@@ -76,6 +78,10 @@ public sealed class ChromeLauncher
         {
             // Use original profile directly (no isolation)
             userDataDirectory = installation.UserDataDirectory;
+
+            // Close any Chrome processes using this profile
+            DebugConsole.WriteLine($"[ChromeLauncher] Closing Chrome processes using profile: {profile.DirectoryName}");
+            CloseProcessesUsingProfile(installation.ExecutablePath, profile.DirectoryName);
         }
         else
         {
@@ -242,6 +248,70 @@ public sealed class ChromeLauncher
         catch
         {
             // Best effort cleanup.
+        }
+    }
+
+    private static void CloseProcessesUsingProfile(string chromeExecutablePath, string profileDirectoryName)
+    {
+        try
+        {
+            var chromeProcessName = Path.GetFileNameWithoutExtension(chromeExecutablePath);
+            var processes = Process.GetProcessesByName(chromeProcessName);
+
+            var profileArg = $"--profile-directory={profileDirectoryName}";
+            var killedCount = 0;
+
+            foreach (var process in processes)
+            {
+                try
+                {
+                    // On Windows, check command line via WMI
+                    if (OperatingSystem.IsWindows())
+                    {
+                        using var searcher = new System.Management.ManagementObjectSearcher(
+                            $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {process.Id}");
+
+                        foreach (System.Management.ManagementObject obj in searcher.Get())
+                        {
+                            var commandLine = obj["CommandLine"]?.ToString() ?? string.Empty;
+                            if (commandLine.Contains(profileArg, StringComparison.OrdinalIgnoreCase))
+                            {
+                                DebugConsole.WriteLine($"[ChromeLauncher] Killing process {process.Id} using profile {profileDirectoryName}");
+                                process.Kill();
+                                killedCount++;
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // On non-Windows, fall back to heuristic: kill all Chrome processes
+                        // (safer to use isolated profiles on non-Windows)
+                        process.Kill();
+                        killedCount++;
+                    }
+                }
+                catch
+                {
+                    // Process might have exited or access denied - continue
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
+
+            if (killedCount > 0)
+            {
+                DebugConsole.WriteLine($"[ChromeLauncher] Killed {killedCount} Chrome process(es) using profile {profileDirectoryName}");
+                // Wait briefly for processes to fully exit and release locks
+                System.Threading.Thread.Sleep(1000);
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugConsole.WriteLine($"[ChromeLauncher] Failed to close Chrome processes: {ex.Message}");
+            // Non-fatal - proceed with launch attempt
         }
     }
 

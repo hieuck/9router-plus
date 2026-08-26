@@ -183,18 +183,20 @@ public partial class GoogleAutoLoginDialog : Window
         {
             var result = await _viewModel.AutoLoginAsync(email, password, totpSecret, _cts.Token);
 
-            // Clear immediately after use
-            PasswordBox.Clear();
-            TotpSecretBox.Clear();
-
             // Close dialog on success, leave open for manual intervention
             if (result.Category == Core.Security.GoogleLoginResultCategory.Success)
             {
+                // Clear sensitive fields on success
+                PasswordBox.Clear();
+                TotpSecretBox.Clear();
                 DialogResult = true;
                 Close();
             }
             else if (result.Category == Core.Security.GoogleLoginResultCategory.ManualInterventionRequired)
             {
+                // Clear sensitive fields after manual intervention starts
+                PasswordBox.Clear();
+                TotpSecretBox.Clear();
                 MessageBox.Show(
                     "Manual intervention required. Chrome is open for you to continue.",
                     "Manual Intervention",
@@ -204,6 +206,7 @@ public partial class GoogleAutoLoginDialog : Window
             }
             else
             {
+                // DON'T clear - user needs to retry with same credentials
                 MessageBox.Show(
                     $"Auto-login failed: {result.Category}\n\n{result.Message}\n\nCheck the Output window for details.",
                     "Auto-login Error",
