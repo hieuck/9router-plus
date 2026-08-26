@@ -2070,9 +2070,24 @@
                                         </TextBlock>
                                     </StackPanel>
                                 </Grid>
+
+                                <!-- Auto Login Profile Mode -->
+                                <TextBlock Text="Google Auto Login" Style="{StaticResource SettingsFieldLabelStyle}" Margin="0,14,0,5" />
+                                <CheckBox IsChecked="{Binding UseOriginalProfileForAutoLogin, Mode=TwoWay}"
+                                          Margin="0,0,0,4">
+                                    <TextBlock Text="Dùng Chrome profile gốc thay vì isolated profile"
+                                               FontSize="11"
+                                               TextWrapping="Wrap" />
+                                </CheckBox>
+                                <TextBlock Style="{StaticResource SettingsFieldHintStyle}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,0">
+                                    <Run Text="Khi bật: Auto Login sẽ dùng Chrome profile gốc (lưu được cookies/session state). " />
+                                    <Run Text="⚠️ Cần đóng tất cả Chrome gốc trước khi dùng option này." Foreground="{DynamicResource WarningBrush}" />
+                                </TextBlock>
                                 </StackPanel>
 
-                            
+
                                </StackPanel>
                         </Border>
 

@@ -77,6 +77,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _savedChromeUserDataDirectory = string.Empty;
     private double _savedFontScale = 1d;
     private bool _savedUseLightTheme = true;
+    private bool _savedUseOriginalProfileForAutoLogin = false;
     private WindowPlacement? _savedWindowPlacement;
     private string _connectionStatusText = "Chưa đồng bộ trạng thái provider.";
     private string _statusText = "Đang khởi tạo…";
@@ -1246,6 +1247,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ChromeUserDataDirectory = settings.ChromeUserDataDirectory ?? string.Empty;
             FontScale = settings.FontScale;
             UseLightTheme = settings.UseLightTheme;
+            UseOriginalProfileForAutoLogin = settings.UseOriginalProfileForAutoLogin;
             _savedWindowPlacement = TryCreateWindowPlacement(
                 settings.WindowLeft,
                 settings.WindowTop,
@@ -2996,7 +2998,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         && string.Equals(ChromeExecutablePath.Trim(), _savedChromeExecutablePath, StringComparison.Ordinal)
         && string.Equals(ChromeUserDataDirectory.Trim(), _savedChromeUserDataDirectory, StringComparison.Ordinal)
         && Math.Abs(FontScale - _savedFontScale) < 0.001d
-        && UseLightTheme == _savedUseLightTheme;
+        && UseLightTheme == _savedUseLightTheme
+        && UseOriginalProfileForAutoLogin == _savedUseOriginalProfileForAutoLogin;
 
     private string GetSettingsValidationMessage()
     {
@@ -3031,6 +3034,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _savedChromeUserDataDirectory = ChromeUserDataDirectory.Trim();
         _savedFontScale = FontScale;
         _savedUseLightTheme = UseLightTheme;
+        _savedUseOriginalProfileForAutoLogin = UseOriginalProfileForAutoLogin;
         NotifySettingsStateChanged();
     }
 
