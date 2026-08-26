@@ -8,6 +8,7 @@ public sealed record RouterSettings(
     string? ChromeUserDataDirectory = null,
     double FontScale = 1d,
     bool UseLightTheme = true,
+    bool UseOriginalProfileForAutoLogin = false,
     IReadOnlyList<ManagedChromeProfile>? ManagedProfiles = null,
     double? WindowLeft = null,
     double? WindowTop = null,

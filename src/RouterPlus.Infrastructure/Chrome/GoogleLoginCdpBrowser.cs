@@ -48,7 +48,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     emptyPageAttempts++;
                     System.Console.WriteLine($"[ReadState] Empty page detected (attempt {emptyPageAttempts}), reloading...");
                     await _client.CallAsync("Page.reload", new { ignoreCache = true }, renderCts.Token);
-                    await Task.Delay(3000, renderCts.Token);
+                    await Task.Delay(2000, renderCts.Token);
                     continue;
                 }
 
@@ -851,8 +851,8 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             catch { }
         }
 
-        System.Console.WriteLine($"[Fill] {field} - Field focused, waiting 2000ms before clear...");
-        await Task.Delay(2000, cancellationToken);
+        System.Console.WriteLine($"[Fill] {field} - Field focused, waiting 500ms before clear...");
+        await Task.Delay(500, cancellationToken);
 
         // The application vault is the source of truth for this flow. Clear
         // browser autofill before inserting the vault value.
@@ -938,8 +938,8 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 }
 
                 // Wait to let the value stabilize before submit
-                System.Console.WriteLine($"[Fill] {field} - Waiting 3000ms for field to stabilize before submit...");
-                await Task.Delay(3000, cancellationToken);
+                System.Console.WriteLine($"[Fill] {field} - Waiting 1000ms for field to stabilize before submit...");
+                await Task.Delay(1000, cancellationToken);
             }
             catch { }
         }

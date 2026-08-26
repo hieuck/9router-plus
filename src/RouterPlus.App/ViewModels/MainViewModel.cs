@@ -71,6 +71,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _isProfileSidebarCollapsed;
     private double _fontScale = 1d;
     private bool _useLightTheme = true;
+    private bool _useOriginalProfileForAutoLogin = false;
     private string _savedDashboardBaseUrl = "http://localhost:20128";
     private string _savedChromeExecutablePath = string.Empty;
     private string _savedChromeUserDataDirectory = string.Empty;
@@ -610,6 +611,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             _useLightTheme = value;
             ThemeManager.Apply(value);
+            OnPropertyChanged();
+            NotifySettingsStateChanged();
+        }
+    }
+
+    public bool UseOriginalProfileForAutoLogin
+    {
+        get => _useOriginalProfileForAutoLogin;
+        set
+        {
+            if (_useOriginalProfileForAutoLogin == value)
+            {
+                return;
+            }
+
+            _useOriginalProfileForAutoLogin = value;
             OnPropertyChanged();
             NotifySettingsStateChanged();
         }
@@ -2408,11 +2425,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login started for profile: {profile.DirectoryName}");
                 DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launch requested");
 
+                var settings = await _settingsStore.LoadAsync();
+
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
                     profile,
                     new Uri("https://accounts.google.com/"),
-                    cancellationToken);
+                    cancellationToken,
+                    settings.UseOriginalProfileForAutoLogin);
 
                 DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launched and CDP endpoint is available");
 
@@ -2919,6 +2939,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory.Trim(),
         FontScale,
         UseLightTheme,
+        UseOriginalProfileForAutoLogin,
         _managedProfiles.ToArray(),
         placement?.Left,
         placement?.Top,

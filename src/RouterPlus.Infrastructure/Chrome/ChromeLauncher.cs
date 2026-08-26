@@ -52,7 +52,8 @@ public sealed class ChromeLauncher
         ChromeInstallation installation,
         ChromeProfile profile,
         Uri startUri,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useOriginalProfile = false)
     {
         ArgumentNullException.ThrowIfNull(installation);
         ArgumentNullException.ThrowIfNull(profile);
@@ -68,13 +69,22 @@ public sealed class ChromeLauncher
             throw new DirectoryNotFoundException($"Chrome profile directory was not found: {profile.DirectoryName}");
         }
 
-        var tempUserDataDirectory = Path.Combine(
-            Path.GetTempPath(),
-            $"routerplus_chrome_{Guid.NewGuid():N}");
-        var tempProfileDirectory = Path.Combine(tempUserDataDirectory, profile.DirectoryName);
+        string userDataDirectory;
+        string? tempUserDataDirectory = null;
 
-        try
+        if (useOriginalProfile)
         {
+            // Use original profile directly (no isolation)
+            userDataDirectory = installation.UserDataDirectory;
+        }
+        else
+        {
+            // Use isolated temp profile (default)
+            tempUserDataDirectory = Path.Combine(
+                Path.GetTempPath(),
+                $"routerplus_chrome_{Guid.NewGuid():N}");
+            var tempProfileDirectory = Path.Combine(tempUserDataDirectory, profile.DirectoryName);
+
             Directory.CreateDirectory(tempProfileDirectory);
             CopyAuthenticationData(
                 installation.UserDataDirectory,
@@ -82,6 +92,11 @@ public sealed class ChromeLauncher
                 tempUserDataDirectory,
                 tempProfileDirectory);
 
+            userDataDirectory = tempUserDataDirectory;
+        }
+
+        try
+        {
             var port = ChromeManagedSession.GetAvailableLoopbackPort();
             var sessionMarker = $"__9rp_session_{Guid.NewGuid():N}";
             var markedUri = new UriBuilder(startUri)
@@ -95,7 +110,7 @@ public sealed class ChromeLauncher
                 UseShellExecute = false,
                 WorkingDirectory = Path.GetDirectoryName(installation.ExecutablePath) ?? Environment.CurrentDirectory
             };
-            startInfo.ArgumentList.Add($"--user-data-dir={tempUserDataDirectory}");
+            startInfo.ArgumentList.Add($"--user-data-dir={userDataDirectory}");
             startInfo.ArgumentList.Add($"--profile-directory={profile.DirectoryName}");
             startInfo.ArgumentList.Add("--remote-debugging-address=127.0.0.1");
             startInfo.ArgumentList.Add($"--remote-debugging-port={port}");
@@ -117,7 +132,13 @@ public sealed class ChromeLauncher
                     TimeSpan.FromSeconds(30),
                     httpGet,
                     cancellationToken);
-                session.SetTempUserDataDirectory(tempUserDataDirectory);
+
+                // Only set temp directory for cleanup if using isolated profile
+                if (tempUserDataDirectory != null)
+                {
+                    session.SetTempUserDataDirectory(tempUserDataDirectory);
+                }
+
                 return session;
             }
             catch
@@ -141,7 +162,10 @@ public sealed class ChromeLauncher
         }
         catch
         {
-            TryDeleteDirectory(tempUserDataDirectory);
+            if (tempUserDataDirectory != null)
+            {
+                TryDeleteDirectory(tempUserDataDirectory);
+            }
             throw;
         }
     }
