@@ -87,6 +87,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _quotaMarkersLoaded;
     private readonly SemaphoreSlim _connectionRefreshGate = new(1, 1);
     private readonly QuotaPollingService _quotaPollingService;
+    private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
 
     public MainViewModel(
         SettingsStore? settingsStore = null,
@@ -1623,6 +1624,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public Task StopQuotaPollingAsync() => _quotaPollingService.StopAsync();
 
+    public async Task DisposeGoogleLoginSessionsAsync()
+    {
+        foreach (var (session, browser) in _googleLoginSessions.ToArray())
+        {
+            try
+            {
+                await browser.DisposeAsync();
+            }
+            catch
+            {
+                // Best effort cleanup.
+            }
+
+            try
+            {
+                await session.DisposeAsync();
+            }
+            catch
+            {
+                // Best effort cleanup.
+            }
+        }
+
+        _googleLoginSessions.Clear();
+    }
+
     private async Task<bool> RefreshForQuotaPollingAsync(CancellationToken cancellationToken)
     {
         await RefreshConnectionStatusesAsync(showStatus: false, forceLog: false, cancellationToken);
@@ -2384,28 +2411,47 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
                     profile,
-                    new Uri("https://accounts.google.com/"),
+                    new Uri("https://myaccount.google.com/"),
                     cancellationToken);
 
                 DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launched and CDP endpoint is available");
 
                 browser = await session.ConnectGoogleLoginAsync(cancellationToken);
 
-                DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login CDP connected; state machine starting");
+                DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login CDP connected; checking session cookies");
 
-                var result = await GoogleLoginStateMachine.RunAsync(browser, credential, cancellationToken);
+                // Check if already logged in via session cookies
+                var initialState = await browser.ReadStateAsync(cancellationToken);
+                GoogleLoginResult result;
+
+                if (initialState.HasCompletionSignal)
+                {
+                    result = GoogleLoginResult.Success();
+                    DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login: session cookies authenticated successfully");
+                }
+                else
+                {
+                    DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login: session cookies did not authenticate, starting state machine");
+                    result = await GoogleLoginStateMachine.RunAsync(browser, credential, cancellationToken);
+                }
 
                 DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login state machine completed: {result.Category}");
 
-                // Leave Chrome open for manual intervention; dispose on all other outcomes
-                if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
+                // Keep the managed browser open after success so the authenticated
+                // Google page remains visible. Manual intervention also transfers
+                // ownership to the main view model for the same reason.
+                if (result.Category is GoogleLoginResultCategory.Success
+                    or GoogleLoginResultCategory.ManualInterventionRequired)
                 {
-                    // Transfer ownership: do not dispose session or browser
-                    // User continues manually in the live Chrome instance
+                    if (session is not null && browser is not null)
+                    {
+                        _googleLoginSessions.Add((session, browser));
+                        session = null;
+                        browser = null;
+                    }
                     return result;
                 }
 
-                // Success, timeout, or other failure: clean up
                 if (browser is not null)
                 {
                     await browser.DisposeAsync();

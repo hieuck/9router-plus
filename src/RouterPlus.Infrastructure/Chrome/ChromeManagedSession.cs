@@ -13,6 +13,7 @@ public sealed class ChromeManagedSession : IAsyncDisposable
     private readonly Process _process;
     private readonly Uri _devToolsBaseUri;
     private readonly string _sessionMarker;
+    private string? _tempUserDataDirectory;
     private bool _disposed;
 
     internal ChromeManagedSession(Process process, Uri devToolsBaseUri, string sessionMarker)
@@ -20,6 +21,11 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         _process = process;
         _devToolsBaseUri = devToolsBaseUri;
         _sessionMarker = sessionMarker;
+    }
+
+    internal void SetTempUserDataDirectory(string directory)
+    {
+        _tempUserDataDirectory = directory;
     }
 
     public Process Process => _process;
@@ -39,7 +45,7 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         try
         {
             // Poll for the managed target, identified by session marker in URL
-            var endTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+            var endTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
             string? targetId = null;
 
             while (DateTimeOffset.UtcNow < endTime && targetId == null)
@@ -51,12 +57,14 @@ public sealed class ChromeManagedSession : IAsyncDisposable
 
                 foreach (var target in targetInfos.EnumerateArray())
                 {
-                    if (target.GetProperty("type").GetString() != "page")
+                    var targetType = target.GetProperty("type").GetString();
+                    var url = target.GetProperty("url").GetString();
+
+                    if (targetType != "page")
                     {
                         continue;
                     }
 
-                    var url = target.GetProperty("url").GetString();
                     if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IsAllowedGoogleHost(uri.Host))
                     {
                         continue;
@@ -101,6 +109,7 @@ public sealed class ChromeManagedSession : IAsyncDisposable
             var sessionId = attachResponse.GetProperty("sessionId").GetString()!;
 
             await client.CallAsync("Page.bringToFront", null, cancellationToken, sessionId);
+            await WaitForGoogleDocumentAsync(client, sessionId, cancellationToken);
 
             return new GoogleLoginCdpBrowser(client, sessionId, targetId);
         }
@@ -134,6 +143,21 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         }
 
         _process.Dispose();
+
+        if (_tempUserDataDirectory != null)
+        {
+            try
+            {
+                if (Directory.Exists(_tempUserDataDirectory))
+                {
+                    Directory.Delete(_tempUserDataDirectory, recursive: true);
+                }
+            }
+            catch
+            {
+                // Best effort cleanup.
+            }
+        }
     }
 
     internal static async Task<ChromeManagedSession> CreateAsync(
@@ -187,6 +211,48 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         }
 
         throw new TimeoutException($"Chrome CDP endpoint did not become available within {pollTimeout.TotalSeconds} seconds.");
+    }
+
+    private static async Task WaitForGoogleDocumentAsync(
+        ChromeCdpClient client,
+        string sessionId,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                var result = await client.CallAsync("Runtime.evaluate", new
+                {
+                    expression = "window.location.href",
+                    returnByValue = true,
+                    awaitPromise = false
+                }, cancellationToken, sessionId);
+
+                if (result.TryGetProperty("result", out var remoteObject) &&
+                    remoteObject.TryGetProperty("value", out var value) &&
+                    value.ValueKind == JsonValueKind.String &&
+                    Uri.TryCreate(value.GetString(), UriKind.Absolute, out var uri) &&
+                    IsAllowedGoogleHost(uri.Host))
+                {
+                    return;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // The execution context may not exist while the first document loads.
+            }
+            catch (JsonException)
+            {
+                // Ignore incomplete CDP responses during initial navigation.
+            }
+
+            await Task.Delay(100, cancellationToken);
+        }
+
+        throw new TimeoutException("Google page did not finish navigating within the managed session timeout.");
     }
 
     private static bool IsAllowedGoogleHost(string host)

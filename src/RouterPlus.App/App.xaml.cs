@@ -9,6 +9,19 @@ public partial class App : System.Windows.Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Debug-only path: ROUTERPLUS_DEBUG_AUTOLOGIN=1 runs the production
+        // Google Auto Login automation against the configured profile and
+        // exits, so the live E2E fix can be validated without UI automation
+        // flakiness. The flow uses the same vault/credential/automation
+        // delegates as the dialog. Never logs secrets.
+        var debugAutoLogin = System.Environment.GetEnvironmentVariable("ROUTERPLUS_DEBUG_AUTOLOGIN");
+        if (!string.IsNullOrEmpty(debugAutoLogin) && debugAutoLogin != "false")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            _ = RouterPlus.App.Diagnostics.DebugAutoLoginRunner.RunAsync();
+            return;
+        }
+
         HarnessEnvironment.Trace("OnStartup entered");
         DebugLogger.LogSeparator(DiagnosticCategories.Startup);
         DebugLogger.Log(DiagnosticCategories.Startup, "Application startup began");

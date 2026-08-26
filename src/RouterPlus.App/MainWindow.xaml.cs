@@ -82,6 +82,7 @@ public partial class MainWindow : Window
         try
         {
             await ViewModel.StopQuotaPollingAsync();
+            await ViewModel.DisposeGoogleLoginSessionsAsync();
             if (WindowState == WindowState.Normal)
             {
                 await ViewModel.SaveWindowPlacementAsync(Left, Top, Width, Height);

@@ -16,6 +16,7 @@ public sealed class GoogleLoginCdpBrowserTests
             true,  // HasEmailField
             false, // HasPasswordField
             false, // HasTotpField
+            false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
         ));
@@ -39,6 +40,7 @@ public sealed class GoogleLoginCdpBrowserTests
             true,  // HasEmailField
             false, // HasPasswordField
             false, // HasTotpField
+            false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
         ));
@@ -60,6 +62,7 @@ public sealed class GoogleLoginCdpBrowserTests
             false, // HasEmailField
             true,  // HasPasswordField
             false, // HasTotpField
+            false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
         ));
@@ -81,6 +84,7 @@ public sealed class GoogleLoginCdpBrowserTests
             true,  // HasEmailField
             false, // HasPasswordField
             false, // HasTotpField
+            false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
         ));
@@ -111,6 +115,7 @@ public sealed class GoogleLoginCdpBrowserTests
             true,  // HasEmailField
             false, // HasPasswordField
             false, // HasTotpField
+            false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
         ));
@@ -203,6 +208,11 @@ public sealed class GoogleLoginCdpBrowserTests
 
             _submits.Add(field);
             return Task.CompletedTask;
+        }
+
+        public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
         }
 
         public ValueTask DisposeAsync()

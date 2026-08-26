@@ -21,4 +21,10 @@ public interface IGoogleLoginBrowser : IAsyncDisposable
     /// Submits the form containing the specified field.
     /// </summary>
     Task SubmitAsync(GoogleLoginField field, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Selects the Authenticator option on the 2FA method picker screen.
+    /// Returns true if the click succeeded.
+    /// </summary>
+    Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken);
 }

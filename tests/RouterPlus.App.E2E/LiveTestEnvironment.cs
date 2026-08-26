@@ -43,6 +43,7 @@ public static class LiveTestEnvironment
         }
     }
 
+
     /// <summary>
     /// Gets the configured Chrome profile name, throwing if not configured.
     /// </summary>

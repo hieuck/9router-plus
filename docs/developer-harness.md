@@ -56,6 +56,19 @@ In harness mode, the app:
 
 Normal app startup is unchanged when `ROUTERPLUS_HARNESS` is absent.
 
+## Live read-only checks
+
+The live suite is opt-in and uses a real Chrome profile only when both variables are set:
+
+```powershell
+$env:ROUTERPLUS_LIVE_E2E = "1"
+$env:ROUTERPLUS_LIVE_PROFILE = "<profile name>"
+dotnet test tests/RouterPlus.App.E2E/RouterPlus.App.E2E.csproj `
+  --filter "FullyQualifiedName~LiveProfileReadOnlyTests"
+```
+
+Live read-only tests verify profile discovery, selection stability, and context-menu inspection. The dialog cancellation test opens the Google Auto Login dialog (which may load configuration from the user's saved Chrome profile) and immediately cancels it. The suite does not click `Xóa profile…`, does not submit credentials, and does not start Auto Login. Keep the normal synthetic filter (`FullyQualifiedName!~Live`) as the default for safe local and CI runs.
+
 ## Failure artifacts
 
 Pass `-KeepArtifacts` to preserve temporary run directories. On context-menu timeout, the driver writes:

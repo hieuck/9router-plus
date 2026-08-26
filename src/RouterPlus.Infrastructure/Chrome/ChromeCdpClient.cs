@@ -17,6 +17,7 @@ internal sealed class ChromeCdpClient : IAsyncDisposable
         "Runtime.evaluate",
         "Runtime.callFunctionOn",
         "Input.dispatchKeyEvent",
+        "Input.dispatchMouseEvent",
         "Input.insertText",
         "Page.bringToFront"
     };
@@ -25,8 +26,12 @@ internal sealed class ChromeCdpClient : IAsyncDisposable
     private readonly HttpClient _httpClient;
     private ClientWebSocket? _webSocket;
     private int _nextRequestId;
-    private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pendingRequests = new();
+    private readonly ConcurrentDictionary<int, PendingRequest> _pendingRequests = new();
     private Task? _receiveTask;
+
+    private sealed record PendingRequest(
+        string Method,
+        TaskCompletionSource<JsonElement> Completion);
     private readonly CancellationTokenSource _disposalCts = new();
     private int _disposed;
 
@@ -78,7 +83,7 @@ internal sealed class ChromeCdpClient : IAsyncDisposable
 
         var requestId = Interlocked.Increment(ref _nextRequestId);
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingRequests[requestId] = tcs;
+        _pendingRequests[requestId] = new PendingRequest(method, tcs);
 
         try
         {
@@ -155,20 +160,21 @@ internal sealed class ChromeCdpClient : IAsyncDisposable
 
                 if (root.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var id))
                 {
-                    if (_pendingRequests.TryRemove(id, out var tcs))
+                    if (_pendingRequests.TryRemove(id, out var pendingRequest))
                     {
-                        if (root.TryGetProperty("error", out var error))
+                        if (root.TryGetProperty("error", out _))
                         {
-                            var safeMessage = "CDP method call failed.";
-                            tcs.SetException(new InvalidOperationException(safeMessage));
+                            pendingRequest.Completion.SetException(
+                                new InvalidOperationException($"CDP method '{pendingRequest.Method}' failed."));
                         }
                         else if (root.TryGetProperty("result", out var result2))
                         {
-                            tcs.SetResult(result2.Clone());
+                            pendingRequest.Completion.SetResult(result2.Clone());
                         }
                         else
                         {
-                            tcs.SetException(new InvalidOperationException("CDP response missing result and error."));
+                            pendingRequest.Completion.SetException(
+                                new InvalidOperationException("CDP response missing result and error."));
                         }
                     }
                 }
@@ -186,7 +192,7 @@ internal sealed class ChromeCdpClient : IAsyncDisposable
         {
             foreach (var kvp in _pendingRequests)
             {
-                kvp.Value.TrySetException(new InvalidOperationException("CDP connection closed."));
+                kvp.Value.Completion.TrySetException(new InvalidOperationException("CDP connection closed."));
             }
             _pendingRequests.Clear();
         }

@@ -8,6 +8,7 @@ public sealed record GoogleLoginPageState(
     bool HasEmailField,
     bool HasPasswordField,
     bool HasTotpField,
+    bool Has2FAMethodPicker,
     bool HasCompletionSignal,
     bool HasManualChallenge);
 

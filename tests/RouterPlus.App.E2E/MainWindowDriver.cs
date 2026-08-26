@@ -75,6 +75,53 @@ public sealed class MainWindowDriver : IDisposable
             throwOnTimeout: false);
     }
 
+    public void ClickProfile(string profileName)
+    {
+        var item = FindProfileItem(profileName);
+        item.Click();
+    }
+
+    public void DoubleClickProfile(string profileName)
+    {
+        var item = FindProfileItem(profileName);
+        item.DoubleClick();
+    }
+
+    public void ClickContextMenuItem(string menuItemText)
+    {
+        var menuItem = FindDesktopElement(menuItemText);
+        if (menuItem == null)
+        {
+            throw new InvalidOperationException($"Context menu item '{menuItemText}' not found.");
+        }
+        menuItem.Click();
+    }
+
+    public AutomationElement? WaitForDialog(string dialogTitle, TimeSpan timeout)
+    {
+        var result = Retry.WhileNull(
+            () =>
+            {
+                var desktop = _process.Automation.GetDesktop();
+                var allWindows = desktop.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Window));
+                // Try to find by name containing the search text (case-insensitive)
+                return allWindows.FirstOrDefault(w =>
+                {
+                    try
+                    {
+                        return w.Name.Contains(dialogTitle, StringComparison.OrdinalIgnoreCase);
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                });
+            },
+            timeout,
+            throwOnTimeout: false);
+        return result.Result;
+    }
+
     public void CaptureFailure(string label)
     {
         Directory.CreateDirectory(_process.Environment.ArtifactPath);

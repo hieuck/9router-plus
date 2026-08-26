@@ -1,19 +1,19 @@
+using System.Diagnostics;
+using System.Management;
+using System.Runtime.InteropServices;
+using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
-using FlaUI.Core.Input;
+using FlaUI.UIA3;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace RouterPlus.App.E2E;
 
-/// <summary>
-/// Live E2E tests for Google Auto Login that use real Chrome profiles and saved credentials.
-/// Requires ROUTERPLUS_LIVE_E2E=1 and ROUTERPLUS_LIVE_PROFILE=<profile-name> environment variables.
-/// </summary>
-public sealed class LiveGoogleAutoLoginTests : IAsyncDisposable
+[Collection("Live E2E")]
+public class LiveGoogleAutoLoginTests : IDisposable
 {
     private readonly ITestOutputHelper _output;
-    private LiveRouterPlusProcess? _process;
 
     public LiveGoogleAutoLoginTests(ITestOutputHelper output)
     {
@@ -21,260 +21,477 @@ public sealed class LiveGoogleAutoLoginTests : IAsyncDisposable
         LiveTestEnvironment.RequireLiveEnvironment();
     }
 
-    [Fact]
-    public async Task AutoLogin_WithSavedCredentials_ShouldSucceed()
+    public void Dispose()
     {
-        // Arrange
+        // Cleanup
+    }
+
+    [Fact]
+    public async Task Google_auto_login_completes_successfully()
+    {
         var profileName = LiveTestEnvironment.GetRequiredProfileName();
-        _output.WriteLine($"Testing Auto Login with profile: {profileName}");
+        _output.WriteLine($"Testing with profile: {profileName}");
 
-        _process = await LiveRouterPlusProcess.StartAsync(timeoutSeconds: 30);
-        _output.WriteLine("App started successfully");
-        _output.WriteLine($"Main window title: {_process.MainWindow.Title}");
+        // Start real app (not harness). The app must not close the user's browser.
+        await Task.Delay(500);
 
-        // Wait for profile list to load (may take time in real mode with provider sync)
-        await Task.Delay(2000);
+        // Start real app (not harness)
+        var executablePath = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "RouterPlus.App", "bin", "Debug", "net8.0-windows", "RouterPlus.exe"));
 
-        // Find ProfileList using FindAllDescendants
-        var profileList = _process.MainWindow.FindAllDescendants()
-            .FirstOrDefault(d =>
-            {
-                try { return d.AutomationId == "ProfileList"; }
-                catch { return false; }
-            });
-
-        Assert.NotNull(profileList);
-        _output.WriteLine("Found ProfileList");
-
-        // Wait for provider sync to complete
-        _output.WriteLine("Waiting for provider sync to complete...");
-        bool syncCompleted = false;
-        for (int i = 0; i < 15; i++)
+        if (!File.Exists(executablePath))
         {
-            var items = profileList.FindAllDescendants(cf => cf.ByControlType(ControlType.ListItem));
-            if (items.Length > 0)
+            throw new FileNotFoundException("Build the Debug RouterPlus app first.", executablePath);
+        }
+
+        var startInfo = new ProcessStartInfo(executablePath)
+        {
+            WorkingDirectory = Path.GetDirectoryName(executablePath)!,
+            UseShellExecute = false
+        };
+        // No ROUTERPLUS_HARNESS - using real environment
+        startInfo.Environment["ROUTERPLUS_LIVE_E2E"] = "1";
+
+        var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("RouterPlus process could not be started.");
+        var processId = process.Id;
+
+        try
+        {
+            using var application = Application.Attach(process);
+            application.WaitWhileMainHandleIsMissing();
+
+            using var automation = new UIA3Automation();
+
+            var window = application.GetMainWindow(automation);
+            Assert.NotNull(window);
+
+            await Task.Delay(2000);
+
+            var profileList = window.FindFirstDescendant(cf =>
+                cf.ByAutomationId("ProfileList"));
+            Assert.NotNull(profileList);
+
+            // Wait for provider synchronization - live mode may take longer
+            _output.WriteLine("Waiting for profile synchronization...");
+            await Task.Delay(10000);
+
+            // List available profiles for diagnostics
+            var allItems = profileList.FindAllDescendants(cf => cf.ByControlType(ControlType.ListItem));
+            _output.WriteLine($"Found {allItems.Length} profiles:");
+            foreach (var item in allItems)
             {
-                var texts = items[0].FindAllDescendants(cf => cf.ByControlType(ControlType.Text));
-                var hasSyncingText = texts.Any(t => t.Name.Contains("Đang chờ đồng bộ", StringComparison.Ordinal));
-                if (!hasSyncingText)
+                _output.WriteLine($"  - ListItem.Name: {item.Name}");
+                var textElements = item.FindAllDescendants(cf => cf.ByControlType(ControlType.Text));
+                foreach (var text in textElements)
                 {
-                    syncCompleted = true;
-                    _output.WriteLine("Provider sync completed");
+                    _output.WriteLine($"    Text: {text.Name}");
+                }
+            }
+
+            // Find the configured profile
+            var profileItem = await FindProfileItemAsync(automation, profileName, timeoutSeconds: 30);
+            if (profileItem == null)
+            {
+                _output.WriteLine($"ERROR: Could not find profile '{profileName}' after 30 seconds");
+                Assert.Fail($"Profile '{profileName}' not found. Available profiles listed above.");
+            }
+
+            _output.WriteLine($"Found profile: {profileItem.Name}");
+
+            // Ensure main window has focus
+            window.Focus();
+            await Task.Delay(500);
+
+            // Click to select the profile
+            profileItem.Click();
+            await Task.Delay(1000);
+
+            // Use Win32 SendInput API for hardware-level right-click
+            var bounds = profileItem.BoundingRectangle;
+            var centerX = (int)(bounds.Left + bounds.Width / 2);
+            var centerY = (int)(bounds.Top + bounds.Height / 2);
+            _output.WriteLine($"Right-clicking at ({centerX}, {centerY})");
+            Win32InputHelper.RightClick(centerX, centerY);
+            await Task.Delay(2500);
+
+            // Retry right-click once if no menu opened (occasional timing flake).
+            if (automation.GetDesktop().FindAllDescendants(cf => cf.ByControlType(ControlType.Menu)).Length == 0)
+            {
+                _output.WriteLine("No context menu opened on first RightClick; re-focusing profile and retrying.");
+                profileItem = await FindProfileItemAsync(automation, profileName, timeoutSeconds: 10) ?? profileItem;
+                await RightClickProfileReliablyAsync(automation, profileItem);
+                await Task.Delay(2500);
+            }
+
+            var contextMenu = await WaitForContextMenuAsync(automation);
+            Assert.NotNull(contextMenu);
+
+            // Diagnostic: list every MenuItem in the context menu.
+            try
+            {
+                var items = contextMenu.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem));
+                _output.WriteLine($"ContextMenu: {items.Length} MenuItem(s):");
+                foreach (var it in items)
+                {
+                    try { _output.WriteLine($"  - Name='{it.Name}'"); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                _output.WriteLine($"ContextMenu diagnostic failed: {ex.Message}");
+            }
+
+            // Find and click "Tự động đăng nhập Google"
+            var autoLoginItem = contextMenu.FindFirstDescendant(cf =>
+                cf.ByName("Tự động đăng nhập Google").And(cf.ByControlType(ControlType.MenuItem)));
+            Assert.NotNull(autoLoginItem);
+
+            _output.WriteLine("Clicking Google Auto Login menu item...");
+            autoLoginItem.Click();
+            await Task.Delay(1000);
+
+            // Wait for dialog
+            var dialog = await WaitForDialogAsync(automation, "Google", timeoutSeconds: 15);
+            Assert.NotNull(dialog);
+            _output.WriteLine($"Dialog opened: {dialog.Name}");
+
+            // Check vault state
+            var unlockButton = dialog.FindFirstDescendant(cf => cf.ByName("Mở khóa"));
+            if (unlockButton != null && unlockButton.IsEnabled)
+            {
+                _output.WriteLine("Vault is locked - this test requires vault to be already unlocked with saved credentials");
+                Assert.Fail("Vault must be unlocked with saved Google credentials for this test");
+            }
+
+            // Find and click Auto Login button
+            var autoLoginButton = dialog.FindFirstDescendant(cf =>
+                cf.ByName("Tự động đăng nhập").And(cf.ByControlType(ControlType.Button)));
+            Assert.NotNull(autoLoginButton);
+            Assert.True(autoLoginButton.IsEnabled, "Auto Login button should be enabled");
+
+            _output.WriteLine("Clicking Auto Login button...");
+            autoLoginButton.Click();
+
+            // Wait for automation to complete - verify actual success
+            _output.WriteLine("Waiting for Google authentication to complete...");
+
+            bool authenticationSucceeded = false;
+            bool dialogClosed = false;
+            bool cdpDetected = false;
+            string? authenticatedPageTitle = null;
+            string? automationError = null;
+
+            for (int i = 0; i < 90; i++) // 90 seconds timeout for full authentication flow
+            {
+                await Task.Delay(1000);
+
+                // Check if dialog still exists (with error handling)
+                try
+                {
+                    var currentDialog = automation.GetDesktop()
+                        .FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
+                        .FirstOrDefault(w =>
+                        {
+                            try
+                            {
+                                return w.Name.Contains("Google", StringComparison.OrdinalIgnoreCase) &&
+                                       w.Name.Contains("đăng nhập", StringComparison.OrdinalIgnoreCase);
+                            }
+                            catch
+                            {
+                                return false; // Window closed during iteration
+                            }
+                        });
+
+                    if (currentDialog == null && !dialogClosed)
+                    {
+                        dialogClosed = true;
+                        _output.WriteLine($"Dialog closed at {i}s - checking authentication result...");
+                    }
+
+                    // Check for error in dialog status (if dialog still open)
+                    if (currentDialog != null)
+                    {
+                        try
+                        {
+                            var statusElements = currentDialog.FindAllDescendants(cf => cf.ByControlType(ControlType.Text));
+                            foreach (var status in statusElements)
+                            {
+                                try
+                                {
+                                    var text = status.Name;
+                                    if (!string.IsNullOrEmpty(text) &&
+                                        (text.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                                         text.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
+                                         text.Contains("lỗi", StringComparison.OrdinalIgnoreCase) ||
+                                         text.Contains("unsupported", StringComparison.OrdinalIgnoreCase) ||
+                                         text.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
+                                         text.Contains("invalid credentials", StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        automationError = text;
+                                        _output.WriteLine($"❌ Error detected in dialog: {text}");
+                                    }
+                                }
+                                catch
+                                {
+                                    // Element no longer valid
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Dialog elements changed
+                        }
+                    }
+                }
+                catch
+                {
+                    // Desktop enumeration failed, continue
+                }
+
+                if (automationError != null)
+                {
                     break;
                 }
-            }
-            await Task.Delay(1000);
-        }
 
-        if (!syncCompleted)
-        {
-            _output.WriteLine("Warning: Provider sync did not complete within timeout");
-        }
-
-        // Find target profile item
-        var profileItem = FindProfileItem(profileList, profileName);
-        if (profileItem == null)
-        {
-            // Debug: show actual profile names with all text elements
-            var items = profileList.FindAllDescendants(cf => cf.ByControlType(ControlType.ListItem));
-            _output.WriteLine($"Could not find profile '{profileName}'. Available profiles:");
-            foreach (var item in items)
-            {
-                var texts = item.FindAllDescendants(cf => cf.ByControlType(ControlType.Text));
-                _output.WriteLine($"  Profile item with {texts.Length} text elements:");
-                foreach (var text in texts)
+                // Verify CDP endpoint exists
+                if (!cdpDetected)
                 {
-                    _output.WriteLine($"    - '{text.Name}'");
+                    var chromeProcesses = Process.GetProcessesByName("chrome");
+                    foreach (var proc in chromeProcesses)
+                    {
+                        try
+                        {
+                            using var searcher = new ManagementObjectSearcher(
+                                $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {proc.Id}");
+                            var results = searcher.Get().Cast<ManagementObject>();
+                            var commandLine = results.FirstOrDefault()?["CommandLine"]?.ToString();
+
+                            if (!string.IsNullOrEmpty(commandLine) &&
+                                commandLine.Contains("remote-debugging-port", StringComparison.OrdinalIgnoreCase))
+                            {
+                                cdpDetected = true;
+                                _output.WriteLine($"✅ CDP endpoint detected on Chrome process {proc.Id}");
+                                break;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                // Check for authenticated Google page
+                try
+                {
+                    var allWindows = automation.GetDesktop().FindAllDescendants(cf => cf.ByControlType(ControlType.Window));
+                    var googleWindow = allWindows.FirstOrDefault(w =>
+                    {
+                        try
+                        {
+                            return w.Name.Contains("Google", StringComparison.OrdinalIgnoreCase) &&
+                                   w.Name.Contains("Chrome", StringComparison.OrdinalIgnoreCase) &&
+                                   !w.Name.Contains("Sign in", StringComparison.OrdinalIgnoreCase);
+                        }
+                        catch
+                        {
+                            return false;
+                        }
+                    });
+
+                    if (googleWindow != null && dialogClosed)
+                    {
+                        try
+                        {
+                            authenticatedPageTitle = googleWindow.Name;
+                            // Check if it's an authenticated page (not sign-in page)
+                            if (!authenticatedPageTitle.Contains("Sign in", StringComparison.OrdinalIgnoreCase) &&
+                                (authenticatedPageTitle.Contains("Account", StringComparison.OrdinalIgnoreCase) ||
+                                 authenticatedPageTitle.Contains("Google", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                authenticationSucceeded = true;
+                                _output.WriteLine($"✅ Authentication succeeded! Page title: '{authenticatedPageTitle}'");
+                                break;
+                            }
+                        }
+                        catch
+                        {
+                            // Window no longer valid
+                        }
+                    }
+                }
+                catch
+                {
+                    // Window enumeration failed
+                }
+
+                if (i % 10 == 0)
+                {
+                    _output.WriteLine($"Still waiting... ({i}s elapsed, dialog closed: {dialogClosed}, CDP: {cdpDetected})");
                 }
             }
-        }
-        Assert.NotNull(profileItem);
-        _output.WriteLine($"Found profile item: {profileName}");
 
-        // Right-click to open context menu with retry
-        var clickPoint = profileItem.GetClickablePoint();
-        _process.MainWindow.Focus();
-        await Task.Delay(200);
-
-        Mouse.Click(clickPoint, MouseButton.Right);
-        _output.WriteLine($"Right-clicked at {clickPoint.X},{clickPoint.Y}");
-
-        // Wait longer for context menu to appear
-        await Task.Delay(1500);
-
-        // Find context menu and Auto Login item with retry
-        AutomationElement? autoLoginItem = null;
-        for (int i = 0; i < 3; i++)
-        {
-            autoLoginItem = FindContextMenuItem("Tự động đăng nhập Google");
-            if (autoLoginItem != null)
+            // Final diagnostic output
+            _output.WriteLine("\n=== Final Diagnostic ===");
+            _output.WriteLine($"Dialog closed: {dialogClosed}");
+            _output.WriteLine($"CDP detected: {cdpDetected}");
+            _output.WriteLine($"Authentication succeeded: {authenticationSucceeded}");
+            if (automationError != null)
             {
-                _output.WriteLine("Found 'Tự động đăng nhập Google' menu item");
-                break;
+                Assert.Fail($"Authentication failed with error: {automationError}");
             }
-            _output.WriteLine($"Menu item not found, retry {i + 1}/3...");
+            if (authenticatedPageTitle != null)
+            {
+                _output.WriteLine($"Authenticated page: {authenticatedPageTitle}");
+            }
+
+            // Verify all success criteria
+            Assert.True(dialogClosed, "Dialog should close after automation completes");
+            Assert.True(cdpDetected, "Chrome with CDP endpoint (--remote-debugging-port) must be detected");
+            Assert.True(authenticationSucceeded,
+                "Google authentication must succeed - authenticated Google page must be displayed");
+
+            var appProcess = Process.GetProcessById(processId);
+            Assert.False(appProcess.HasExited, "App should still be running after automation");
+
+            _output.WriteLine("\n✅ All verification passed - Google Auto Login works end-to-end");
+        }
+        finally
+        {
+            // Cleanup
+            try
+            {
+                var appProcess = Process.GetProcessById(processId);
+                if (!appProcess.HasExited)
+                {
+                    appProcess.Kill(entireProcessTree: true);
+                    appProcess.WaitForExit(5000);
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Process already exited
+            }
+        }
+    }
+
+    private async Task<AutomationElement?> FindProfileItemAsync(
+        UIA3Automation automation,
+        string profileName,
+        int timeoutSeconds = 10)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var desktop = automation.GetDesktop();
+            var windows = desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window));
+
+            foreach (var window in windows)
+            {
+                var profileList = window.FindFirstDescendant(cf => cf.ByAutomationId("ProfileList"));
+                if (profileList != null)
+                {
+                    var items = profileList.FindAllDescendants(cf => cf.ByControlType(ControlType.ListItem));
+                    foreach (var item in items)
+                    {
+                        // Look for TextBlock with the profile name inside the ListItem
+                        var textElements = item.FindAllDescendants(cf => cf.ByControlType(ControlType.Text));
+                        foreach (var text in textElements)
+                        {
+                            if (text.Name.Contains(profileName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return item;
+                            }
+                        }
+                    }
+                }
+            }
+
             await Task.Delay(500);
         }
 
-        if (autoLoginItem == null)
-        {
-            _output.WriteLine("Context menu item not found after retries. Checking all Popup controls...");
-            var desktop = _process.Automation.GetDesktop();
-            var popups = desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Pane));
-            _output.WriteLine($"Found {popups.Length} pane controls on desktop");
-
-            // Also try searching main window for popup
-            var windowPopups = _process.MainWindow.FindAllDescendants(cf => cf.ByControlType(ControlType.Menu));
-            _output.WriteLine($"Found {windowPopups.Length} menu controls in main window");
-        }
-        Assert.NotNull(autoLoginItem);
-        _output.WriteLine("Found 'Tự động đăng nhập Google' menu item");
-
-        // Click Auto Login menu item
-        autoLoginItem.Click();
-        await Task.Delay(1000);
-
-        // Find Google Auto Login dialog with longer timeout
-        var dialog = await WaitForDialogAsync("Google Auto Login", timeoutSeconds: 15);
-        if (dialog == null)
-        {
-            _output.WriteLine("Dialog not found. Checking all windows...");
-            var allWindows = _process.MainWindow.FindAllDescendants(cf => cf.ByControlType(ControlType.Window));
-            _output.WriteLine($"Found {allWindows.Length} window elements:");
-            foreach (var win in allWindows.Take(10))
-            {
-                _output.WriteLine($"  - {win.Name}");
-            }
-        }
-        Assert.NotNull(dialog);
-        _output.WriteLine("Google Auto Login dialog opened");
-
-        // Check if vault needs unlocking
-        var unlockButton = dialog.FindFirstDescendant(cf => cf.ByName("Unlock Vault"));
-        if (unlockButton != null && unlockButton.IsEnabled)
-        {
-            _output.WriteLine("Vault is locked - test requires pre-unlocked vault or remembered password");
-            throw new InvalidOperationException(
-                "Vault is locked. Please unlock vault manually or configure remembered unlock before running live tests.");
-        }
-
-        // Find and click Auto Login button
-        var autoLoginButton = dialog.FindFirstDescendant(cf =>
-            cf.ByName("Auto Login").And(cf.ByControlType(ControlType.Button)));
-        Assert.NotNull(autoLoginButton);
-        Assert.True(autoLoginButton.IsEnabled, "Auto Login button should be enabled");
-
-        _output.WriteLine("Clicking Auto Login button...");
-        autoLoginButton.Click();
-
-        // Wait for Chrome to launch and automation to complete
-        // Real Google login can take 10-30 seconds depending on network and 2FA
-        _output.WriteLine("Waiting for automation to complete (up to 60 seconds)...");
-        await Task.Delay(5000); // Initial delay for Chrome launch
-
-        // Check for result - dialog should close on success or show error
-        var resultTimeout = DateTime.UtcNow.AddSeconds(60);
-        bool dialogClosed = false;
-        string? errorMessage = null;
-
-        while (DateTime.UtcNow < resultTimeout)
-        {
-            try
-            {
-                // Check if dialog still exists
-                var currentDialog = _process.MainWindow.FindFirstDescendant(cf =>
-                    cf.ByName("Google Auto Login").And(cf.ByControlType(ControlType.Window)));
-
-                if (currentDialog == null)
-                {
-                    dialogClosed = true;
-                    _output.WriteLine("Dialog closed - automation completed");
-                    break;
-                }
-
-                // Check for error message in dialog
-                var errorText = currentDialog.FindFirstDescendant(cf =>
-                    cf.ByControlType(ControlType.Text).And(cf.ByName("Error")));
-                if (errorText != null)
-                {
-                    errorMessage = errorText.Name;
-                    _output.WriteLine($"Error detected: {errorMessage}");
-                    break;
-                }
-            }
-            catch
-            {
-                // Dialog might be in transition
-            }
-
-            await Task.Delay(1000);
-        }
-
-        // Assert result
-        Assert.True(dialogClosed || errorMessage != null,
-            "Expected dialog to close (success) or show error message within timeout");
-
-        if (errorMessage != null)
-        {
-            _output.WriteLine($"Automation completed with error: {errorMessage}");
-            // Don't fail test - error message means automation ran but encountered expected failure
-            // (e.g., manual challenge, network issue, etc.)
-        }
-        else
-        {
-            _output.WriteLine("Automation completed successfully");
-        }
-    }
-
-    private AutomationElement? FindProfileItem(AutomationElement profileList, string profileName)
-    {
-        var items = profileList.FindAllDescendants(cf => cf.ByControlType(ControlType.ListItem));
-        foreach (var item in items)
-        {
-            var texts = item.FindAllDescendants(cf => cf.ByControlType(ControlType.Text));
-            // Profile name is typically the 3rd text element (after index and initial letter)
-            // Check all text elements for the profile name
-            foreach (var text in texts)
-            {
-                if (text.Name.Contains(profileName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return item;
-                }
-            }
-        }
         return null;
     }
 
-    private AutomationElement? FindContextMenuItem(string menuItemName)
+    private async Task RightClickProfileReliablyAsync(
+        UIA3Automation automation,
+        AutomationElement profileItem)
     {
-        var desktop = _process!.Automation.GetDesktop();
-        var menu = desktop.FindFirstDescendant(cf => cf.ByControlType(ControlType.Menu));
-        return menu?.FindFirstDescendant(cf => cf.ByName(menuItemName));
+        // Dismiss any stale context menu first
+        FlaUI.Core.Input.Keyboard.Press(FlaUI.Core.WindowsAPI.VirtualKeyShort.ESC);
+        await Task.Delay(300);
+
+        // Focus the main window
+        var mainWindow = automation.GetDesktop().FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
+            .FirstOrDefault(w => !string.IsNullOrEmpty(w.Name));
+        mainWindow?.Focus();
+        await Task.Delay(300);
+
+        // Click profile to select it
+        try { profileItem.Click(); } catch { }
+        await Task.Delay(500);
+
+        // Use Win32 SendInput API for hardware-level right-click
+        var bounds = profileItem.BoundingRectangle;
+        var centerX = (int)(bounds.Left + bounds.Width / 2);
+        var centerY = (int)(bounds.Top + bounds.Height / 2);
+        Win32InputHelper.RightClick(centerX, centerY);
     }
 
-    private async Task<AutomationElement?> WaitForDialogAsync(string dialogTitle, int timeoutSeconds)
+    private async Task<AutomationElement?> WaitForContextMenuAsync(UIA3Automation automation)
     {
-        var timeoutAt = DateTime.UtcNow.AddSeconds(timeoutSeconds);
-        while (DateTime.UtcNow < timeoutAt)
+        for (int i = 0; i < 20; i++)
         {
-            // Search for dialog as a top-level window on desktop, not as MainWindow descendant
-            var desktop = _process!.Automation.GetDesktop();
-            var dialog = desktop.FindFirstDescendant(cf =>
-                cf.ByName(dialogTitle).And(cf.ByControlType(ControlType.Window)));
-            if (dialog != null)
+            var desktop = automation.GetDesktop();
+            var menus = desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Menu));
+
+            if (menus.Length > 0)
             {
-                return dialog;
+                return menus[0];
             }
+
             await Task.Delay(100);
         }
+
         return null;
     }
 
-    public async ValueTask DisposeAsync()
+    private async Task<AutomationElement?> WaitForDialogAsync(
+        UIA3Automation automation,
+        string titleContains,
+        int timeoutSeconds = 10)
     {
-        if (_process != null)
+        var desktop = automation.GetDesktop();
+
+        for (int i = 0; i < timeoutSeconds * 2; i++)
         {
-            await _process.DisposeAsync();
+            var windows = desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window));
+
+            foreach (var window in windows)
+            {
+                if (window.Name.Contains(titleContains, StringComparison.OrdinalIgnoreCase))
+                {
+                    return window;
+                }
+            }
+
+            await Task.Delay(500);
         }
+
+        return null;
+    }
+}
+
+internal static class Win32Helper
+{
+    [DllImport("user32.dll")]
+    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool ScreenToClient(IntPtr hWnd, ref System.Drawing.Point lpPoint);
+
+    public static IntPtr MakeLParam(int x, int y)
+    {
+        return (IntPtr)((y << 16) | (x & 0xFFFF));
     }
 }

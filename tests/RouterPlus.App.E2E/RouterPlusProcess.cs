@@ -29,6 +29,22 @@ public sealed class RouterPlusProcess : IAsyncDisposable
     public Window MainWindow { get; private set; }
     public TestEnvironment Environment { get; }
 
+    public bool HasExited
+    {
+        get
+        {
+            try
+            {
+                using var process = Process.GetProcessById(_processId);
+                return process.HasExited;
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+        }
+    }
+
     public static async Task<RouterPlusProcess> StartAsync(TestEnvironment environment)
     {
         var executablePath = Path.GetFullPath(

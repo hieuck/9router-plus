@@ -20,6 +20,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -27,6 +28,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -34,6 +36,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: true,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -41,6 +44,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
 
@@ -66,6 +70,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -73,6 +78,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
 
@@ -98,6 +104,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
 
@@ -123,6 +130,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true));
 
@@ -148,6 +156,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -155,6 +164,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true));
 
@@ -180,6 +190,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -187,6 +198,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -194,6 +206,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true));
 
@@ -219,6 +232,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -226,6 +240,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -233,6 +248,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: true,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -240,6 +256,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true));
 
@@ -265,6 +282,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
 
@@ -291,6 +309,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -298,6 +317,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
 
@@ -324,6 +344,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
 
@@ -349,6 +370,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
 
@@ -376,6 +398,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .OnFill(() => cts.Cancel());
@@ -417,6 +440,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ThrowOnFill(new InvalidOperationException("Browser connection closed"));
@@ -441,6 +465,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ThrowOnFill(new InvalidOperationException("Field not found"));
@@ -466,6 +491,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -473,6 +499,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -480,6 +507,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
 
@@ -505,6 +533,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -512,6 +541,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
 
@@ -535,6 +565,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -542,6 +573,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
 
@@ -565,6 +597,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -572,6 +605,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
             .ReturnState(new GoogleLoginPageState(
@@ -579,6 +613,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: true,
+                Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
 
@@ -663,6 +698,11 @@ public class GoogleLoginStateMachineTests
 
             _submittedFields.Add(field.ToString());
             return Task.CompletedTask;
+        }
+
+        public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(false);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

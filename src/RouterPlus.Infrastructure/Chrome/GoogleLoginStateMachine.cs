@@ -12,7 +12,8 @@ public static class GoogleLoginStateMachine
 
     private static readonly HashSet<string> AllowedEntryHosts = new(StringComparer.OrdinalIgnoreCase)
     {
-        "accounts.google.com"
+        "accounts.google.com",
+        "myaccount.google.com"
     };
 
     private static readonly HashSet<string> AllowedCompletionHosts = new(StringComparer.OrdinalIgnoreCase)
@@ -61,13 +62,29 @@ public static class GoogleLoginStateMachine
                 return GoogleLoginResult.Success();
             }
 
+            // Wait for page to render expected fields (identifier page may show email field after delay)
+            if (!state.HasEmailField && !state.HasPasswordField && !state.HasTotpField && !state.Has2FAMethodPicker)
+            {
+                var waitDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+                while (DateTimeOffset.UtcNow < waitDeadline)
+                {
+                    await Task.Delay(500, totalCts.Token);
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+
+                    if (state.HasEmailField || state.HasPasswordField || state.HasTotpField || state.Has2FAMethodPicker)
+                    {
+                        break;
+                    }
+                }
+            }
+
             // Email step
             if (state.HasEmailField)
             {
                 await FillWithTimeoutAsync(browser, GoogleLoginField.Email, credential.Email, totalCts.Token);
                 await SubmitWithTimeoutAsync(browser, GoogleLoginField.Email, totalCts.Token);
 
-                // Read state after email submission
+                // Read state after email submission.
                 state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
 
                 // Validate we're still on allowed origin
@@ -97,7 +114,7 @@ public static class GoogleLoginStateMachine
                 await FillWithTimeoutAsync(browser, GoogleLoginField.Password, credential.Password, totalCts.Token);
                 await SubmitWithTimeoutAsync(browser, GoogleLoginField.Password, totalCts.Token);
 
-                // Read state after password submission
+                // Read state after password submission.
                 state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
 
                 // Validate origin
@@ -118,6 +135,28 @@ public static class GoogleLoginStateMachine
                 if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
                 {
                     return GoogleLoginResult.Success();
+                }
+
+                // Check for 2FA method picker after password submission
+                if (state.Has2FAMethodPicker)
+                {
+                    var methodSelected = await TrySelectAuthenticatorMethodWithTimeoutAsync(browser, totalCts.Token);
+                    if (!methodSelected)
+                    {
+                        return GoogleLoginResult.UnsupportedPage(
+                            "Could not select Authenticator method from 2FA picker.");
+                    }
+
+                    System.Console.WriteLine($"[GoogleLogin] Selected Authenticator method, reading state...");
+
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+
+                    // Check origin after method selection
+                    if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        return GoogleLoginResult.UnsupportedPage(
+                            $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                    }
                 }
             }
 
@@ -146,7 +185,7 @@ public static class GoogleLoginStateMachine
 
                 await SubmitWithTimeoutAsync(browser, GoogleLoginField.Totp, totalCts.Token);
 
-                // Read final state
+                // Read final state.
                 state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
 
                 // Validate origin
@@ -170,6 +209,75 @@ public static class GoogleLoginStateMachine
                 }
             }
 
+            // 2FA method picker step - when Google shows method selection instead of TOTP input
+            if (state.Has2FAMethodPicker)
+            {
+                var methodSelected = await TrySelectAuthenticatorMethodWithTimeoutAsync(browser, totalCts.Token);
+                if (!methodSelected)
+                {
+                    return GoogleLoginResult.UnsupportedPage(
+                        "Could not select Authenticator method from 2FA picker.");
+                }
+
+                // Read state after method selection - should now show TOTP field
+                state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+
+                // Validate origin
+                if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
+                {
+                    return GoogleLoginResult.UnsupportedPage(
+                        $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                }
+
+                // Now process TOTP step
+                if (state.HasTotpField)
+                {
+                    string totpCode;
+                    try
+                    {
+                        totpCode = GoogleTotpGenerator.Generate(
+                            credential.TotpSecret,
+                            DateTimeOffset.UtcNow,
+                            digits: 6,
+                            periodSeconds: 30);
+                    }
+                    catch
+                    {
+                        return GoogleLoginResult.InvalidCredentials();
+                    }
+
+                    await FillWithTimeoutAsync(browser, GoogleLoginField.Totp, totpCode, totalCts.Token);
+
+                    // Clear the TOTP code from memory (best effort)
+                    totpCode = string.Empty;
+
+                    await SubmitWithTimeoutAsync(browser, GoogleLoginField.Totp, totalCts.Token);
+
+                    // Read final state.
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+
+                    // Validate origin
+                    if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        return GoogleLoginResult.UnsupportedPage(
+                            $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                    }
+
+                    // Check for manual challenge
+                    if (state.HasManualChallenge)
+                    {
+                        return GoogleLoginResult.ManualInterventionRequired(
+                            "Manual challenge detected after TOTP submission.");
+                    }
+
+                    // Check for completion
+                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        return GoogleLoginResult.Success();
+                    }
+                }
+            }
+
             // If we've exhausted all fields and still no completion signal
             if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
             {
@@ -178,7 +286,10 @@ public static class GoogleLoginStateMachine
 
             // Unrecognized field combination
             return GoogleLoginResult.UnsupportedPage(
-                "Unrecognized page state. No email, password, TOTP field, or completion signal found.");
+                $"Unrecognized page state at {state.PageUri.Host}{state.PageUri.AbsolutePath}: " +
+                $"email={state.HasEmailField}, password={state.HasPasswordField}, " +
+                $"totp={state.HasTotpField}, completion={state.HasCompletionSignal}, " +
+                $"manualChallenge={state.HasManualChallenge}.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -192,10 +303,15 @@ public static class GoogleLoginStateMachine
         {
             return GoogleLoginResult.BrowserDisconnected();
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
+            if (ex.Message.Contains("Google rejected", StringComparison.OrdinalIgnoreCase))
+            {
+                return GoogleLoginResult.InvalidCredentials();
+            }
+
             return GoogleLoginResult.UnsupportedPage(
-                "Google sign-in page could not be controlled safely.");
+                $"Google sign-in page could not be controlled safely: {ex.Message}");
         }
     }
 
@@ -219,6 +335,16 @@ public static class GoogleLoginStateMachine
         stepCts.CancelAfter(StepTimeout);
 
         await browser.FillAsync(field, value, stepCts.Token);
+    }
+
+    private static async Task<bool> TrySelectAuthenticatorMethodWithTimeoutAsync(
+        IGoogleLoginBrowser browser,
+        CancellationToken cancellationToken)
+    {
+        using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        stepCts.CancelAfter(StepTimeout);
+
+        return await browser.TrySelectAuthenticatorMethodAsync(stepCts.Token);
     }
 
     private static async Task SubmitWithTimeoutAsync(
