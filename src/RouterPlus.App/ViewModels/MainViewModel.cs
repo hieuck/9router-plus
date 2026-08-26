@@ -2411,7 +2411,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
                     profile,
-                    new Uri("https://myaccount.google.com/"),
+                    new Uri("https://accounts.google.com/"),
                     cancellationToken);
 
                 DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launched and CDP endpoint is available");
