@@ -2132,7 +2132,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             await LaunchUrlAsync(session.AuthUrl);
-            StatusText = "Đã mở đăng nhập Codex. Hoàn tất chọn tài khoản; tool đang tự chờ connection mới…";
+            StatusText = "Đã mở đăng nhập Codex. Đang thử tự động đăng nhập Google…";
+            await RunOAuthAutoLoginAsync(session.AuthUrl, new Uri("https://chatgpt.com"), cancellationToken);
             await WaitForOAuthProxyAsync(
                 api,
                 provider,
@@ -2148,7 +2149,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 callbackListener.RedirectUri.ToString(),
                 cancellationToken);
             await LaunchUrlAsync(session.AuthUrl);
-            StatusText = $"Đã mở đăng nhập {definition.DisplayName}. Hoàn tất đăng nhập; tool đang chờ callback…";
+            StatusText = $"Đã mở đăng nhập {definition.DisplayName}. Đang thử tự động đăng nhập Google…";
+            var targetUri = definition.QuickLink is { } ql ? new Uri(ql) : null;
+            if (targetUri is not null)
+            {
+                await RunOAuthAutoLoginAsync(session.AuthUrl, targetUri, cancellationToken);
+            }
             var callback = await callbackListener.WaitForCallbackAsync(
                 TimeSpan.FromMinutes(10),
                 cancellationToken);
@@ -2920,6 +2926,90 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         _chromeLauncher.Launch(_installation, SelectedProfile, url);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Best-effort OAuth auto-login: launches Chrome with the selected profile, navigates
+    /// to the auth URL, and clicks Google account picker / consent automatically.
+    /// Never throws — failures fall back to the user-completed flow already in progress.
+    /// </summary>
+    private async Task RunOAuthAutoLoginAsync(
+        string authUrl,
+        Uri targetServiceUri,
+        CancellationToken cancellationToken)
+    {
+        if (SelectedProfile is null || _installation is null)
+        {
+            return;
+        }
+
+        ChromeManagedSession? chromeSession = null;
+        try
+        {
+            DebugLogger.Log(
+                DiagnosticCategories.Providers,
+                $"OAuth auto-login start for profile {SelectedProfile.Name}");
+
+            chromeSession = await _chromeLauncher.LaunchManagedAsync(
+                _installation,
+                SelectedProfile,
+                new Uri(authUrl),
+                cancellationToken,
+                useOriginalProfile: true);
+
+            StatusText = $"Đã mở Chrome với profile {SelectedProfile.Name}. Đang chờ Google account picker…";
+
+            var cdp = await chromeSession.ConnectAnyTargetAsync(cancellationToken);
+            await using var orchestrator = new OAuthAutoLoginOrchestrator(chromeSession, cdp);
+
+            var result = await orchestrator.RunAsync(
+                new Uri(authUrl),
+                targetServiceUri,
+                SelectedProfile.Name, // Profile email to match exactly
+                TimeSpan.FromMinutes(2),
+                cancellationToken);
+
+            switch (result.Outcome)
+            {
+                case OAuthAutoLoginOutcome.Success:
+                    StatusText = result.AlreadyAuthorized
+                        ? "Đã đăng nhập sẵn. Đang lưu connection…"
+                        : "Đã hoàn tất OAuth consent. Đang lưu connection…";
+                    DebugLogger.Log(DiagnosticCategories.Providers, $"OAuth auto-login success: {result.Message}");
+                    break;
+                default:
+                    StatusText = "Auto-login chưa hoàn tất. Vui lòng click cho phép trong cửa sổ Chrome…";
+                    DebugLogger.Log(DiagnosticCategories.Providers, $"OAuth auto-login fallback: {result.Message}");
+                    break;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Workflow cancelled; outer handler will surface the message.
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.LogError(DiagnosticCategories.Providers, $"OAuth auto-login failed: {ex.Message}", ex);
+            StatusText = $"Auto-login lỗi: {ex.Message}. Vui lòng hoàn tất thủ công.";
+            // Do not rethrow — manual flow / OAuth proxy continues.
+        }
+        finally
+        {
+            if (chromeSession is not null)
+            {
+                try
+                {
+                    // Leave Chrome open briefly so the user sees the result if automation
+                    // failed and they need to complete manually.
+                    await Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None);
+                    await chromeSession.DisposeAsync();
+                }
+                catch
+                {
+                    // Best effort
+                }
+            }
+        }
     }
 
     private RouterApiClient CreateApiClient() => new(_httpClient, DashboardBaseUrl);

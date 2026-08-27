@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace RouterPlus.App.Diagnostics;
@@ -7,10 +8,42 @@ namespace RouterPlus.App.Diagnostics;
 /// <summary>
 /// Centralized debug logging utility for development diagnostics.
 /// All logging is compiled out in Release builds via conditional compilation.
+/// In Debug builds, logs are also written to app-debug.log in the working directory.
 /// </summary>
 public static class DebugLogger
 {
     private static readonly Stopwatch AppStopwatch = Stopwatch.StartNew();
+    private static readonly object FileLock = new();
+    private static readonly string DebugLogPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "app-debug.log");
+
+    private static void WriteToFile(string logMessage)
+    {
+        try
+        {
+            lock (FileLock)
+            {
+                File.AppendAllText(DebugLogPath, logMessage + Environment.NewLine);
+            }
+        }
+        catch
+        {
+            // Best effort - don't crash the app if logging fails
+        }
+    }
+
+    private static void WriteToFile(string logMessage, Exception ex)
+    {
+        WriteToFile(logMessage);
+        if (ex != null)
+        {
+            WriteToFile($"  ExceptionType: {ex.GetType().Name}");
+            WriteToFile($"  HResult: 0x{ex.HResult:X8}");
+            WriteToFile($"  Message: {ex.Message}");
+            WriteToFile($"  StackTrace: {ex.StackTrace}");
+        }
+    }
 
     /// <summary>
     /// Log a message with timestamp and category
@@ -21,6 +54,7 @@ public static class DebugLogger
         var logMessage = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] {message}";
         Debug.WriteLine(logMessage);
         Console.WriteLine(logMessage);
+        WriteToFile(logMessage);
     }
 
     /// <summary>
@@ -32,6 +66,7 @@ public static class DebugLogger
         var logMessage = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] START {operation} (from {caller})";
         Debug.WriteLine(logMessage);
         Console.WriteLine(logMessage);
+        WriteToFile(logMessage);
     }
 
     /// <summary>
@@ -43,6 +78,7 @@ public static class DebugLogger
         var logMessage = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] END {operation} ({elapsedMs}ms) (from {caller})";
         Debug.WriteLine(logMessage);
         Console.WriteLine(logMessage);
+        WriteToFile(logMessage);
     }
 
     /// <summary>
@@ -54,14 +90,13 @@ public static class DebugLogger
         var logMessage = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}] ERROR: {message}";
         Debug.WriteLine(logMessage);
         Console.WriteLine(logMessage);
-        if (exception != null)
+        if (exception is not null)
         {
-            var exTypeMsg = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}]   ExceptionType: {exception.GetType().Name}";
-            var hResultMsg = $"[{AppStopwatch.ElapsedMilliseconds:D8}ms] [{category}]   HResult: 0x{exception.HResult:X8}";
-            Debug.WriteLine(exTypeMsg);
-            Debug.WriteLine(hResultMsg);
-            Console.WriteLine(exTypeMsg);
-            Console.WriteLine(hResultMsg);
+            WriteToFile(logMessage, exception);
+        }
+        else
+        {
+            WriteToFile(logMessage);
         }
     }
 

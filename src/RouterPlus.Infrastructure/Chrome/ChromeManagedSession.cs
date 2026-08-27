@@ -31,6 +31,87 @@ public sealed class ChromeManagedSession : IAsyncDisposable
     public Process Process => _process;
     public Uri DevToolsBaseUri => _devToolsBaseUri;
 
+    /// <summary>
+    /// Connects a raw CDP client and attaches to the first page target.
+    /// Used by orchestrators that need direct page control (e.g., OAuth automation).
+    /// </summary>
+    public async Task<CdpSession> ConnectAnyTargetAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var client = new ChromeCdpClient(_devToolsBaseUri);
+        await client.ConnectAsync(cancellationToken);
+
+        try
+        {
+            var endTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+            string? targetId = null;
+
+            while (DateTimeOffset.UtcNow < endTime && targetId == null)
+            {
+                var response = await client.CallAsync("Target.getTargets", null, cancellationToken);
+                var targetInfos = response.GetProperty("targetInfos");
+
+                foreach (var target in targetInfos.EnumerateArray())
+                {
+                    var targetType = target.GetProperty("type").GetString();
+                    if (targetType != "page")
+                    {
+                        continue;
+                    }
+
+                    var candidateTargetId = target.GetProperty("targetId").GetString();
+                    if (!string.IsNullOrWhiteSpace(candidateTargetId))
+                    {
+                        targetId = candidateTargetId;
+                        break;
+                    }
+                }
+
+                if (targetId == null)
+                {
+                    await Task.Delay(100, cancellationToken);
+                }
+            }
+
+            if (targetId == null)
+            {
+                throw new InvalidOperationException("No page target found in the managed session.");
+            }
+
+            var attachResponse = await client.CallAsync("Target.attachToTarget", new { targetId, flatten = true }, cancellationToken);
+            var sessionId = attachResponse.GetProperty("sessionId").GetString()!;
+
+            await client.CallAsync("Page.bringToFront", null, cancellationToken, sessionId);
+
+            return new CdpSession(client, sessionId, targetId);
+        }
+        catch
+        {
+            await client.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Navigates the connected page to a new URL via CDP.
+    /// Caller must first call <see cref="ConnectAnyTargetAsync"/>.
+    /// </summary>
+    public static async Task NavigateAsync(CdpSession session, Uri url, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(url);
+
+        await session.Client.CallAsync(
+            "Page.navigate",
+            new { url = url.ToString() },
+            cancellationToken,
+            session.SessionId);
+
+        // Give Chrome a moment to start navigation before caller polls state
+        await Task.Delay(500, cancellationToken);
+    }
+
 
     /// <summary>
     /// Connects to the single accounts.google.com target created by the managed run.
@@ -267,5 +348,37 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         return ((IPEndPoint)socket.LocalEndPoint!).Port;
+    }
+}
+
+/// <summary>
+/// Lightweight CDP session wrapper for direct page automation (e.g., OAuth).
+/// Returned by <see cref="ChromeManagedSession.ConnectAnyTargetAsync"/>.
+/// </summary>
+public sealed class CdpSession : IAsyncDisposable
+{
+    private readonly ChromeCdpClient _client;
+    private bool _disposed;
+
+    public CdpSession(ChromeCdpClient client, string sessionId, string targetId)
+    {
+        _client = client ?? throw new ArgumentNullException(nameof(client));
+        SessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
+        TargetId = targetId ?? throw new ArgumentNullException(nameof(targetId));
+    }
+
+    public string SessionId { get; }
+    public string TargetId { get; }
+    public ChromeCdpClient Client => _client;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        await _client.DisposeAsync();
     }
 }
