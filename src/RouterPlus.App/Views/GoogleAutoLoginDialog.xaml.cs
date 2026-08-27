@@ -140,11 +140,7 @@ public partial class GoogleAutoLoginDialog : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
-        finally
-        {
-            PasswordBox.Clear();
-            TotpSecretBox.Clear();
-        }
+        // Don't clear - credentials are now synced from ViewModel via PropertyChanged
     }
 
     private async void AutoLogin_Click(object sender, RoutedEventArgs e)
@@ -225,11 +221,6 @@ public partial class GoogleAutoLoginDialog : Window
                 "Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
-        }
-        finally
-        {
-            PasswordBox.Clear();
-            TotpSecretBox.Clear();
         }
     }
 

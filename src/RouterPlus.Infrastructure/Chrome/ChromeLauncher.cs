@@ -81,7 +81,12 @@ public sealed class ChromeLauncher
 
             // Close any Chrome processes using this profile
             DebugConsole.WriteLine($"[ChromeLauncher] Closing Chrome processes using profile: {profile.DirectoryName}");
-            CloseProcessesUsingProfile(installation.ExecutablePath, profile.DirectoryName);
+            var killed = CloseProcessesUsingProfile(installation.ExecutablePath, profile.DirectoryName);
+
+            if (!killed)
+            {
+                DebugConsole.WriteLine($"[ChromeLauncher] WARNING: No processes killed. Profile may be open in another Chrome variant or browser.");
+            }
         }
         else
         {
@@ -251,7 +256,7 @@ public sealed class ChromeLauncher
         }
     }
 
-    private static void CloseProcessesUsingProfile(string chromeExecutablePath, string profileDirectoryName)
+    private static bool CloseProcessesUsingProfile(string chromeExecutablePath, string profileDirectoryName)
     {
         try
         {
@@ -306,12 +311,16 @@ public sealed class ChromeLauncher
                 DebugConsole.WriteLine($"[ChromeLauncher] Killed {killedCount} Chrome process(es) using profile {profileDirectoryName}");
                 // Wait briefly for processes to fully exit and release locks
                 System.Threading.Thread.Sleep(1000);
+                return true;
             }
+
+            return false;
         }
         catch (Exception ex)
         {
             DebugConsole.WriteLine($"[ChromeLauncher] Failed to close Chrome processes: {ex.Message}");
             // Non-fatal - proceed with launch attempt
+            return false;
         }
     }
 

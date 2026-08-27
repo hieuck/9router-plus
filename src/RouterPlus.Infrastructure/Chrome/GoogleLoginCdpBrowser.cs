@@ -990,12 +990,16 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             _ => throw new ArgumentOutOfRangeException(nameof(field))
         };
 
+        // Wait a bit to ensure field is still visible after fill
+        DebugConsole.WriteLine($"[Submit] {field} - Waiting 300ms before submit...");
+        await Task.Delay(300, cancellationToken);
+
         // Google uses step-specific controls whose exact markup varies by
         // Chromium version and locale.
         var selectorJson = JsonSerializer.Serialize(selector);
         var submitExpression = $"(() => {{ const elements = document.querySelectorAll({selectorJson}); " +
                                "const element = Array.from(elements).find(e => {{ const r = e.getBoundingClientRect(); return e.getClientRects().length > 0 && r.width > 0 && r.height > 0; }}); " +
-                               "if (!element) throw new Error('Visible field not found'); " +
+                               "if (!element) {{ console.log('Submit: Field not found. Selector:', {selectorJson}, 'Elements found:', elements.length); throw new Error('Visible field not found'); }} " +
                                "const fieldKind = Array.from(elements).some(e => e.matches('input[type=\"password\"]')) ? 'password' : " +
                                "(Array.from(elements).some(e => e.matches('input[name=\"totpPin\"]')) ? 'totp' : 'email'); " +
                                "const nextButtonId = fieldKind === 'password' ? '#passwordNext' : " +

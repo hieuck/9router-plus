@@ -22,7 +22,7 @@
 
                 <!-- Profile Info -->
                 <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                        Background="{DynamicResource PanelBrush}" Padding="12" Margin="0,0,0,12">
+                        Background="{DynamicResource PanelBrush}" CornerRadius="12" Padding="12" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="{DynamicResource GoogleAutoLoginProfileLabel}"
                                    FontSize="10" Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,4" />
@@ -32,7 +32,7 @@
 
         <!-- Vault Section -->
         <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                Background="{DynamicResource PanelBrush}" Padding="12" Margin="0,0,0,12">
+                Background="{DynamicResource PanelBrush}" CornerRadius="12" Padding="12" Margin="0,0,0,12">
             <StackPanel>
                 <TextBlock Text="{DynamicResource GoogleAutoLoginVaultSection}"
                            FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8" />
@@ -94,7 +94,7 @@
 
         <!-- Credentials Section -->
         <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                Background="{DynamicResource PanelBrush}" Padding="12" Margin="0,0,0,12">
+                Background="{DynamicResource PanelBrush}" CornerRadius="12" Padding="12" Margin="0,0,0,12">
             <StackPanel IsEnabled="{Binding IsVaultUnlocked}">
                 <TextBlock Text="{DynamicResource GoogleAutoLoginCredentialsSection}"
                            FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8" />
@@ -108,11 +108,16 @@
                 <Grid Margin="0,0,0,8">
                     <TextBox x:Name="PasswordTextBox"
                              Text="{Binding Password, Mode=TwoWay}"
-                             Visibility="Collapsed" />
+                             Visibility="Collapsed"
+                             Margin="0" />
                     <PasswordBox x:Name="PasswordBox"
-                                 Visibility="Visible" />
+                                 Visibility="Visible"
+                                 Margin="0" />
                     <Button Content="👁"
-                            Width="30" Height="24"
+                            Style="{StaticResource ToolButtonStyle}"
+                            Width="28" Height="28"
+                            FontSize="12"
+                            Padding="0"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             Margin="0,0,4,0"
@@ -125,11 +130,16 @@
                 <Grid Margin="0,0,0,8">
                     <TextBox x:Name="TotpTextBox"
                              Text="{Binding TotpSecret, Mode=TwoWay}"
-                             Visibility="Collapsed" />
+                             Visibility="Collapsed"
+                             Margin="0" />
                     <PasswordBox x:Name="TotpSecretBox"
-                                 Visibility="Visible" />
+                                 Visibility="Visible"
+                                 Margin="0" />
                     <Button Content="👁"
-                            Width="30" Height="24"
+                            Style="{StaticResource ToolButtonStyle}"
+                            Width="28" Height="28"
+                            FontSize="12"
+                            Padding="0"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             Margin="0,0,4,0"
@@ -146,7 +156,7 @@
 
         <!-- Status -->
         <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                Background="{DynamicResource PanelBrush}" Padding="12" Margin="0,0,0,0">
+                Background="{DynamicResource PanelBrush}" CornerRadius="12" Padding="12" Margin="0,0,0,0">
             <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="10" MaxHeight="100" />
         </Border>
             </StackPanel>
