@@ -2594,7 +2594,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            _profileDeleter.Delete(profile, ChromeUserDataDirectory);
+            _profileDeleter.Delete(profile, ChromeUserDataDirectory, ChromeExecutablePath);
             _managedProfiles.RemoveAll(managedProfile => IsManagedProfileFor(managedProfile, profile));
             try
             {
