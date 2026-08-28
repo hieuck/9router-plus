@@ -103,7 +103,7 @@ public sealed class UsageInferenceIntegrationTests
 {
     "id": "c417d363-4a08-4e09-8182-2d7fd0b6ffa6",
     "provider": "openrouter",
-    "name": "beekelly7996@yahoo.com.vn",
+    "name": "demo.openrouter@example.com",
     "priority": 1,
     "isActive": true,
     "testStatus": "unavailable",

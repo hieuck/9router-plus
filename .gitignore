@@ -50,3 +50,4 @@ config.local.*
 /node_modules
 /.playwright-mcp
 *.log
+*.stackdump

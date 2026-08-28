@@ -165,7 +165,7 @@ public enum AuthMethod
       "preferredMethod": "Direct",
       "linkedGoogleAccount": null,
       "directCredential": {
-        "email": "loandev@github.com",
+        "email": "demo.dev@example.com",
         "password": "encrypted_password",
         "totpSecret": "encrypted_totp_secret"
       }
@@ -177,7 +177,7 @@ public enum AuthMethod
       "linkedGoogleAccount": "demo.user1@example.com",
       "directCredential": {
         // Fallback if Google OAuth fails
-        "email": "loan@openrouter.com",
+        "email": "demo.user@example.com",
         "password": "encrypted_password",
         "totpSecret": "encrypted_totp_secret"
       }
