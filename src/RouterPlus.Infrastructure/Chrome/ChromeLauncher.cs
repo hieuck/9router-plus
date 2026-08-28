@@ -127,6 +127,9 @@ public sealed class ChromeLauncher
             startInfo.ArgumentList.Add($"--remote-debugging-port={port}");
             startInfo.ArgumentList.Add("--no-first-run");
             startInfo.ArgumentList.Add("--no-default-browser-check");
+            startInfo.ArgumentList.Add("--disable-session-crashed-bubble");
+            startInfo.ArgumentList.Add("--hide-crash-restore-bubble");
+            startInfo.ArgumentList.Add("--restore-last-session");
             startInfo.ArgumentList.Add("--new-window");
             startInfo.ArgumentList.Add(markedUri.ToString());
 

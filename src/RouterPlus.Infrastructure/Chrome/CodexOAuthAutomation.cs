@@ -258,6 +258,34 @@ public sealed class CodexOAuthAutomation
             var y = value.GetProperty("y").GetDouble();
             var text = value.GetProperty("text").GetString();
             DebugConsole.WriteLine($"[CodexOAuth] Found button at ({x:F1}, {y:F1}): {text}");
+
+            // Try direct element.click() first for more reliable click
+            var clickScript = @"
+(function() {
+    const targetEmail = " + emailJson + @";
+    const emailLower = targetEmail.toLowerCase();
+    const buttons = Array.from(document.querySelectorAll('button, [role=""button""]'));
+    for (const el of buttons) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        const text = ((el.innerText || el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+        if (text.includes('xóa') || text.includes('remove') || text.includes('delete') || text.includes('sign out')) continue;
+        if (text.includes(emailLower)) {
+            el.click();
+            return true;
+        }
+    }
+    return false;
+})()
+";
+            var clickResult = await _client.CallAsync("Runtime.evaluate", new { expression = clickScript, returnByValue = true }, cancellationToken, _sessionId);
+            if (clickResult.TryGetProperty("result", out var resultProp) && resultProp.TryGetProperty("value", out var clickedProp) && clickedProp.GetBoolean())
+            {
+                DebugConsole.WriteLine($"[CodexOAuth] Element.click() dispatched");
+                return true;
+            }
+
+            DebugConsole.WriteLine($"[CodexOAuth] Element.click() failed, trying CDP mouse events");
             await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mousePressed", x, y, button = "left", clickCount = 1 }, cancellationToken, _sessionId);
             await Task.Delay(50, cancellationToken);
             await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }, cancellationToken, _sessionId);
