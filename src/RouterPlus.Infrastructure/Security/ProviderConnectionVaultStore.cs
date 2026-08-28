@@ -237,14 +237,14 @@ public sealed class ProviderConnectionVaultStore : IDisposable
 
     private string DecryptPayload(byte[] encryptedBytes)
     {
-        // Simple DPAPI decryption (matching GoogleLoginVaultStore pattern)
+        // Simple DPAPI decryption (matching GoogleAccountVaultStore pattern)
         var decryptedBytes = ProtectedData.Unprotect(encryptedBytes, DpapiEntropy, DataProtectionScope.CurrentUser);
         return Encoding.UTF8.GetString(decryptedBytes);
     }
 
     private byte[] EncryptPayload(string json)
     {
-        // Simple DPAPI encryption (matching GoogleLoginVaultStore pattern)
+        // Simple DPAPI encryption (matching GoogleAccountVaultStore pattern)
         var plaintextBytes = Encoding.UTF8.GetBytes(json);
         return ProtectedData.Protect(plaintextBytes, DpapiEntropy, DataProtectionScope.CurrentUser);
     }

@@ -6,16 +6,16 @@ using Xunit;
 
 namespace RouterPlus.Core.Tests;
 
-public sealed class GoogleLoginVaultStoreTests
+public sealed class GoogleAccountVaultStoreTests
 {
     [Fact]
     public async Task Save_and_open_round_trip_the_profile_record()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        using var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "vault-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("profile-1", "user@example.com", "password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
 
@@ -32,10 +32,10 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Wrong_password_is_rejected_without_secret_material_in_message()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        using var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "vault-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("profile-1", "user@example.com", "synthetic-password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
 
@@ -51,10 +51,10 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Tampered_ciphertext_is_rejected()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        using var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "vault-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("profile-1", "user@example.com", "password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
 
@@ -76,10 +76,10 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Vault_file_contains_only_metadata_and_ciphertext_outside_payload()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        using var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "vault-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("profile-1", "user@example.com", "synthetic-password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
 
@@ -96,17 +96,17 @@ public sealed class GoogleLoginVaultStoreTests
     {
         using var root = new TemporaryDirectory();
         using var exportRoot = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        using var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "current-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("source-profile", "source@example.com", "source-password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
 
         var exportPath = Path.Combine(exportRoot.Path, "export.gvault");
         await store.ExportAsync(session, exportPath, "export-password");
 
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("current-profile", "current@example.com", "current-password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
         await store.ImportAsync(paths.VaultPath, exportPath, "export-password");
@@ -122,18 +122,18 @@ public sealed class GoogleLoginVaultStoreTests
     {
         using var root = new TemporaryDirectory();
         using var sourceRoot = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        var sourcePaths = new GoogleLoginVaultPaths(sourceRoot.Path);
-        using var store = new GoogleLoginVaultStore(paths);
-        using var sourceStore = new GoogleLoginVaultStore(sourcePaths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        var sourcePaths = new GoogleAccountVaultPaths(sourceRoot.Path);
+        using var store = new GoogleAccountVaultStore(paths);
+        using var sourceStore = new GoogleAccountVaultStore(sourcePaths);
         await using var session = await store.CreateAsync(paths.VaultPath, "current-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("current-profile", "current@example.com", "current-password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
         var original = await File.ReadAllTextAsync(paths.VaultPath);
 
         await using var sourceSession = await sourceStore.CreateAsync(sourcePaths.VaultPath, "source-password");
-        sourceSession.Replace(new GoogleLoginVault().Upsert(
+        sourceSession.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("source-profile", "source@example.com", "source-password", "JBSWY3DPEHPK3PXP")));
         await sourceStore.SaveAsync(sourceSession);
         var sourceText = await File.ReadAllTextAsync(sourcePaths.VaultPath);
@@ -150,10 +150,10 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Remembered_unlock_reopens_on_same_user_and_remove_disables_it()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        using var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "vault-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("profile-1", "user@example.com", "password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
         await session.RememberAsync();
@@ -171,18 +171,18 @@ public sealed class GoogleLoginVaultStoreTests
     {
         using var root = new TemporaryDirectory();
         using var sourceRoot = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        var sourcePaths = new GoogleLoginVaultPaths(sourceRoot.Path);
-        using var store = new GoogleLoginVaultStore(paths);
-        using var sourceStore = new GoogleLoginVaultStore(sourcePaths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        var sourcePaths = new GoogleAccountVaultPaths(sourceRoot.Path);
+        using var store = new GoogleAccountVaultStore(paths);
+        using var sourceStore = new GoogleAccountVaultStore(sourcePaths);
         await using var session = await store.CreateAsync(paths.VaultPath, "current-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("current-profile", "current@example.com", "current-password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
         await session.RememberAsync();
 
         await using var source = await sourceStore.CreateAsync(sourcePaths.VaultPath, "source-password");
-        source.Replace(new GoogleLoginVault().Upsert(
+        source.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("source-profile", "source@example.com", "source-password", "JBSWY3DPEHPK3PXP")));
         await sourceStore.SaveAsync(source);
         await store.ImportAsync(paths.VaultPath, sourcePaths.VaultPath, "source-password");
@@ -194,17 +194,17 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Remembered_session_can_save_and_original_password_still_opens_vault()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        using var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "original-password");
-        session.Replace(new GoogleLoginVault().Upsert(
+        session.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("profile-1", "user@example.com", "password", "JBSWY3DPEHPK3PXP")));
         await store.SaveAsync(session);
         await session.RememberAsync();
 
         await using var remembered = await store.TryOpenRememberedAsync(paths.VaultPath);
         Assert.NotNull(remembered);
-        remembered.Replace(new GoogleLoginVault().Upsert(
+        remembered.Replace(new GoogleAccountVault().Upsert(
             new GoogleLoginCredential("profile-2", "user2@example.com", "password2", "JBSWY3DPEHPK3PXQ")));
         await store.SaveAsync(remembered);
 
@@ -217,8 +217,8 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Disposed_store_rejects_operations_with_ObjectDisposedException()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "password");
         await store.SaveAsync(session);
 
@@ -233,8 +233,8 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Concurrent_dispose_calls_are_safe()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "password");
         await store.SaveAsync(session);
 
@@ -248,8 +248,8 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Dispose_blocks_new_operations_after_gate_acquired()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "password");
         await store.SaveAsync(session);
 
@@ -265,8 +265,8 @@ public sealed class GoogleLoginVaultStoreTests
     public async Task Dispose_can_be_called_multiple_times_safely()
     {
         using var root = new TemporaryDirectory();
-        var paths = new GoogleLoginVaultPaths(root.Path);
-        var store = new GoogleLoginVaultStore(paths);
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        var store = new GoogleAccountVaultStore(paths);
         await using var session = await store.CreateAsync(paths.VaultPath, "password");
         await store.SaveAsync(session);
 

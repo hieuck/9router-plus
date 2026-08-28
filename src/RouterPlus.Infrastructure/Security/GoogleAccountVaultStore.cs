@@ -8,7 +8,7 @@ namespace RouterPlus.Infrastructure.Security;
 /// <summary>
 /// Encrypted vault store using AES-256-GCM, PBKDF2-HMAC-SHA256, and DPAPI remembered unlock.
 /// </summary>
-public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
+public sealed class GoogleAccountVaultStore : IGoogleAccountVaultStore, IDisposable
 {
     private const int CurrentVersion = 1;
     private const string KdfAlgorithmName = "PBKDF2-HMAC-SHA256";
@@ -17,9 +17,9 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
     private const int PayloadKeyBytes = 32;
     private const int NonceBytes = 12;
     private const int TagBytes = 16;
-    private static readonly byte[] DpapiEntropy = Encoding.UTF8.GetBytes("9RouterPlus.GoogleLoginVault.v1");
+    private static readonly byte[] DpapiEntropy = Encoding.UTF8.GetBytes("9RouterPlus.GoogleAccountVault.v1");
 
-    private readonly GoogleLoginVaultPaths _paths;
+    private readonly GoogleAccountVaultPaths _paths;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly object _disposalLock = new();
@@ -27,7 +27,7 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
     private bool _disposalStarted;
     private bool _disposed;
 
-    public GoogleLoginVaultStore(GoogleLoginVaultPaths paths)
+    public GoogleAccountVaultStore(GoogleAccountVaultPaths paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
         _paths = paths;
@@ -103,7 +103,7 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
         }
     }
 
-    public async Task<GoogleLoginVaultSession> CreateAsync(
+    public async Task<GoogleAccountVaultSession> CreateAsync(
         string path,
         string vaultPassword,
         CancellationToken cancellationToken = default)
@@ -142,14 +142,14 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
                 WrappedPayloadKey = Convert.ToBase64String(wrappedPayloadKey)
             };
 
-            var session = new VaultSession(path, vaultId, payloadKey, new GoogleLoginVault(), _paths, keyWrapMetadata);
+            var session = new VaultSession(path, vaultId, payloadKey, new GoogleAccountVault(), _paths, keyWrapMetadata);
             await SaveAsync(session, cancellationToken);
 
             return session;
         }, cancellationToken);
     }
 
-    public async Task<GoogleLoginVaultSession> OpenAsync(
+    public async Task<GoogleAccountVaultSession> OpenAsync(
         string path,
         string vaultPassword,
         CancellationToken cancellationToken = default)
@@ -189,7 +189,7 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
                 var records = JsonSerializer.Deserialize<List<CredentialDto>>(payloadJson)
                     ?? throw new CryptographicException("Invalid payload format.");
 
-                var vault = new GoogleLoginVault(records.Select(dto => new GoogleLoginCredential(
+                var vault = new GoogleAccountVault(records.Select(dto => new GoogleLoginCredential(
                     dto.ProfileId,
                     dto.Email,
                     dto.Password,
@@ -218,7 +218,7 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
         }, cancellationToken);
     }
 
-    public async Task<GoogleLoginVaultSession?> TryOpenRememberedAsync(
+    public async Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(
         string path,
         CancellationToken cancellationToken = default)
     {
@@ -264,7 +264,7 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
                 var records = JsonSerializer.Deserialize<List<CredentialDto>>(payloadJson)
                     ?? throw new CryptographicException("Invalid payload format.");
 
-                var vault = new GoogleLoginVault(records.Select(dto => new GoogleLoginCredential(
+                var vault = new GoogleAccountVault(records.Select(dto => new GoogleLoginCredential(
                     dto.ProfileId,
                     dto.Email,
                     dto.Password,
@@ -306,7 +306,7 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
     }
 
     public async Task SaveAsync(
-        GoogleLoginVaultSession session,
+        GoogleAccountVaultSession session,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -364,7 +364,7 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
     }
 
     public async Task ExportAsync(
-        GoogleLoginVaultSession session,
+        GoogleAccountVaultSession session,
         string destinationPath,
         string exportPassword,
         CancellationToken cancellationToken = default)
@@ -556,13 +556,13 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
         }, cancellationToken);
     }
 
-    private sealed class VaultSession : GoogleLoginVaultSession
+    private sealed class VaultSession : GoogleAccountVaultSession
     {
         private readonly byte[] _payloadKey;
         private readonly KeyWrapEnvelope _keyWrapMetadata;
         private bool _disposed;
 
-        public VaultSession(string path, string vaultId, byte[] payloadKey, GoogleLoginVault vault, GoogleLoginVaultPaths paths, KeyWrapEnvelope keyWrapMetadata)
+        public VaultSession(string path, string vaultId, byte[] payloadKey, GoogleAccountVault vault, GoogleAccountVaultPaths paths, KeyWrapEnvelope keyWrapMetadata)
         {
             Path = path;
             VaultId = vaultId;
@@ -574,10 +574,10 @@ public sealed class GoogleLoginVaultStore : IGoogleLoginVaultStore, IDisposable
 
         public string Path { get; }
         public string VaultId { get; }
-        public GoogleLoginVault Vault { get; private set; }
-        public GoogleLoginVaultPaths Paths { get; }
+        public GoogleAccountVault Vault { get; private set; }
+        public GoogleAccountVaultPaths Paths { get; }
 
-        public void Replace(GoogleLoginVault vault)
+        public void Replace(GoogleAccountVault vault)
         {
             ArgumentNullException.ThrowIfNull(vault);
             Vault = vault;

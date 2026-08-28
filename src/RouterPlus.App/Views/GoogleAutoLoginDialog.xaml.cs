@@ -450,7 +450,7 @@ public partial class GoogleAutoLoginDialog : Window
 
         try
         {
-            var vaultPaths = new GoogleLoginVaultPaths();
+            var vaultPaths = new GoogleAccountVaultPaths();
             if (File.Exists(vaultPaths.VaultPath))
                 File.Delete(vaultPaths.VaultPath);
             if (File.Exists(vaultPaths.RememberedKeyPath))

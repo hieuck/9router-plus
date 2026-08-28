@@ -34,8 +34,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ChromeLauncher _chromeLauncher = new();
     private readonly SettingsStore _settingsStore;
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
-    private readonly IGoogleLoginVaultStore _googleLoginVaultStore;
-    private readonly GoogleLoginVaultPaths _googleLoginVaultPaths;
+    private readonly IGoogleAccountVaultStore _googleLoginVaultStore;
+    private readonly GoogleAccountVaultPaths _googleLoginVaultPaths;
     private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
     private readonly HttpClient _httpClient;
@@ -102,7 +102,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IUpdateService? updateService = null,
         IExternalLinkLauncher? linkLauncher = null,
         bool runStartupUpdateCheck = false,
-        IGoogleLoginVaultStore? googleLoginVaultStore = null,
+        IGoogleAccountVaultStore? googleLoginVaultStore = null,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null,
         IReadOnlyList<ChromeProfile>? harnessProfiles = null)
     {
@@ -115,8 +115,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _runStartupUpdateCheck = runStartupUpdateCheck;
         _harnessProfiles = harnessProfiles;
         _harnessMode = harnessProfiles is not null;
-        _googleLoginVaultPaths = new GoogleLoginVaultPaths();
-        _googleLoginVaultStore = googleLoginVaultStore ?? new GoogleLoginVaultStore(_googleLoginVaultPaths);
+        _googleLoginVaultPaths = new GoogleAccountVaultPaths();
+        _googleLoginVaultStore = googleLoginVaultStore ?? new GoogleAccountVaultStore(_googleLoginVaultPaths);
 
         // Provider connection vault for new auth config system
         var providerConnectionPath = Path.Combine(

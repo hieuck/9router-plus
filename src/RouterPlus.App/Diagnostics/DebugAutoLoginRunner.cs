@@ -83,8 +83,8 @@ internal static class DebugAutoLoginRunner
             Console.WriteLine($"Selected profile: {profile.DirectoryName}");
 
             // Open vault
-            var vaultPaths = new GoogleLoginVaultPaths();
-            var vaultStore = new GoogleLoginVaultStore(vaultPaths);
+            var vaultPaths = new GoogleAccountVaultPaths();
+            var vaultStore = new GoogleAccountVaultStore(vaultPaths);
             var vaultPath = vaultPaths.VaultPath;
 
             Console.WriteLine($"Vault: {vaultPath}");
@@ -96,7 +96,7 @@ internal static class DebugAutoLoginRunner
                 return;
             }
 
-            GoogleLoginVaultSession? session = null;
+            GoogleAccountVaultSession? session = null;
             try
             {
                 session = await vaultStore.TryOpenRememberedAsync(vaultPath, CancellationToken.None);

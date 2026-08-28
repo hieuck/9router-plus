@@ -1,16 +1,16 @@
 namespace RouterPlus.Infrastructure.Security;
 
 /// <summary>
-/// Provides default local storage paths for the Google login vault.
+/// Provides default local storage paths for the Google account vault.
 /// </summary>
-public sealed class GoogleLoginVaultPaths
+public sealed class GoogleAccountVaultPaths
 {
     private readonly string _rootDirectory;
 
     /// <summary>
     /// Creates paths using the default %LOCALAPPDATA%\9RouterPlus directory.
     /// </summary>
-    public GoogleLoginVaultPaths()
+    public GoogleAccountVaultPaths()
         : this(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "9RouterPlus"))
@@ -21,7 +21,7 @@ public sealed class GoogleLoginVaultPaths
     /// Creates paths using a custom root directory (for testing).
     /// </summary>
     /// <param name="rootDirectory">Custom root directory path.</param>
-    public GoogleLoginVaultPaths(string rootDirectory)
+    public GoogleAccountVaultPaths(string rootDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory, nameof(rootDirectory));
         _rootDirectory = rootDirectory;
@@ -30,10 +30,10 @@ public sealed class GoogleLoginVaultPaths
     /// <summary>
     /// Gets the path to the encrypted vault file.
     /// </summary>
-    public string VaultPath => Path.Combine(_rootDirectory, "google-login-vault.gvault");
+    public string VaultPath => Path.Combine(_rootDirectory, "google-accounts.vault");
 
     /// <summary>
     /// Gets the path to the DPAPI-protected remembered key file.
     /// </summary>
-    public string RememberedKeyPath => Path.Combine(_rootDirectory, "google-login-vault.remembered");
+    public string RememberedKeyPath => Path.Combine(_rootDirectory, "google-accounts.remembered");
 }

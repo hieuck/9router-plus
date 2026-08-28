@@ -3,14 +3,14 @@ using RouterPlus.Core.Security;
 namespace RouterPlus.Infrastructure.Security;
 
 /// <summary>
-/// Storage interface for encrypted Google login vault.
+/// Storage interface for encrypted Google account vault.
 /// </summary>
-public interface IGoogleLoginVaultStore
+public interface IGoogleAccountVaultStore
 {
     /// <summary>
     /// Creates a new vault at the specified path with the given password.
     /// </summary>
-    Task<GoogleLoginVaultSession> CreateAsync(
+    Task<GoogleAccountVaultSession> CreateAsync(
         string path,
         string vaultPassword,
         CancellationToken cancellationToken = default);
@@ -18,7 +18,7 @@ public interface IGoogleLoginVaultStore
     /// <summary>
     /// Opens an existing vault using the provided password.
     /// </summary>
-    Task<GoogleLoginVaultSession> OpenAsync(
+    Task<GoogleAccountVaultSession> OpenAsync(
         string path,
         string vaultPassword,
         CancellationToken cancellationToken = default);
@@ -27,7 +27,7 @@ public interface IGoogleLoginVaultStore
     /// Attempts to open the vault using DPAPI-remembered unlock.
     /// Returns null if no remembered key exists or if it's invalid.
     /// </summary>
-    Task<GoogleLoginVaultSession?> TryOpenRememberedAsync(
+    Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(
         string path,
         CancellationToken cancellationToken = default);
 
@@ -35,14 +35,14 @@ public interface IGoogleLoginVaultStore
     /// Saves the current vault state to disk.
     /// </summary>
     Task SaveAsync(
-        GoogleLoginVaultSession session,
+        GoogleAccountVaultSession session,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Exports the vault to a portable encrypted file with a new password.
     /// </summary>
     Task ExportAsync(
-        GoogleLoginVaultSession session,
+        GoogleAccountVaultSession session,
         string destinationPath,
         string exportPassword,
         CancellationToken cancellationToken = default);
@@ -61,7 +61,7 @@ public interface IGoogleLoginVaultStore
 /// <summary>
 /// Represents an open vault session with its decrypted content and crypto material.
 /// </summary>
-public interface GoogleLoginVaultSession : IAsyncDisposable
+public interface GoogleAccountVaultSession : IAsyncDisposable
 {
     /// <summary>
     /// Gets the unique vault identifier.
@@ -71,12 +71,12 @@ public interface GoogleLoginVaultSession : IAsyncDisposable
     /// <summary>
     /// Gets the current vault content.
     /// </summary>
-    GoogleLoginVault Vault { get; }
+    GoogleAccountVault Vault { get; }
 
     /// <summary>
     /// Replaces the vault content with a new version.
     /// </summary>
-    void Replace(GoogleLoginVault vault);
+    void Replace(GoogleAccountVault vault);
 
     /// <summary>
     /// Stores a DPAPI-protected remembered key for this vault.

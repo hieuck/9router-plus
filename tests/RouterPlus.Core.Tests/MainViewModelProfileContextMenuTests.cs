@@ -214,31 +214,31 @@ public sealed class MainViewModelProfileContextMenuTests
         }
     }
 
-    private sealed class FakeVaultStore : IGoogleLoginVaultStore
+    private sealed class FakeVaultStore : IGoogleAccountVaultStore
     {
-        public Task<GoogleLoginVaultSession> CreateAsync(string path, string vaultPassword, CancellationToken cancellationToken = default)
+        public Task<GoogleAccountVaultSession> CreateAsync(string path, string vaultPassword, CancellationToken cancellationToken = default)
         {
             var session = new FakeSession();
-            return Task.FromResult<GoogleLoginVaultSession>(session);
+            return Task.FromResult<GoogleAccountVaultSession>(session);
         }
 
-        public Task<GoogleLoginVaultSession> OpenAsync(string path, string vaultPassword, CancellationToken cancellationToken = default)
+        public Task<GoogleAccountVaultSession> OpenAsync(string path, string vaultPassword, CancellationToken cancellationToken = default)
         {
             var session = new FakeSession();
-            return Task.FromResult<GoogleLoginVaultSession>(session);
+            return Task.FromResult<GoogleAccountVaultSession>(session);
         }
 
-        public Task<GoogleLoginVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default)
+        public Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<GoogleLoginVaultSession?>(null);
+            return Task.FromResult<GoogleAccountVaultSession?>(null);
         }
 
-        public Task SaveAsync(GoogleLoginVaultSession session, CancellationToken cancellationToken = default)
+        public Task SaveAsync(GoogleAccountVaultSession session, CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
         }
 
-        public Task ExportAsync(GoogleLoginVaultSession session, string destinationPath, string exportPassword, CancellationToken cancellationToken = default)
+        public Task ExportAsync(GoogleAccountVaultSession session, string destinationPath, string exportPassword, CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
         }
@@ -248,12 +248,12 @@ public sealed class MainViewModelProfileContextMenuTests
             return Task.CompletedTask;
         }
 
-        private sealed class FakeSession : GoogleLoginVaultSession
+        private sealed class FakeSession : GoogleAccountVaultSession
         {
             public string VaultId => "test-vault-id";
-            public GoogleLoginVault Vault => new GoogleLoginVault();
+            public GoogleAccountVault Vault => new GoogleAccountVault();
 
-            public void Replace(GoogleLoginVault vault)
+            public void Replace(GoogleAccountVault vault)
             {
             }
 

@@ -3,12 +3,12 @@ using Xunit;
 
 namespace RouterPlus.Core.Tests;
 
-public sealed class GoogleLoginVaultTests
+public sealed class GoogleAccountVaultTests
 {
     [Fact]
     public void Vault_starts_empty()
     {
-        var vault = new GoogleLoginVault();
+        var vault = new GoogleAccountVault();
 
         Assert.Empty(vault.Records);
     }
@@ -16,7 +16,7 @@ public sealed class GoogleLoginVaultTests
     [Fact]
     public void Vault_upsert_replaces_the_existing_record_for_the_same_profile_id()
     {
-        var vault = new GoogleLoginVault();
+        var vault = new GoogleAccountVault();
         var first = new GoogleLoginCredential("profile-1", "first@example.com", "p1", "s1");
         var second = new GoogleLoginCredential("profile-1", "second@example.com", "p2", "s2");
 
@@ -31,7 +31,7 @@ public sealed class GoogleLoginVaultTests
     [Fact]
     public void Vault_upsert_adds_new_profile_without_affecting_existing()
     {
-        var vault = new GoogleLoginVault();
+        var vault = new GoogleAccountVault();
         var first = new GoogleLoginCredential("profile-1", "first@example.com", "p1", "s1");
         var second = new GoogleLoginCredential("profile-2", "second@example.com", "p2", "s2");
 
@@ -45,7 +45,7 @@ public sealed class GoogleLoginVaultTests
     [Fact]
     public void Vault_find_returns_null_for_unknown_profile()
     {
-        var vault = new GoogleLoginVault();
+        var vault = new GoogleAccountVault();
         var credential = new GoogleLoginCredential("profile-1", "user@example.com", "p", "s");
         var updated = vault.Upsert(credential);
 
@@ -56,7 +56,7 @@ public sealed class GoogleLoginVaultTests
     [Fact]
     public void Vault_find_is_case_sensitive_by_profile_id()
     {
-        var vault = new GoogleLoginVault();
+        var vault = new GoogleAccountVault();
         var credential = new GoogleLoginCredential("profile-1", "user@example.com", "p", "s");
         var updated = vault.Upsert(credential);
 
@@ -74,7 +74,7 @@ public sealed class GoogleLoginVaultTests
             new GoogleLoginCredential("profile-2", "second@example.com", "p2", "s2")
         };
 
-        var vault = new GoogleLoginVault(records);
+        var vault = new GoogleAccountVault(records);
 
         Assert.Equal(2, vault.Records.Count);
         Assert.Equal("first@example.com", vault.Find("profile-1")!.Email);
@@ -90,7 +90,7 @@ public sealed class GoogleLoginVaultTests
             new GoogleLoginCredential("profile-1", "second@example.com", "p2", "s2")
         };
 
-        var vault = new GoogleLoginVault(records);
+        var vault = new GoogleAccountVault(records);
 
         var record = Assert.Single(vault.Records);
         Assert.Equal("first@example.com", record.Email);
@@ -99,7 +99,7 @@ public sealed class GoogleLoginVaultTests
     [Fact]
     public void Vault_is_immutable()
     {
-        var vault = new GoogleLoginVault();
+        var vault = new GoogleAccountVault();
         var credential = new GoogleLoginCredential("profile-1", "user@example.com", "p", "s");
 
         var updated = vault.Upsert(credential);

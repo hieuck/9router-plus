@@ -3,16 +3,16 @@ namespace RouterPlus.Core.Security;
 /// <summary>
 /// Immutable collection of Google login credentials, one record per profile.
 /// </summary>
-public sealed class GoogleLoginVault
+public sealed class GoogleAccountVault
 {
     private readonly Dictionary<string, GoogleLoginCredential> _recordsByProfileId;
 
-    public GoogleLoginVault()
+    public GoogleAccountVault()
         : this(Array.Empty<GoogleLoginCredential>())
     {
     }
 
-    public GoogleLoginVault(IEnumerable<GoogleLoginCredential> records)
+    public GoogleAccountVault(IEnumerable<GoogleLoginCredential> records)
     {
         ArgumentNullException.ThrowIfNull(records);
 
@@ -32,7 +32,7 @@ public sealed class GoogleLoginVault
         return _recordsByProfileId.GetValueOrDefault(profileId.Trim());
     }
 
-    public GoogleLoginVault Upsert(GoogleLoginCredential credential)
+    public GoogleAccountVault Upsert(GoogleLoginCredential credential)
     {
         ArgumentNullException.ThrowIfNull(credential);
 
@@ -41,6 +41,6 @@ public sealed class GoogleLoginVault
             [credential.ProfileId] = credential
         };
 
-        return new GoogleLoginVault(updated.Values);
+        return new GoogleAccountVault(updated.Values);
     }
 }

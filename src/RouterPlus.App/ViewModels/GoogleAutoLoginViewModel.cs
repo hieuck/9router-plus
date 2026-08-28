@@ -14,10 +14,10 @@ namespace RouterPlus.App.ViewModels;
 public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChromeProfile _profile;
-    private readonly IGoogleLoginVaultStore _vaultStore;
+    private readonly IGoogleAccountVaultStore _vaultStore;
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _runAutomation;
 
-    private GoogleLoginVaultSession? _session;
+    private GoogleAccountVaultSession? _session;
     private string _email = string.Empty;
     private string _password = string.Empty;
     private string _totpSecret = string.Empty;
@@ -28,7 +28,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public GoogleAutoLoginViewModel(
         ChromeProfile profile,
-        IGoogleLoginVaultStore vaultStore,
+        IGoogleAccountVaultStore vaultStore,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> runAutomation)
     {
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
@@ -149,7 +149,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         IsBusy = true;
         try
         {
-            var vaultPaths = new GoogleLoginVaultPaths();
+            var vaultPaths = new GoogleAccountVaultPaths();
             var vaultPath = vaultPaths.VaultPath;
 
             // Try to open existing vault or create new one
@@ -309,7 +309,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         IsBusy = true;
         try
         {
-            var vaultPaths = new GoogleLoginVaultPaths();
+            var vaultPaths = new GoogleAccountVaultPaths();
             var vaultPath = vaultPaths.VaultPath;
             await _vaultStore.ImportAsync(vaultPath, sourcePath, sourcePassword, cancellationToken);
 
@@ -406,7 +406,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
     {
         try
         {
-            var vaultPaths = new GoogleLoginVaultPaths();
+            var vaultPaths = new GoogleAccountVaultPaths();
             _session = await _vaultStore.TryOpenRememberedAsync(vaultPaths.VaultPath, CancellationToken.None);
 
             if (_session != null)

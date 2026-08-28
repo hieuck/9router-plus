@@ -201,10 +201,10 @@ public sealed class GoogleAutoLoginViewModelTests
         return Task.FromResult(GoogleLoginResult.Success());
     }
 
-    private sealed class FakeVaultStore : IGoogleLoginVaultStore
+    private sealed class FakeVaultStore : IGoogleAccountVaultStore
     {
         private FakeSession? _currentSession;
-        public GoogleLoginVault? SavedVault { get; private set; }
+        public GoogleAccountVault? SavedVault { get; private set; }
         public bool ThrowOnWrongPassword { get; set; }
         public bool RememberCalled { get; private set; }
         public bool ImportCalled { get; private set; }
@@ -214,36 +214,36 @@ public sealed class GoogleAutoLoginViewModelTests
         public string? ExportDestinationPath { get; private set; }
         public string? ExportPassword { get; private set; }
 
-        public Task<GoogleLoginVaultSession> CreateAsync(string path, string vaultPassword, CancellationToken cancellationToken = default)
+        public Task<GoogleAccountVaultSession> CreateAsync(string path, string vaultPassword, CancellationToken cancellationToken = default)
         {
             if (ThrowOnWrongPassword)
                 throw new System.Security.Cryptography.CryptographicException("Invalid password");
 
-            _currentSession = new FakeSession(this, new GoogleLoginVault());
-            return Task.FromResult<GoogleLoginVaultSession>(_currentSession);
+            _currentSession = new FakeSession(this, new GoogleAccountVault());
+            return Task.FromResult<GoogleAccountVaultSession>(_currentSession);
         }
 
-        public Task<GoogleLoginVaultSession> OpenAsync(string path, string vaultPassword, CancellationToken cancellationToken = default)
+        public Task<GoogleAccountVaultSession> OpenAsync(string path, string vaultPassword, CancellationToken cancellationToken = default)
         {
             if (ThrowOnWrongPassword)
                 throw new System.Security.Cryptography.CryptographicException("Invalid password");
 
-            _currentSession = new FakeSession(this, new GoogleLoginVault());
-            return Task.FromResult<GoogleLoginVaultSession>(_currentSession);
+            _currentSession = new FakeSession(this, new GoogleAccountVault());
+            return Task.FromResult<GoogleAccountVaultSession>(_currentSession);
         }
 
-        public Task<GoogleLoginVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default)
+        public Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<GoogleLoginVaultSession?>(null);
+            return Task.FromResult<GoogleAccountVaultSession?>(null);
         }
 
-        public Task SaveAsync(GoogleLoginVaultSession session, CancellationToken cancellationToken = default)
+        public Task SaveAsync(GoogleAccountVaultSession session, CancellationToken cancellationToken = default)
         {
             SavedVault = session.Vault;
             return Task.CompletedTask;
         }
 
-        public Task ExportAsync(GoogleLoginVaultSession session, string destinationPath, string exportPassword, CancellationToken cancellationToken = default)
+        public Task ExportAsync(GoogleAccountVaultSession session, string destinationPath, string exportPassword, CancellationToken cancellationToken = default)
         {
             ExportCalled = true;
             ExportDestinationPath = destinationPath;
@@ -259,21 +259,21 @@ public sealed class GoogleAutoLoginViewModelTests
             return Task.CompletedTask;
         }
 
-        private sealed class FakeSession : GoogleLoginVaultSession
+        private sealed class FakeSession : GoogleAccountVaultSession
         {
             private readonly FakeVaultStore _store;
-            private GoogleLoginVault _vault;
+            private GoogleAccountVault _vault;
 
-            public FakeSession(FakeVaultStore store, GoogleLoginVault vault)
+            public FakeSession(FakeVaultStore store, GoogleAccountVault vault)
             {
                 _store = store;
                 _vault = vault;
             }
 
             public string VaultId => "test-vault-id";
-            public GoogleLoginVault Vault => _vault;
+            public GoogleAccountVault Vault => _vault;
 
-            public void Replace(GoogleLoginVault vault)
+            public void Replace(GoogleAccountVault vault)
             {
                 _vault = vault;
             }
