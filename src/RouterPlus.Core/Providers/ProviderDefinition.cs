@@ -5,6 +5,7 @@ public enum ProviderKind
     Codex,
     Kiro,
     OpenRouter,
+    GitHub,
     Ollama,
     Kimchi
 }
