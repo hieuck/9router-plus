@@ -1,3 +1,6 @@
+# ============================================================
+# .NET / Visual Studio
+# ============================================================
 .dotnet/
 .bootstrap/
 bin/
@@ -8,10 +11,16 @@ obj/
 publish/
 artifacts/
 .worktrees/
+
+# ============================================================
+# Build outputs
+# ============================================================
 work/
 ui-*.png
 
-# Temporary working files (not part of the project)
+# ============================================================
+# Temporary working files
+# ============================================================
 *.sqlite
 *.patch
 *.csx
@@ -20,16 +29,18 @@ temp_db_query/
 temp_*/
 *_query/
 
+# ============================================================
 # Session reports and temporary scripts (development artifacts)
+# ============================================================
 *-COMPLETE.txt
 *-FIXED*.txt
 *-FIX*.txt
 *-SUMMARY.txt
 *-REPORT*.txt
-*-VERIFICATION*.txt
-*-CHECKLIST*.txt
-*-ANALYSIS*.txt
-*-STATUS*.txt
+*-VERIFICATION.txt
+*-CHECKLIST.txt
+*-ANALYSIS.txt
+*-STATUS.txt
 NEXT_STEPS.txt
 investigation-*.txt
 fix_*.py
@@ -38,7 +49,9 @@ temp_*.txt
 *.pyc
 __pycache__/
 
-# Sensitive data patterns (prevent credential leaks)
+# ============================================================
+# Sensitive data (prevent credential leaks)
+# ============================================================
 .env
 .env.*
 *.key
@@ -48,7 +61,15 @@ __pycache__/
 secrets.*
 credentials.*
 config.local.*
-/node_modules
-/.playwright-mcp
+
+# ============================================================
+# Logs and crash dumps
+# ============================================================
 *.log
 *.stackdump
+
+# ============================================================
+# Third-party dependencies
+# ============================================================
+/node_modules
+/.playwright-mcp
