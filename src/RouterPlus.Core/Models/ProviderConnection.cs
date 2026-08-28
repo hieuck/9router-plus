@@ -21,7 +21,7 @@ namespace RouterPlus.Core.Models;
 ///
 /// User request: "commit và bắt đầu" - implementing Phase 1 Step 1.1 (Create Models)
 /// </summary>
-public class ProviderConnection
+public class ProviderAuthConnection
 {
     /// <summary>
     /// Chrome profile name this connection belongs to.
