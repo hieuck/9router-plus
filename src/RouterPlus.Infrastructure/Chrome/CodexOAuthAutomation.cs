@@ -34,6 +34,7 @@ public sealed class CodexOAuthAutomation
         ArgumentNullException.ThrowIfNull(profileEmail);
 
         var deadline = DateTimeOffset.UtcNow + timeout;
+        var clickedScreenUrls = new HashSet<string>(StringComparer.Ordinal);
 
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -66,56 +67,52 @@ public sealed class CodexOAuthAutomation
             // Handle account picker - click matching profile email
             if (state.HasAccountPicker && !state.HasConsentButton)
             {
+                // Do not click the same picker twice while its navigation is pending.
+                if (!clickedScreenUrls.Add($"picker:{state.CurrentUrl}"))
+                {
+                    await Task.Delay(500, cancellationToken);
+                    continue;
+                }
+
                 DebugConsole.WriteLine($"[CodexOAuth] Clicking account matching '{profileEmail}'...");
                 var accountClicked = await TryClickAccountAsync(profileEmail, cancellationToken);
                 if (accountClicked)
                 {
-                    await Task.Delay(1000, cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
                     continue;
                 }
-                else
-                {
-                    return new OAuthConsentResult(
-                        Success: false,
-                        AlreadyAuthorized: false,
-                        Message: $"Could not select account '{profileEmail}' from picker");
-                }
+
+                clickedScreenUrls.Remove($"picker:{state.CurrentUrl}");
+                return new OAuthConsentResult(
+                    Success: false,
+                    AlreadyAuthorized: false,
+                    Message: $"Could not select account '{profileEmail}' from picker");
             }
 
-            // Handle consent button
+            // Handle consent button. The callback URL is the only success signal;
+            // never report success while the consent page is still displayed.
             if (state.HasConsentButton)
             {
+                var screenKey = $"consent:{state.CurrentUrl}";
+                if (!clickedScreenUrls.Add(screenKey))
+                {
+                    await Task.Delay(500, cancellationToken);
+                    continue;
+                }
+
                 DebugConsole.WriteLine("[CodexOAuth] Clicking consent button...");
                 var clicked = await TryClickConsentButtonAsync(cancellationToken);
                 if (clicked)
                 {
-                    // Wait for redirect to target service
-                    await Task.Delay(2000, cancellationToken);
+                    await Task.Delay(500, cancellationToken);
+                    continue;
+                }
 
-                    // Verify we're on target service
-                    var finalState = await ReadOAuthStateAsync(cancellationToken);
-                    if (finalState.IsTargetService)
-                    {
-                        return new OAuthConsentResult(
-                            Success: true,
-                            AlreadyAuthorized: false,
-                            Message: "Consent clicked successfully");
-                    }
-                    else
-                    {
-                        return new OAuthConsentResult(
-                            Success: false,
-                            AlreadyAuthorized: false,
-                            Message: $"Consent clicked but not on target service. Current: {finalState.CurrentUrl}");
-                    }
-                }
-                else
-                {
-                    return new OAuthConsentResult(
-                        Success: false,
-                        AlreadyAuthorized: false,
-                        Message: "Could not click consent button");
-                }
+                clickedScreenUrls.Remove(screenKey);
+                return new OAuthConsentResult(
+                    Success: false,
+                    AlreadyAuthorized: false,
+                    Message: "Could not click consent button");
             }
 
             await Task.Delay(500, cancellationToken);
@@ -157,7 +154,8 @@ public sealed class CodexOAuthAutomation
 
     // Check if on target service (Codex post-auth landing page)
     // Must NOT be auth.openai.com - that's still the OAuth flow, not the target
-    const isTargetService = (host.includes('chatgpt.com') || host.includes('openai.com')) && host !== 'auth.openai.com';
+    const isTargetService = (host.includes('chatgpt.com') || host.includes('openai.com')) && host !== 'auth.openai.com'
+        || (host.startsWith('localhost') && path.includes('/auth/callback') && currentUrl.includes('code='));
 
     // Detect account picker (Google uses data-*, OpenAI uses choose-an-account page)
     const isChooseAccountPage = path.includes('/choose-an-account') || path.includes('/account-chooser');
@@ -226,106 +224,59 @@ public sealed class CodexOAuthAutomation
 
     private async Task<bool> TryClickAccountAsync(string targetEmail, CancellationToken cancellationToken)
     {
-        var targetEmailJson = JsonSerializer.Serialize(targetEmail);
-        const string clickScript = @"
-(function(targetEmail) {
+        // Find button coordinates via JavaScript, then use CDP mouse events for proper click
+        var emailJson = System.Text.Json.JsonSerializer.Serialize(targetEmail);
+        var findScript = @"
+(function() {
+    const targetEmail = " + emailJson + @";
     const isVisible = el => {
         if (!el) return false;
         const rect = el.getBoundingClientRect();
-        return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+        return rect.width > 0 && rect.height > 0;
     };
-
     const emailLower = targetEmail.toLowerCase();
-    const emailPrefix = emailLower.split('@')[0];
-
-    // Strategy 1: Find element with exact data-email attribute
-    const dataEmailEls = document.querySelectorAll(
-        '[data-email], [data-identifier], [data-user-email], [data-value*=""@""]'
-    );
-    for (const el of dataEmailEls) {
+    const buttons = Array.from(document.querySelectorAll('button, [role=""button""]'));
+    for (const el of buttons) {
         if (!isVisible(el)) continue;
-        const attr = (el.getAttribute('data-email') || el.getAttribute('data-identifier') ||
-                      el.getAttribute('data-user-email') || el.getAttribute('data-value') || '').toLowerCase();
-        if (attr === emailLower || attr.includes(emailLower) || attr.includes(emailPrefix)) {
-            el.click();
-            return { clicked: true, matched: attr };
+        const text = ((el.innerText || el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+        if (text.includes('xóa') || text.includes('remove') || text.includes('delete') || text.includes('sign out')) continue;
+        if (text.includes(emailLower)) {
+            const rect = el.getBoundingClientRect();
+            return { found: true, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, text: text.substring(0, 60) };
         }
     }
-
-    // Strategy 2: Find clickable element with exact email text inside
-    const clickables = Array.from(document.querySelectorAll(
-        'button, [role=""button""], li, a, div[role=""option""], div[role=""link""]'
-    ));
-    for (const el of clickables) {
-        if (!isVisible(el)) continue;
-        const text = (el.innerText || el.textContent || '').toLowerCase();
-        if (text === emailLower || (text.includes(emailLower) && !text.includes('remove') && !text.includes('xóa'))) {
-            el.click();
-            return { clicked: true, matched: text };
-        }
-    }
-
-    // Strategy 3: Find parent container that wraps email text + exclude destructive actions
-    const allDivs = Array.from(document.querySelectorAll('div, li, article'));
-    for (const el of allDivs) {
-        if (!isVisible(el)) continue;
-        const text = (el.innerText || el.textContent || '').toLowerCase();
-        // Must contain email and NOT contain remove/delete keywords
-        if (text.includes(emailLower) &&
-            !text.includes('remove') && !text.includes('xóa') &&
-            !text.includes('delete') && !text.includes('sign out')) {
-            // Try clicking the element itself or a button inside
-            const innerBtn = el.querySelector('button, [role=""button""], a');
-            const target = innerBtn || el;
-            target.click();
-            return { clicked: true, matched: text.substring(0, 50) };
-        }
-    }
-
-    return { clicked: false, matched: null, available: document.querySelectorAll('button, li, a, div[role=""button""]').length };
-})(arguments[0])
+    return { found: false };
+})()
 ";
-
         try
         {
-            var result = await _client.CallAsync("Runtime.evaluate", new
-            {
-                expression = clickScript,
-                arguments = new[] { targetEmail },
-                returnByValue = true,
-                awaitPromise = false
-            }, cancellationToken, _sessionId);
-
-            if (result.TryGetProperty("exceptionDetails", out _))
-            {
-                return false;
-            }
-
+            var result = await _client.CallAsync("Runtime.evaluate", new { expression = findScript, returnByValue = true }, cancellationToken, _sessionId);
+            if (result.TryGetProperty("exceptionDetails", out _)) return false;
             var value = result.GetProperty("result").GetProperty("value");
-            var clicked = value.GetProperty("clicked").GetBoolean();
-            if (value.TryGetProperty("matched", out var matched) && matched.ValueKind != System.Text.Json.JsonValueKind.Null)
-            {
-                DebugConsole.WriteLine($"[CodexOAuth] Clicked account matching: {matched.GetString()}");
-            }
-            return clicked;
+            if (!value.TryGetProperty("found", out var found) || !found.GetBoolean()) return false;
+            var x = value.GetProperty("x").GetDouble();
+            var y = value.GetProperty("y").GetDouble();
+            var text = value.GetProperty("text").GetString();
+            DebugConsole.WriteLine($"[CodexOAuth] Found button at ({x:F1}, {y:F1}): {text}");
+            await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mousePressed", x, y, button = "left", clickCount = 1 }, cancellationToken, _sessionId);
+            await Task.Delay(50, cancellationToken);
+            await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }, cancellationToken, _sessionId);
+            DebugConsole.WriteLine($"[CodexOAuth] CDP mouse click dispatched");
+            return true;
         }
-        catch
-        {
-            return false;
-        }
+        catch { return false; }
     }
+
 
     private async Task<bool> TryClickConsentButtonAsync(CancellationToken cancellationToken)
     {
-        const string clickScript = @"
+        const string findScript = @"
 (function() {
     const isVisible = el => {
         if (!el) return false;
         const rect = el.getBoundingClientRect();
-        return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+        return rect.width > 0 && rect.height > 0;
     };
-
-    // Find consent button
     const buttons = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
@@ -336,13 +287,11 @@ public sealed class CodexOAuthAutomation
                text.includes('accept') ||
                text.includes('chấp nhận');
     });
-
     if (buttons.length > 0) {
-        buttons[0].click();
-        return { clicked: true, buttonText: buttons[0].innerText || '' };
+        const rect = buttons[0].getBoundingClientRect();
+        return { found: true, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, text: buttons[0].innerText || '' };
     }
-
-    return { clicked: false, buttonText: '' };
+    return { found: false };
 })()
 ";
 
@@ -350,7 +299,7 @@ public sealed class CodexOAuthAutomation
         {
             var result = await _client.CallAsync("Runtime.evaluate", new
             {
-                expression = clickScript,
+                expression = findScript,
                 returnByValue = true,
                 awaitPromise = false
             }, cancellationToken, _sessionId);
@@ -361,12 +310,36 @@ public sealed class CodexOAuthAutomation
             }
 
             var value = result.GetProperty("result").GetProperty("value");
-            var clicked = value.GetProperty("clicked").GetBoolean();
-            if (clicked && value.TryGetProperty("buttonText", out var btnText))
+            if (!value.TryGetProperty("found", out var found) || !found.GetBoolean())
             {
-                DebugConsole.WriteLine($"[CodexOAuth] Clicked button: {btnText.GetString()}");
+                return false;
             }
-            return clicked;
+
+            var x = value.GetProperty("x").GetDouble();
+            var y = value.GetProperty("y").GetDouble();
+            var text = value.GetProperty("text").GetString();
+            DebugConsole.WriteLine($"[CodexOAuth] Found consent button at ({x:F1}, {y:F1}): {text}");
+
+            await _client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mousePressed",
+                x,
+                y,
+                button = "left",
+                clickCount = 1
+            }, cancellationToken, _sessionId);
+            await Task.Delay(50, cancellationToken);
+            await _client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mouseReleased",
+                x,
+                y,
+                button = "left",
+                clickCount = 1
+            }, cancellationToken, _sessionId);
+
+            DebugConsole.WriteLine($"[CodexOAuth] CDP mouse click dispatched for consent button");
+            return true;
         }
         catch
         {

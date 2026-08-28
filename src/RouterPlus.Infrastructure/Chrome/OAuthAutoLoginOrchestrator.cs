@@ -36,6 +36,7 @@ public sealed class OAuthAutoLoginOrchestrator : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(profileEmail);
 
         DebugConsole.WriteLine($"[OAuthAutoLogin] Navigating to auth URL: {authUrl}");
+        System.Diagnostics.Debug.WriteLine($"[OAuthAutoLogin] FULL URL: {authUrl}");
         await ChromeManagedSession.NavigateAsync(_cdpSession, authUrl, cancellationToken);
 
         // Give Chrome a moment to render the initial page before polling

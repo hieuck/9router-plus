@@ -2009,6 +2009,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task OpenProviderAsync(ProviderKind provider)
     {
+        // Prevent race condition from double-click
+        if (_workflowInProgress)
+        {
+            return;
+        }
+
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Providers, "OpenProviderAsync");
         var definition = ProviderCatalog.Get(provider);
         DebugLogger.Log(DiagnosticCategories.Providers, $"Provider workflow started: {provider} ({definition.Workflow})");
@@ -2131,8 +2137,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
             }
 
-            await LaunchUrlAsync(session.AuthUrl);
-            StatusText = "Đã mở đăng nhập Codex. Đang thử tự động đăng nhập Google…";
+            StatusText = "Đang mở đăng nhập Codex và tự động xác nhận OAuth…";
             await RunOAuthAutoLoginAsync(session.AuthUrl, new Uri("https://chatgpt.com"), cancellationToken);
             await WaitForOAuthProxyAsync(
                 api,
@@ -2148,8 +2153,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 provider,
                 callbackListener.RedirectUri.ToString(),
                 cancellationToken);
-            await LaunchUrlAsync(session.AuthUrl);
-            StatusText = $"Đã mở đăng nhập {definition.DisplayName}. Đang thử tự động đăng nhập Google…";
+            StatusText = $"Đang mở đăng nhập {definition.DisplayName} và tự động xác nhận OAuth…";
             var targetUri = definition.QuickLink is { } ql ? new Uri(ql) : null;
             if (targetUri is not null)
             {

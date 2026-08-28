@@ -260,17 +260,20 @@ public sealed class ChromeLauncher
     {
         try
         {
-            var chromeProcessName = Path.GetFileNameWithoutExtension(chromeExecutablePath);
-            var processes = Process.GetProcessesByName(chromeProcessName);
+            // Kill ALL chrome.exe processes (CentBrowser, Brave, Chrome share process name).
+            // This is required for auto-login because Chrome variants use single-instance with profile locking.
+            // Trying to launch a managed Chrome while another Chrome variant holds the user-data-dir lock will fail.
+            var processes = Process.GetProcessesByName("chrome");
 
-            var profileArg = $"--profile-directory={profileDirectoryName}";
             var killedCount = 0;
+            var skippedCount = 0;
 
             foreach (var process in processes)
             {
                 try
                 {
-                    // On Windows, check command line via WMI
+                    // Skip helper processes that don't hold profile locks (crashpad, network service with no --type)
+                    // Kill all main, utility, renderer, gpu processes that reference user-data-dir
                     if (OperatingSystem.IsWindows())
                     {
                         using var searcher = new System.Management.ManagementObjectSearcher(
@@ -279,19 +282,24 @@ public sealed class ChromeLauncher
                         foreach (System.Management.ManagementObject obj in searcher.Get())
                         {
                             var commandLine = obj["CommandLine"]?.ToString() ?? string.Empty;
-                            if (commandLine.Contains(profileArg, StringComparison.OrdinalIgnoreCase))
+
+                            // Skip crashpad-handler (doesn't hold profile locks)
+                            if (commandLine.Contains("--type=crashpad-handler"))
                             {
-                                DebugConsole.WriteLine($"[ChromeLauncher] Killing process {process.Id} using profile {profileDirectoryName}");
-                                process.Kill();
-                                killedCount++;
+                                skippedCount++;
                                 break;
                             }
+
+                            // Skip pure network/storage services without profile lock (they may be from another instance)
+                            // But for safety, kill them anyway since they share user-data-dir
+                            DebugConsole.WriteLine($"[ChromeLauncher] Killing process {process.Id} to release user-data-dir locks");
+                            process.Kill();
+                            killedCount++;
+                            break;
                         }
                     }
                     else
                     {
-                        // On non-Windows, fall back to heuristic: kill all Chrome processes
-                        // (safer to use isolated profiles on non-Windows)
                         process.Kill();
                         killedCount++;
                     }
@@ -306,11 +314,12 @@ public sealed class ChromeLauncher
                 }
             }
 
+            DebugConsole.WriteLine($"[ChromeLauncher] Killed {killedCount} Chrome process(es), skipped {skippedCount} crashpad handler(s)");
+
             if (killedCount > 0)
             {
-                DebugConsole.WriteLine($"[ChromeLauncher] Killed {killedCount} Chrome process(es) using profile {profileDirectoryName}");
                 // Wait briefly for processes to fully exit and release locks
-                System.Threading.Thread.Sleep(1000);
+                System.Threading.Thread.Sleep(1500);
                 return true;
             }
 

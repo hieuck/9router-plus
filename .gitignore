@@ -47,3 +47,6 @@ __pycache__/
 secrets.*
 credentials.*
 config.local.*
+/node_modules
+/.playwright-mcp
+*.log
