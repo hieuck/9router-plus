@@ -35,6 +35,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly SettingsStore _settingsStore;
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
     private readonly IGoogleLoginVaultStore _googleLoginVaultStore;
+    private readonly GoogleLoginVaultPaths _googleLoginVaultPaths;
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
     private readonly HttpClient _httpClient;
     private readonly IUpdateService _updateService;
@@ -113,7 +114,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _runStartupUpdateCheck = runStartupUpdateCheck;
         _harnessProfiles = harnessProfiles;
         _harnessMode = harnessProfiles is not null;
-        _googleLoginVaultStore = googleLoginVaultStore ?? new GoogleLoginVaultStore(new GoogleLoginVaultPaths());
+        _googleLoginVaultPaths = new GoogleLoginVaultPaths();
+        _googleLoginVaultStore = googleLoginVaultStore ?? new GoogleLoginVaultStore(_googleLoginVaultPaths);
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _quotaPollingService = new QuotaPollingService(
             RefreshForQuotaPollingAsync,
@@ -2235,11 +2237,187 @@ public sealed class MainViewModel : INotifyPropertyChanged
         await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
         var definition = ProviderCatalog.Get(provider);
         var session = await api.StartDeviceCodeAsync(provider, "idc", cancellationToken);
-        await LaunchUrlAsync(session.VerificationUriComplete ?? session.VerificationUri);
-        StatusText = $"Đã mở AWS Builder ID cho {definition.DisplayName}. Hoàn tất xác nhận; tool đang tự chờ connection…";
 
+        // Try automation for Kiro
+        if (provider == ProviderKind.Kiro)
+        {
+            StatusText = $"Đang mở Chrome và tự động xác nhận {definition.DisplayName}…";
+            await RunDeviceCodeWithAutomationAsync(
+                api,
+                provider,
+                session.VerificationUriComplete ?? session.VerificationUri,
+                session,
+                cancellationToken);
+        }
+        else
+        {
+            // Fallback for other providers
+            await LaunchUrlAsync(session.VerificationUriComplete ?? session.VerificationUri);
+            StatusText = $"Đã mở AWS Builder ID cho {definition.DisplayName}. Hoàn tất xác nhận; tool đang tự chờ connection…";
+
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(session.ExpiresIn, 60));
+            var intervalSeconds = Math.Clamp(session.Interval, 1, 30);
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                var result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);
+                if (result.Success)
+                {
+                    await RenameNewConnectionAsync(api, provider, cancellationToken);
+                    return;
+                }
+
+                if (!string.Equals(result.Error, "authorization_pending", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(result.Error, "slow_down", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(result.ErrorDescription ?? result.Error ?? "Device-code authorization failed.");
+                }
+
+                if (string.Equals(result.Error, "slow_down", StringComparison.OrdinalIgnoreCase))
+                {
+                    intervalSeconds = Math.Min(intervalSeconds + 5, 30);
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
+            }
+
+            throw new TimeoutException($"Hết thời gian chờ đăng nhập {definition.DisplayName}.");
+        }
+    }
+
+    private async Task RunDeviceCodeWithAutomationAsync(
+        RouterApiClient api,
+        ProviderKind provider,
+        string verificationUri,
+        DeviceCodeSession session,
+        CancellationToken cancellationToken)
+    {
+        if (SelectedProfile is null || _installation is null)
+        {
+            // Fallback to manual flow
+            await LaunchUrlAsync(verificationUri);
+            StatusText = "Không thể tự động hóa. Vui lòng hoàn tất thủ công.";
+            await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
+            return;
+        }
+
+        ChromeManagedSession? chromeSession = null;
+        try
+        {
+            DebugLogger.Log(
+                DiagnosticCategories.Providers,
+                $"Device code automation start for profile {SelectedProfile.Name}");
+
+            chromeSession = await _chromeLauncher.LaunchManagedAsync(
+                _installation,
+                SelectedProfile,
+                new Uri(verificationUri),
+                cancellationToken,
+                useOriginalProfile: true);
+
+            StatusText = $"Đã mở Chrome với profile {SelectedProfile.Name}. Đang tự động xác nhận…";
+
+            var cdp = await chromeSession.ConnectAnyTargetAsync(cancellationToken);
+
+            // Create TOTP generator from vault if available
+            Func<Task<string?>>? totpGenerator = null;
+            var vaultSession = await _googleLoginVaultStore.TryOpenRememberedAsync(
+                _googleLoginVaultPaths.VaultPath,
+                cancellationToken);
+
+            if (vaultSession is not null)
+            {
+                await using (vaultSession)
+                {
+                    var credential = vaultSession.Vault.Records.FirstOrDefault(c =>
+                        string.Equals(c.Email, SelectedProfile.Name, StringComparison.OrdinalIgnoreCase));
+
+                    if (credential is not null && !string.IsNullOrWhiteSpace(credential.TotpSecret))
+                    {
+                        var totpSecret = credential.TotpSecret;
+                        totpGenerator = () => Task.FromResult<string?>(
+                            GoogleTotpGenerator.Generate(totpSecret, DateTimeOffset.UtcNow));
+                        DebugLogger.Log(DiagnosticCategories.Providers, "TOTP generator created from vault");
+                    }
+                }
+            }
+
+            var automation = new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId);
+
+            // Run automation in background (don't wait for it)
+            var automationTask = automation.WaitAndConsentAsync(
+                new Uri(verificationUri),
+                SelectedProfile.Name,
+                totpGenerator,
+                TimeSpan.FromMinutes(10), // Longer timeout
+                cancellationToken);
+
+            // Polling is the source of truth - wait for connection to be detected
+            StatusText = "Đang chờ xác nhận từ AWS…";
+            await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
+
+            // Connection detected! Now we can cleanup
+            StatusText = "Đã nhận connection. Đang lưu…";
+            DebugLogger.Log(DiagnosticCategories.Providers, "Device code polling succeeded");
+
+            // Try to get automation result (may still be running)
+            OAuthConsentResult automationResult;
+            if (automationTask.IsCompleted)
+            {
+                automationResult = await automationTask;
+            }
+            else
+            {
+                automationResult = new OAuthConsentResult(false, false, "Automation still running");
+            }
+
+            if (automationResult.Success)
+            {
+                DebugLogger.Log(DiagnosticCategories.Providers, $"Device code automation success: {automationResult.Message}");
+            }
+            else
+            {
+                DebugLogger.Log(DiagnosticCategories.Providers, $"Device code automation incomplete: {automationResult.Message}");
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.LogError(DiagnosticCategories.Providers, $"Device code automation failed: {ex.Message}", ex);
+            StatusText = $"Tự động hóa lỗi: {ex.Message}. Đang chờ hoàn tất thủ công…";
+
+            // Continue polling even if automation fails
+            await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
+        }
+        finally
+        {
+            if (chromeSession is not null)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None);
+                    await chromeSession.DisposeAsync();
+                }
+                catch
+                {
+                    // Best effort
+                }
+            }
+        }
+    }
+
+    private async Task PollDeviceCodeUntilSuccessAsync(
+        RouterApiClient api,
+        ProviderKind provider,
+        DeviceCodeSession session,
+        CancellationToken cancellationToken)
+    {
+        var definition = ProviderCatalog.Get(provider);
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(session.ExpiresIn, 60));
         var intervalSeconds = Math.Clamp(session.Interval, 1, 30);
+
         while (DateTimeOffset.UtcNow < deadline)
         {
             var result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);

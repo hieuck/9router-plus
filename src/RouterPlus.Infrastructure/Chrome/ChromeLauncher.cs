@@ -111,10 +111,7 @@ public sealed class ChromeLauncher
         {
             var port = ChromeManagedSession.GetAvailableLoopbackPort();
             var sessionMarker = $"__9rp_session_{Guid.NewGuid():N}";
-            var markedUri = new UriBuilder(startUri)
-            {
-                Fragment = sessionMarker
-            }.Uri;
+            var markedUri = AppendSessionMarker(startUri, sessionMarker);
 
             var startInfo = new ProcessStartInfo
             {
@@ -182,6 +179,24 @@ public sealed class ChromeLauncher
             }
             throw;
         }
+    }
+
+    private static Uri AppendSessionMarker(Uri originalUri, string sessionMarker)
+    {
+        ArgumentNullException.ThrowIfNull(originalUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionMarker);
+
+        var uriBuilder = new UriBuilder(originalUri);
+
+        // Preserve original fragment (contains device user_code for AWS flows)
+        // Append session marker as a query parameter instead
+        var query = uriBuilder.Query?.TrimStart('?') ?? string.Empty;
+        var sessionParam = $"__9rp_session={Uri.EscapeDataString(sessionMarker)}";
+        uriBuilder.Query = string.IsNullOrEmpty(query)
+            ? sessionParam
+            : $"{query}&{sessionParam}";
+
+        return uriBuilder.Uri;
     }
 
     private static void CopyAuthenticationData(
