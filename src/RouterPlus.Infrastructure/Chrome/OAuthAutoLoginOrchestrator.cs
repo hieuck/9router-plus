@@ -42,8 +42,8 @@ public sealed class OAuthAutoLoginOrchestrator : IAsyncDisposable
         // Give Chrome a moment to render the initial page before polling
         await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
 
-        var automation = new CodexOAuthAutomation(_cdpSession.Client, _cdpSession.SessionId, _cdpSession.TargetId);
-        var consent = await automation.WaitAndConsentAsync(targetServiceUri, profileEmail, timeout, cancellationToken);
+        var automation = new CodexOAuthAutomation(_cdpSession.Client, _cdpSession.SessionId, _cdpSession.TargetId, profileEmail);
+        var consent = await automation.WaitAndConsentAsync(targetServiceUri, timeout, cancellationToken);
 
         if (consent.Success)
         {

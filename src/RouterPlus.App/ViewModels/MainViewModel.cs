@@ -2348,13 +2348,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
             }
 
-            var automation = new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId);
+            var automation = new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator);
 
             // Run automation in background (don't wait for it)
             var automationTask = automation.WaitAndConsentAsync(
                 new Uri(verificationUri),
-                SelectedProfile.Name,
-                totpGenerator,
                 TimeSpan.FromMinutes(10), // Longer timeout
                 cancellationToken);
 

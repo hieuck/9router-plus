@@ -486,3 +486,11 @@ public abstract record GoogleOAuthPageState
 public record CompletionCheckResult(
     bool IsComplete,
     OAuthConsentResult? Result = null);
+
+/// <summary>
+/// Result of OAuth consent flow.
+/// </summary>
+public sealed record OAuthConsentResult(
+    bool Success,
+    bool AlreadyAuthorized,
+    string Message);
