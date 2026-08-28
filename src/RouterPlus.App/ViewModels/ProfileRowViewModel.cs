@@ -9,6 +9,7 @@ namespace RouterPlus.App.ViewModels;
 public sealed class ProfileRowViewModel : INotifyPropertyChanged
 {
     private int _displayIndex;
+    private bool _isSelected;
 
     public ProfileRowViewModel(
         ChromeProfile profile,
@@ -21,6 +22,7 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    public event EventHandler? SelectionChanged;
 
     public ChromeProfile Profile { get; }
 
@@ -33,6 +35,22 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
     public string DirectoryName => Profile.DirectoryName;
 
     public int DisplayIndex => _displayIndex;
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+            {
+                return;
+            }
+
+            _isSelected = value;
+            OnPropertyChanged();
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public ObservableCollection<ProfileProviderStatusViewModel> ProviderStatuses { get; }
 

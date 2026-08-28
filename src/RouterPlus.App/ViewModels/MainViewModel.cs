@@ -94,6 +94,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly SemaphoreSlim _connectionRefreshGate = new(1, 1);
     private readonly QuotaPollingService _quotaPollingService;
     private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
+    private bool _isMultiSelectMode;
 
     public MainViewModel(
         SettingsStore? settingsStore = null,
@@ -148,6 +149,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, CanSaveSettings);
         AddProfileCommand = new AsyncRelayCommand(AddProfileAsync, () => CanAddProfile);
         ClearProfileSearchCommand = new AsyncRelayCommand(ClearProfileSearchAsync, () => CanClearProfileSearch);
+        ToggleMultiSelectModeCommand = new RelayCommand(ToggleMultiSelectMode);
+        ClearSelectionCommand = new RelayCommand(ClearSelection);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         LaunchProfileCommand = new AsyncRelayCommand<ChromeProfile>(LaunchProfileAsync);
         LaunchRecentCommand = new AsyncRelayCommand<object>(LaunchRecentAsync);
@@ -331,6 +334,45 @@ public sealed class MainViewModel : INotifyPropertyChanged
         : $"Thêm profile \"{ProfileSearchText.Trim()}\"";
 
     public bool CanClearProfileSearch => !string.IsNullOrEmpty(ProfileSearchText);
+
+    public bool IsMultiSelectMode
+    {
+        get => _isMultiSelectMode;
+        set
+        {
+            if (_isMultiSelectMode == value)
+            {
+                return;
+            }
+
+            _isMultiSelectMode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasSelectedProfiles));
+
+            // Clear selections when exiting multi-select mode
+            if (!value)
+            {
+                foreach (var row in ProfileRows)
+                {
+                    row.IsSelected = false;
+                }
+            }
+        }
+    }
+
+    public IEnumerable<ProfileRowViewModel> SelectedProfileRows =>
+        ProfileRows.Where(row => row.IsSelected);
+
+    public bool HasSelectedProfiles => _isMultiSelectMode && SelectedProfileRows.Any();
+
+    public string SelectedProfilesText
+    {
+        get
+        {
+            var count = SelectedProfileRows.Count();
+            return count == 1 ? "1 profile đã chọn" : $"{count} profiles đã chọn";
+        }
+    }
 
     public IReadOnlyList<ProfileProviderFilterOption> ProviderFilterOptions { get; private set; } = Array.Empty<ProfileProviderFilterOption>();
 
@@ -1190,6 +1232,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand ClearProfileSearchCommand { get; }
 
+    public RelayCommand ToggleMultiSelectModeCommand { get; }
+    public RelayCommand ClearSelectionCommand { get; }
+
     public AsyncRelayCommand LaunchSelectedCommand { get; }
     public AsyncRelayCommand<ChromeProfile> LaunchProfileCommand { get; }
     public AsyncRelayCommand<object> LaunchRecentCommand { get; }
@@ -1671,6 +1716,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(FilteredProfileCount));
         OnPropertyChanged(nameof(FilteredProfileCountLabel));
+    }
+
+    private void ToggleMultiSelectMode()
+    {
+        IsMultiSelectMode = !IsMultiSelectMode;
+    }
+
+    private void ClearSelection()
+    {
+        foreach (var row in ProfileRows)
+        {
+            row.IsSelected = false;
+        }
+        OnPropertyChanged(nameof(HasSelectedProfiles));
+        OnPropertyChanged(nameof(SelectedProfilesText));
     }
 
     private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
