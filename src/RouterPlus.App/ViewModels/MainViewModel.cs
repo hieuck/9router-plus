@@ -15,6 +15,7 @@ using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Router;
 using RouterPlus.Infrastructure.Diagnostics;
 using RouterPlus.Infrastructure.Security;
+using RouterPlus.Infrastructure.Services;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Infrastructure.Updates;
 using RouterPlus.App.Services;
@@ -3230,6 +3231,55 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 {
                     // Best effort
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase 6 Step 6.2: Helper method demonstrating AutoLoginOrchestrator usage.
+    /// This method shows how to integrate the orchestrator for unified auto-login with fallback support.
+    ///
+    /// Future batch login implementation will call this method for each profile.
+    /// </summary>
+    private async Task<AutoLoginResult> RunAutoLoginWithOrchestratorAsync(
+        ChromeProfile profile,
+        ProviderKind provider,
+        Uri startUri,
+        CancellationToken cancellationToken)
+    {
+        if (_installation is null)
+        {
+            throw new InvalidOperationException("Chrome installation not configured");
+        }
+
+        ChromeLauncherAdapter? adapter = null;
+        try
+        {
+            // Create adapter for this profile
+            adapter = new ChromeLauncherAdapter(_chromeLauncher, _installation, profile);
+
+            // Create orchestrator
+            var orchestrator = new AutoLoginOrchestrator(
+                (GoogleAccountVaultStore)_googleLoginVaultStore,
+                _providerConnectionVaultStore,
+                adapter);
+
+            // Run auto-login with fallback support
+            var result = await orchestrator.LoginAsync(
+                profile.Name,
+                provider,
+                startUri,
+                TimeSpan.FromMinutes(2),
+                cancellationToken);
+
+            return result;
+        }
+        finally
+        {
+            // Cleanup Chrome session
+            if (adapter != null)
+            {
+                await adapter.CleanupAsync();
             }
         }
     }
