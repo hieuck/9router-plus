@@ -884,24 +884,42 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Ellipse Width="9" Height="9" Margin="0,0,5,0" ToolTip="{Binding ToolTip}">
-                                                        <Ellipse.Style>
-                                                            <Style TargetType="Ellipse">
-                                                                <Setter Property="Fill" Value="{DynamicResource BorderBrush}" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsHealthy}" Value="True">
-                                                                        <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding IsDisabled}" Value="True">
-                                                                        <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding HasError}" Value="True">
-                                                                        <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Ellipse.Style>
-                                                    </Ellipse>
+                                                    <Grid Margin="0,0,5,0">
+                                                        <Ellipse Width="9" Height="9" ToolTip="{Binding ToolTip}">
+                                                            <Ellipse.Style>
+                                                                <Style TargetType="Ellipse">
+                                                                    <Setter Property="Fill" Value="{DynamicResource BorderBrush}" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsHealthy}" Value="True">
+                                                                            <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                                                                            <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                                            <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Ellipse.Style>
+                                                        </Ellipse>
+                                                        <!-- Credential indicator (small lock overlay) -->
+                                                        <TextBlock Text="🔒" FontSize="6"
+                                                                   HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Bottom"
+                                                                   Margin="0,0,-1,-1">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasAutoLoginCredentials}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>

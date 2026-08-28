@@ -346,6 +346,14 @@ public class GoogleLoginStateMachineTests
                 HasTotpField: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState( // Add another state to prevent "No more states" exception
+                new Uri("https://accounts.google.com/signin"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
                 HasManualChallenge: false));
 
         var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);

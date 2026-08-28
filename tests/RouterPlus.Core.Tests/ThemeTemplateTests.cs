@@ -17,9 +17,14 @@ public sealed class ThemeTemplateTests
     public void ToggleButton_template_forwards_foreground_to_content_presenter()
     {
         var themeDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "Styles", "Theme.xaml")));
-        var toggleButtonStyle = themeDocument
-            .Descendants()
-            .Single(element => element.Name.LocalName == "Style" && (string?)element.Attribute("TargetType") == "ToggleButton");
+
+        // Get only top-level Style elements (not nested inside ControlTemplates)
+        var toggleButtonStyle = themeDocument.Root!
+            .Elements()
+            .Single(element => element.Name.LocalName == "Style"
+                && (string?)element.Attribute("TargetType") == "ToggleButton"
+                && element.Attribute("Key") == null); // Default style without x:Key
+
         var contentPresenter = toggleButtonStyle
             .Descendants()
             .Single(element => element.Name.LocalName == "ContentPresenter");
@@ -35,9 +40,14 @@ public sealed class ThemeTemplateTests
     public void ToggleButton_checked_state_uses_accent_content_foreground()
     {
         var themeDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "Styles", "Theme.xaml")));
-        var toggleButtonStyle = themeDocument
-            .Descendants()
-            .Single(element => element.Name.LocalName == "Style" && (string?)element.Attribute("TargetType") == "ToggleButton");
+
+        // Get only top-level Style elements (not nested inside ControlTemplates)
+        var toggleButtonStyle = themeDocument.Root!
+            .Elements()
+            .Single(element => element.Name.LocalName == "Style"
+                && (string?)element.Attribute("TargetType") == "ToggleButton"
+                && element.Attribute("Key") == null); // Default style without x:Key
+
         var styleTriggers = toggleButtonStyle
             .Elements()
             .Single(element => element.Name.LocalName == "Style.Triggers");

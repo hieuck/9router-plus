@@ -107,6 +107,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
     private string? _lastError;
     private string? _testStatus;
     private IReadOnlyList<ProviderConnection> _connections = Array.Empty<ProviderConnection>();
+    private bool _hasAutoLoginCredentials;
 
     public ProfileProviderStatusViewModel(ProviderDefinition definition)
     {
@@ -148,6 +149,8 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         .SelectMany(connection => connection.QuotaRows)
         .ToArray();
 
+    public bool HasAutoLoginCredentials => _hasAutoLoginCredentials;
+
     public string DisplayLabel => $"{ShortName} {StatusMarker}";
 
     public string StatusMarker => _healthState switch
@@ -159,15 +162,28 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _ => "?"
     };
 
-    public string ToolTip => _healthState switch
+    public string ToolTip
     {
-        ProviderHealthState.Unknown => $"{Definition.DisplayName}: chưa đồng bộ",
-        ProviderHealthState.Missing => $"{Definition.DisplayName}: chưa có connection tên theo profile",
-        ProviderHealthState.Healthy => $"{Definition.DisplayName}: OK · {_connectionCount} connection tên theo profile",
-        ProviderHealthState.Disabled => $"{Definition.DisplayName}: có connection nhưng đang tắt",
-        ProviderHealthState.Error => $"{Definition.DisplayName}: lỗi{FormatErrorDetails()}",
-        _ => Definition.DisplayName
-    };
+        get
+        {
+            var statusText = _healthState switch
+            {
+                ProviderHealthState.Unknown => $"{Definition.DisplayName}: chưa đồng bộ",
+                ProviderHealthState.Missing => $"{Definition.DisplayName}: chưa có connection tên theo profile",
+                ProviderHealthState.Healthy => $"{Definition.DisplayName}: OK · {_connectionCount} connection tên theo profile",
+                ProviderHealthState.Disabled => $"{Definition.DisplayName}: có connection nhưng đang tắt",
+                ProviderHealthState.Error => $"{Definition.DisplayName}: lỗi{FormatErrorDetails()}",
+                _ => Definition.DisplayName
+            };
+
+            if (_hasAutoLoginCredentials)
+            {
+                statusText += " · 🔐 có auto-login";
+            }
+
+            return statusText;
+        }
+    }
 
     public void SetConnectionCount(
         int connectionCount,
@@ -185,6 +201,18 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _lastError = SanitizeLastError(lastError);
         _connections = connections ?? Array.Empty<ProviderConnection>();
         RaiseStatusChanged();
+    }
+
+    public void SetHasAutoLoginCredentials(bool hasCredentials)
+    {
+        if (_hasAutoLoginCredentials == hasCredentials)
+        {
+            return;
+        }
+
+        _hasAutoLoginCredentials = hasCredentials;
+        OnPropertyChanged(nameof(HasAutoLoginCredentials));
+        OnPropertyChanged(nameof(ToolTip));
     }
 
     public void MarkUnknown()
