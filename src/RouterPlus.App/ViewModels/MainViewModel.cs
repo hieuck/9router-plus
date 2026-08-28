@@ -36,6 +36,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ISecretVault _secretVault = new DpapiSecretVault();
     private readonly IGoogleLoginVaultStore _googleLoginVaultStore;
     private readonly GoogleLoginVaultPaths _googleLoginVaultPaths;
+    private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
     private readonly HttpClient _httpClient;
     private readonly IUpdateService _updateService;
@@ -116,6 +117,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _harnessMode = harnessProfiles is not null;
         _googleLoginVaultPaths = new GoogleLoginVaultPaths();
         _googleLoginVaultStore = googleLoginVaultStore ?? new GoogleLoginVaultStore(_googleLoginVaultPaths);
+
+        // Provider connection vault for new auth config system
+        var providerConnectionPath = Path.Combine(
+            Path.GetDirectoryName(_googleLoginVaultPaths.VaultPath) ?? string.Empty,
+            "provider-connections.vault");
+        _providerConnectionVaultStore = new ProviderConnectionVaultStore(providerConnectionPath);
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _quotaPollingService = new QuotaPollingService(
             RefreshForQuotaPollingAsync,
