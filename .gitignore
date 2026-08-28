@@ -15,6 +15,7 @@ ui-*.png
 *.sqlite
 *.patch
 *.csx
+*.bak
 temp_db_query/
 temp_*/
 *_query/
