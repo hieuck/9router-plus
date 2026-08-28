@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:app="clr-namespace:RouterPlus.App"
         xmlns:core="clr-namespace:RouterPlus.Core.Providers;assembly=RouterPlus.Core"
+        xmlns:vm="clr-namespace:RouterPlus.App.ViewModels"
         Title="9Router Profile Tool"
         Icon="Assets/RouterPlus.ico"
         Width="1440"
@@ -707,28 +708,10 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <ToggleButton Margin="0,0,6,6"
-                                                  Padding="8,5"
-                                                  MinWidth="0"
-                                                  MinHeight="0"
+                                    <ToggleButton Style="{StaticResource ProviderFilterButtonStyle}"
                                                   Command="{Binding DataContext.ToggleProviderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                   CommandParameter="{Binding Kind}"
-                                                  IsChecked="{Binding IsSelected, Mode=OneWay}"
                                                   ToolTip="{Binding Tooltip}">
-                                        <ToggleButton.Style>
-                                            <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
-                                                <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
-                                                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-                                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                                                <Style.Triggers>
-                                                    <Trigger Property="IsChecked" Value="True">
-                                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
-                                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                                        <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </ToggleButton.Style>
                                         <TextBlock Text="{Binding DisplayNameWithCount}" FontSize="11" VerticalAlignment="Center" />
                                     </ToggleButton>
                                 </DataTemplate>

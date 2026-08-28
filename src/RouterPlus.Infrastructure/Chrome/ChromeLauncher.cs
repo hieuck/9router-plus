@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Management;
+using System.Runtime.InteropServices;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Diagnostics;
 
@@ -129,7 +130,6 @@ public sealed class ChromeLauncher
             startInfo.ArgumentList.Add("--no-default-browser-check");
             startInfo.ArgumentList.Add("--disable-session-crashed-bubble");
             startInfo.ArgumentList.Add("--hide-crash-restore-bubble");
-            startInfo.ArgumentList.Add("--restore-last-session");
             startInfo.ArgumentList.Add("--new-window");
             startInfo.ArgumentList.Add(markedUri.ToString());
 
@@ -263,10 +263,15 @@ public sealed class ChromeLauncher
     {
         try
         {
+            // Close visible browser windows gracefully so Chromium can persist session tabs
+            // before any remaining helper processes are force-terminated.
+            var processes = Process.GetProcessesByName("chrome");
+            CloseVisibleBrowserWindows(processes);
+
             // Kill ALL chrome.exe processes (CentBrowser, Brave, Chrome share process name).
             // This is required for auto-login because Chrome variants use single-instance with profile locking.
             // Trying to launch a managed Chrome while another Chrome variant holds the user-data-dir lock will fail.
-            var processes = Process.GetProcessesByName("chrome");
+            processes = Process.GetProcessesByName("chrome");
 
             var killedCount = 0;
             var skippedCount = 0;
@@ -333,6 +338,47 @@ public sealed class ChromeLauncher
             DebugConsole.WriteLine($"[ChromeLauncher] Failed to close Chrome processes: {ex.Message}");
             // Non-fatal - proceed with launch attempt
             return false;
+        }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    private const uint WM_CLOSE = 0x0010;
+
+    private static void CloseVisibleBrowserWindows(Process[] processes)
+    {
+        try
+        {
+            var closedCount = 0;
+            foreach (var process in processes)
+            {
+                try
+                {
+                    // Find main window handle
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                    {
+                        // Send WM_CLOSE to allow graceful shutdown
+                        PostMessage(process.MainWindowHandle, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                        closedCount++;
+                    }
+                }
+                catch
+                {
+                    // Process might have no window or exited
+                }
+            }
+
+            if (closedCount > 0)
+            {
+                DebugConsole.WriteLine($"[ChromeLauncher] Sent WM_CLOSE to {closedCount} browser window(s)");
+                // Wait for graceful shutdown before force-killing remaining processes
+                System.Threading.Thread.Sleep(2000);
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugConsole.WriteLine($"[ChromeLauncher] Failed to close browser windows gracefully: {ex.Message}");
         }
     }
 

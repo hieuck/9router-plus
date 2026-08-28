@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options">
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
+                    xmlns:vm="clr-namespace:RouterPlus.App.ViewModels">
     <Color x:Key="SurfaceColor">#F5F7FB</Color>
     <Color x:Key="SidebarColor">#E8EDF5</Color>
     <Color x:Key="PanelColor">#FFFFFF</Color>
@@ -31,6 +32,7 @@
     <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="WarningSoftBrush" Color="#FDF4E5" po:Freeze="False" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="AccentContentBrush" Color="{StaticResource AccentContentColor}" po:Freeze="False" />
 
@@ -434,5 +436,46 @@
     <Style x:Key="InfoPanelStyle" TargetType="Border" BasedOn="{StaticResource InfoPillStyle}">
         <Setter Property="CornerRadius" Value="14" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+
+    <Style x:Key="ProviderFilterButtonStyle" TargetType="ToggleButton">
+        <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Margin" Value="0,0,6,6" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="10"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <!-- Has state: Green -->
+            <DataTrigger Binding="{Binding FilterState}" Value="{x:Static vm:ProviderFilterState.Has}">
+                <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
+            </DataTrigger>
+            <!-- NotHas state: Orange -->
+            <DataTrigger Binding="{Binding FilterState}" Value="{x:Static vm:ProviderFilterState.NotHas}">
+                <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 </ResourceDictionary>

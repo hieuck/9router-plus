@@ -346,6 +346,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public HashSet<ProviderKind> SelectedProviderKinds { get; } = new();
 
+    public Dictionary<ProviderKind, ProviderFilterState> ProviderFilterStates { get; } = new();
+
     public AsyncRelayCommand<ProviderKind> ToggleProviderCommand { get; }
 
     public AsyncRelayCommand ToggleUnassignedProfilesCommand { get; }
@@ -354,16 +356,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void ToggleProvider(ProviderKind kind)
     {
-        if (!SelectedProviderKinds.Add(kind))
+        if (!_providerOptionByKind.TryGetValue(kind, out var option))
+        {
+            return;
+        }
+
+        // Cycle through 3 states: Off -> Has -> NotHas -> Off
+        option.CycleFilterState();
+
+        // Update dictionaries based on new state
+        var newState = option.FilterState;
+        if (newState == ProviderFilterState.Off)
         {
             SelectedProviderKinds.Remove(kind);
+            ProviderFilterStates.Remove(kind);
+        }
+        else
+        {
+            SelectedProviderKinds.Add(kind);
+            ProviderFilterStates[kind] = newState;
         }
 
         IsUnassignedProfileFilterActive = false;
-        if (_providerOptionByKind.TryGetValue(kind, out var option))
-        {
-            option.IsSelected = SelectedProviderKinds.Contains(kind);
-        }
         NotifyProviderFilterChanged();
     }
 
@@ -373,9 +387,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (IsUnassignedProfileFilterActive)
         {
             SelectedProviderKinds.Clear();
+            ProviderFilterStates.Clear();
             foreach (var option in ProviderFilterOptions)
             {
-                option.IsSelected = false;
+                option.FilterState = ProviderFilterState.Off;
             }
         }
 
@@ -390,10 +405,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         SelectedProviderKinds.Clear();
+        ProviderFilterStates.Clear();
         IsUnassignedProfileFilterActive = false;
         foreach (var option in ProviderFilterOptions)
         {
-            option.IsSelected = false;
+            option.FilterState = ProviderFilterState.Off;
         }
 
         NotifyProviderFilterChanged();
@@ -433,10 +449,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 continue;
             }
 
-            var count = ProfileRows.Count(row =>
+            var hasCount = ProfileRows.Count(row =>
                 row.ProviderStatuses.Any(status =>
                     status.Definition.Kind == kind && status.IsConnected));
-            option.SetProfileCount(count);
+            option.SetProfileCounts(hasCount, ProfileRows.Count - hasCount);
+            option.SetProfileCount(hasCount);
         }
     }
 
@@ -1592,8 +1609,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         FilteredProfiles.Clear();
         FilteredProfileRows.Clear();
         var rowsByProfileId = ProfileRows.ToDictionary(row => row.Profile.Id, StringComparer.Ordinal);
-        var selectedProviders = SelectedProviderKinds;
-        var hasProviderFilter = selectedProviders.Count > 0;
+        var hasProviderFilter = ProviderFilterStates.Count > 0;
         var displayIndex = 1;
         foreach (var profile in ChromeProfileFilter.Filter(Profiles, ProfileSearchText))
         {
@@ -1606,9 +1622,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 continue;
             }
-            if (hasProviderFilter && !row.ProviderStatuses.Any(status => selectedProviders.Contains(status.Definition.Kind) && status.IsConnected))
+            if (hasProviderFilter)
             {
-                continue;
+                // Check all provider filters - ALL must match (AND logic)
+                var passesAllFilters = true;
+                foreach (var (kind, state) in ProviderFilterStates)
+                {
+                    var hasConnection = row.ProviderStatuses.Any(status =>
+                        status.Definition.Kind == kind && status.IsConnected);
+
+                    if (state == ProviderFilterState.Has && !hasConnection)
+                    {
+                        passesAllFilters = false;
+                        break;
+                    }
+                    if (state == ProviderFilterState.NotHas && hasConnection)
+                    {
+                        passesAllFilters = false;
+                        break;
+                    }
+                }
+
+                if (!passesAllFilters)
+                {
+                    continue;
+                }
             }
             FilteredProfiles.Add(profile);
             row.SetDisplayIndex(displayIndex++);
@@ -2271,10 +2309,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProviderKind provider,
         CancellationToken cancellationToken = default)
     {
-        if (SelectedProfile is null)
-        {
-            throw new InvalidOperationException("Hãy chọn Chrome profile trước.");
-        }
+        var profile = SelectedProfile ?? throw new InvalidOperationException("Hãy chọn Chrome profile trước.");
 
         var connection = await api.WaitForNewConnectionAsync(
             provider,
@@ -2284,12 +2319,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             cancellationToken);
         await api.UpdateConnectionAsync(
             connection.Id,
-            name: SelectedProfile.Name,
+            name: profile.Name,
             cancellationToken: cancellationToken);
         _workflowExistingConnections[connection.Id] = connection;
         _currentWorkflowProvider = null;
         await RefreshConnectionStatusesAsync(showStatus: false);
-        StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {SelectedProfile.Name}.";
+        StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.";
         ShowToast(StatusText, ToastType.Success, 5);
         WaitForConnectionCommand.RaiseCanExecuteChanged();
     }

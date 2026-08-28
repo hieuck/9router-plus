@@ -34,6 +34,7 @@ public static class ThemeManager
                 ["BorderBrush"] = "#CBD5E1",
                 ["SuccessBrush"] = "#0F9F6E",
                 ["WarningBrush"] = "#B7791F",
+                ["WarningSoftBrush"] = "#FDF4E5",
                 ["DangerBrush"] = "#D53F5F",
                 ["AccentContentBrush"] = "#FFFFFF"
             }
@@ -53,6 +54,7 @@ public static class ThemeManager
                 ["BorderBrush"] = "#293B54",
                 ["SuccessBrush"] = "#70E0A9",
                 ["WarningBrush"] = "#F7C873",
+                ["WarningSoftBrush"] = "#3D3420",
                 ["DangerBrush"] = "#FF8D9E",
                 ["AccentContentBrush"] = "#0A0F1A"
             };
