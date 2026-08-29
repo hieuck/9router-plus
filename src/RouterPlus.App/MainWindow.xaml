@@ -2336,7 +2336,86 @@
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource TextBrush}" />
             </Grid>
-        </Border>    </Grid>
+        </Border>
+
+        <!-- Batch Progress Overlay (Phase 3) -->
+        <Border Background="#99000000"
+                Grid.RowSpan="3"
+                Grid.ColumnSpan="3">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsBatchLoginRunning}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Border Width="600" Height="400"
+                    Background="{DynamicResource SurfaceBrush}"
+                    CornerRadius="16"
+                    Padding="24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <StackPanel>
+                        <TextBlock Text="🔐 Batch Auto Login"
+                                   FontSize="16"
+                                   FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding BatchProgressSummary}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+
+                    <!-- Progress List -->
+                    <ScrollViewer Grid.Row="2" Margin="0,16,0,0"
+                                  VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding BatchProgressRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="0,8"
+                                            BorderThickness="0,0,0,1"
+                                            BorderBrush="{DynamicResource BorderBrush}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding StatusIcon}"
+                                                       FontSize="16"
+                                                       VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Margin="12,0">
+                                                <TextBlock Text="{Binding ProfileName}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding StatusMessage}"
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource MutedTextBrush}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding DurationText}"
+                                                       FontSize="10"
+                                                       VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Border>
+    </Grid>
 </Window>
 
 

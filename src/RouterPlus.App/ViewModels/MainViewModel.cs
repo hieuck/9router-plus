@@ -375,6 +375,37 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    // Batch Phase 3: Progress tracking
+    public ObservableCollection<BatchLoginProgressRow> BatchProgressRows { get; } = new();
+
+    private bool _isBatchLoginRunning;
+    public bool IsBatchLoginRunning
+    {
+        get => _isBatchLoginRunning;
+        set
+        {
+            if (_isBatchLoginRunning == value) return;
+            _isBatchLoginRunning = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BatchProgressSummary));
+        }
+    }
+
+    public string BatchProgressSummary
+    {
+        get
+        {
+            var total = BatchProgressRows.Count;
+            var completed = BatchProgressRows.Count(r =>
+                r.State == BatchLoginState.Success ||
+                r.State == BatchLoginState.Failed ||
+                r.State == BatchLoginState.Skipped);
+            var success = BatchProgressRows.Count(r => r.State == BatchLoginState.Success);
+            var failed = BatchProgressRows.Count(r => r.State == BatchLoginState.Failed);
+            return $"{completed}/{total} · {success} thành công · {failed} lỗi";
+        }
+    }
+
     public IReadOnlyList<ProfileProviderFilterOption> ProviderFilterOptions { get; private set; } = Array.Empty<ProfileProviderFilterOption>();
 
     private readonly Dictionary<ProviderKind, ProfileProviderFilterOption> _providerOptionByKind = new();
