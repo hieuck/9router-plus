@@ -145,6 +145,16 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
+    private void OpenCredentialsManager_Click(object sender, RoutedEventArgs e)
+    {
+        UIEventLogger.LogClick("OpenCredentialsManager");
+        var dialog = new CredentialsManagerDialog(ViewModel)
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
+    }
+
     private async void RunSetupWizard_Click(object sender, RoutedEventArgs e)
     {
         var wizard = new WelcomeWizardWindow(new SettingsStore());

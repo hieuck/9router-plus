@@ -1119,6 +1119,7 @@
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Content="↻  Đồng bộ" Command="{Binding RefreshConnectionStatusesCommand}" />
+                <Button Content="🔐  Credentials" VerticalAlignment="Center" ToolTip="Quản lý credentials" Click="OpenCredentialsManager_Click" />
                 <Button Content="?  Trợ giúp" VerticalAlignment="Center" ToolTip="Trợ giúp và cập nhật" Click="HelpMenu_Click">
                     <Button.ContextMenu>
                         <ContextMenu Placement="Bottom">
