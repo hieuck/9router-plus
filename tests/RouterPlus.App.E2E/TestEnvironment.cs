@@ -2,60 +2,60 @@ using System.Text.Json;
 
 namespace RouterPlus.App.E2E;
 
+/// <summary>
+/// Creates isolated test environment with synthetic Chrome profiles.
+/// </summary>
 public sealed class TestEnvironment : IAsyncDisposable
 {
     private TestEnvironment(string rootPath)
     {
         RootPath = rootPath;
         SettingsPath = Path.Combine(rootPath, "settings.json");
-        HarnessManifestPath = Path.Combine(rootPath, "harness-manifest.json");
-        ArtifactPath = Path.Combine(rootPath, "artifacts");
+        ManifestPath = Path.Combine(rootPath, "harness-manifest.json");
     }
 
     public string RootPath { get; }
     public string SettingsPath { get; }
-    public string HarnessManifestPath { get; }
-    public string ArtifactPath { get; }
+    public string ManifestPath { get; }
 
     public static async Task<TestEnvironment> CreateAsync()
     {
-        var rootPath = Path.Combine(Path.GetTempPath(), "RouterPlusHarness", Guid.NewGuid().ToString("N"));
+        var rootPath = Path.Combine(Path.GetTempPath(), "RouterPlusE2E", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(rootPath);
-        Directory.CreateDirectory(Path.Combine(rootPath, "artifacts"));
 
-        var environment = new TestEnvironment(rootPath);
+        var env = new TestEnvironment(rootPath);
+
+        // Write manifest with 2 synthetic profiles
         var manifest = new
         {
             Profiles = new[]
             {
-                new { Name = "Harness Alpha", DirectoryName = "Default" },
-                new { Name = "Harness Beta", DirectoryName = "Profile 1" }
+                new { Name = "Test Profile 1", DirectoryName = "Default" },
+                new { Name = "Test Profile 2", DirectoryName = "Profile 1" }
             }
         };
+
         await File.WriteAllTextAsync(
-            environment.HarnessManifestPath,
+            env.ManifestPath,
             JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
-        return environment;
+
+        return env;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (string.Equals(Environment.GetEnvironmentVariable("ROUTERPLUS_HARNESS_KEEP_ARTIFACTS"), "1", StringComparison.Ordinal))
-        {
-            return ValueTask.CompletedTask;
-        }
+        await Task.Yield();
 
-        try
+        if (Directory.Exists(RootPath))
         {
-            if (Directory.Exists(RootPath))
+            try
             {
                 Directory.Delete(RootPath, recursive: true);
             }
+            catch (IOException)
+            {
+                // Windows may hold file handles briefly
+            }
         }
-        catch (IOException)
-        {
-            // Preserve test result if cleanup is delayed by Windows file handles.
-        }
-        return ValueTask.CompletedTask;
     }
 }

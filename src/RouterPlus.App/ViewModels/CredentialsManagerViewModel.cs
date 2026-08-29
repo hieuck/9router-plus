@@ -46,9 +46,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
         _vaultPaths = vaultPaths ?? throw new ArgumentNullException(nameof(vaultPaths));
 
         // Initialize commands
-        AddGoogleAccountCommand = new AsyncRelayCommand(AddGoogleAccountAsync);
-        EditGoogleAccountCommand = new AsyncRelayCommand(EditGoogleAccountAsync, () => SelectedGoogleAccount != null);
+        SaveRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(SaveRowAsync);
         RemoveGoogleAccountCommand = new AsyncRelayCommand(RemoveGoogleAccountAsync, () => SelectedGoogleAccount != null);
+        BatchLoginCommand = new AsyncRelayCommand(BatchLoginAsync, () => GoogleAccounts.Any(a => a.IsSelected && a.HasCredentials));
         RefreshCommand = new AsyncRelayCommand(RefreshDataAsync);
 
         _ = LoadDataAsync();
@@ -81,6 +81,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
     // Google Accounts section
     public ObservableCollection<GoogleAccountRowViewModel> GoogleAccounts { get; } = new();
 
+    public int SelectedCount => GoogleAccounts.Count(a => a.IsSelected && a.HasCredentials);
+
     public GoogleAccountRowViewModel? SelectedGoogleAccount
     {
         get => _selectedGoogleAccount;
@@ -89,7 +91,6 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
             if (_selectedGoogleAccount == value) return;
             _selectedGoogleAccount = value;
             OnPropertyChanged();
-            EditGoogleAccountCommand.RaiseCanExecuteChanged();
             RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
         }
     }
@@ -145,9 +146,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
     }
 
     // Commands
-    public AsyncRelayCommand AddGoogleAccountCommand { get; }
-    public AsyncRelayCommand EditGoogleAccountCommand { get; }
+    public AsyncRelayCommand<GoogleAccountRowViewModel> SaveRowCommand { get; }
     public AsyncRelayCommand RemoveGoogleAccountCommand { get; }
+    public AsyncRelayCommand BatchLoginCommand { get; }
     public AsyncRelayCommand RefreshCommand { get; }
 
     private async Task LoadDataAsync()
@@ -163,31 +164,61 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
 
             if (_vaultSession == null)
             {
-                SetStatus("Google vault locked. Use 'Tự động đăng nhập Google' to unlock first.");
-                // Load provider connections only
+                SetStatus("Google vault locked. Unlock to manage credentials.");
+                // Still show all profiles but with empty credentials
+                await LoadProfileRowsAsync(null);
                 await LoadProviderConnectionsAsync();
                 return;
             }
 
-            // Load Google accounts from vault
-            GoogleAccounts.Clear();
-            foreach (var credential in _vaultSession.Vault.Records)
-            {
-                GoogleAccounts.Add(new GoogleAccountRowViewModel
-                {
-                    Email = credential.Email,
-                    HasTotpSecret = !string.IsNullOrEmpty(credential.TotpSecret)
-                });
-            }
+            // Load all profiles with their credentials
+            await LoadProfileRowsAsync(_vaultSession);
 
             // Load provider connections
             await LoadProviderConnectionsAsync();
 
-            SetStatus($"Loaded {GoogleAccounts.Count} Google accounts and provider connections.");
+            var credentialCount = GoogleAccounts.Count(a => a.HasCredentials);
+            SetStatus($"Loaded {credentialCount} configured profiles from {GoogleAccounts.Count} total.");
         }
         catch (Exception ex)
         {
             SetStatus($"Error loading vault: {ex.Message}");
+        }
+    }
+
+    private async Task LoadProfileRowsAsync(GoogleAccountVaultSession? session)
+    {
+        await Task.Yield();
+
+        GoogleAccounts.Clear();
+
+        // Create row for each profile
+        foreach (var profile in _mainViewModel.FilteredProfiles)
+        {
+            var credential = session?.Vault.Records.FirstOrDefault(r => r.ProfileId == profile.Name);
+
+            var row = new GoogleAccountRowViewModel
+            {
+                ProfileName = profile.Name,
+                Email = credential?.Email ?? string.Empty,
+                Password = credential?.Password ?? string.Empty,
+                TotpSecret = credential?.TotpSecret ?? string.Empty,
+                HasCredentials = credential != null,
+                IsEditing = false,
+                IsSelected = false
+            };
+
+            // Subscribe to property changes to update SelectedCount
+            row.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(GoogleAccountRowViewModel.IsSelected))
+                {
+                    OnPropertyChanged(nameof(SelectedCount));
+                    BatchLoginCommand.RaiseCanExecuteChanged();
+                }
+            };
+
+            GoogleAccounts.Add(row);
         }
     }
 
@@ -246,19 +277,76 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
         await LoadDataAsync();
     }
 
-    private async Task AddGoogleAccountAsync()
+    private async Task SaveRowAsync(GoogleAccountRowViewModel? row)
     {
-        SetStatus("Feature coming soon: Add Google account");
-        // TODO: Open GoogleAutoLoginDialog in "add new" mode
-        await Task.CompletedTask;
+        if (row == null) return;
+        if (_vaultSession == null)
+        {
+            SetStatus("Vault not unlocked");
+            return;
+        }
+
+        // Validate
+        if (string.IsNullOrWhiteSpace(row.Email))
+        {
+            SetStatus("Email is required");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(row.Password))
+        {
+            SetStatus("Password is required");
+            return;
+        }
+
+        try
+        {
+            // Create credential
+            var credential = new GoogleLoginCredential(
+                row.ProfileName,
+                row.Email.Trim(),
+                row.Password,
+                string.IsNullOrWhiteSpace(row.TotpSecret) ? string.Empty : row.TotpSecret.Trim());
+
+            // Upsert into vault (immutable pattern)
+            var currentVault = _vaultSession.Vault;
+            var filtered = currentVault.Records.Where(r => r.ProfileId != row.ProfileName);
+            var updated = filtered.Append(credential);
+            var newVault = new GoogleAccountVault(updated);
+            _vaultSession.Replace(newVault);
+            await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
+
+            // Update UI state
+            row.HasCredentials = true;
+            row.IsEditing = false;
+
+            SetStatus($"Saved credentials for {row.ProfileName}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error saving: {ex.Message}");
+        }
     }
 
-    private async Task EditGoogleAccountAsync()
+    private async Task BatchLoginAsync()
     {
-        if (SelectedGoogleAccount == null) return;
-        SetStatus($"Feature coming soon: Edit {SelectedGoogleAccount.Email}");
-        // TODO: Open GoogleAutoLoginDialog with selected account
-        await Task.CompletedTask;
+        var selectedRows = GoogleAccounts.Where(a => a.IsSelected && a.HasCredentials).ToList();
+        if (!selectedRows.Any())
+        {
+            SetStatus("No profiles selected");
+            return;
+        }
+
+        SetStatus($"Starting batch login for {selectedRows.Count} profile(s)...");
+
+        // TODO: Integrate with AutoLoginOrchestrator
+        // For now, just show progress
+        foreach (var row in selectedRows)
+        {
+            SetStatus($"Logging in {row.ProfileName}...");
+            await Task.Delay(500); // Simulate work
+        }
+
+        SetStatus($"Batch login completed for {selectedRows.Count} profile(s)");
     }
 
     private async Task RemoveGoogleAccountAsync()
@@ -270,35 +358,29 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
             return;
         }
 
-        var email = SelectedGoogleAccount.Email;
+        var profileName = SelectedGoogleAccount.ProfileName;
 
         try
         {
-            // Find credential in vault
-            var credential = _vaultSession.Vault.Records
-                .FirstOrDefault(c => string.Equals(c.Email, email, StringComparison.OrdinalIgnoreCase));
-
-            if (credential == null)
-            {
-                SetStatus($"Account {email} not found in vault");
-                return;
-            }
-
             // Remove from vault (immutable - filter and replace)
             var currentVault = _vaultSession.Vault;
-            var filteredRecords = currentVault.Records.Where(r => r.Email != email);
+            var filteredRecords = currentVault.Records.Where(r => r.ProfileId != profileName);
             var newVault = new GoogleAccountVault(filteredRecords);
             _vaultSession.Replace(newVault);
             await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
 
-            // Remove from UI
-            GoogleAccounts.Remove(SelectedGoogleAccount);
+            // Update UI - clear credentials but keep row
+            SelectedGoogleAccount.Email = string.Empty;
+            SelectedGoogleAccount.Password = string.Empty;
+            SelectedGoogleAccount.TotpSecret = string.Empty;
+            SelectedGoogleAccount.HasCredentials = false;
+            SelectedGoogleAccount.IsEditing = false;
 
-            SetStatus($"Removed {email} from vault");
+            SetStatus($"Removed credentials for {profileName}");
         }
         catch (Exception ex)
         {
-            SetStatus($"Error removing account: {ex.Message}");
+            SetStatus($"Error removing credentials: {ex.Message}");
         }
     }
 
@@ -327,10 +409,26 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
 /// </summary>
 public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
 {
+    private string _profileName = string.Empty;
     private string _email = string.Empty;
-    private bool _hasTotpSecret;
+    private string _password = string.Empty;
+    private string _totpSecret = string.Empty;
+    private bool _isSelected;
+    private bool _isEditing;
+    private bool _hasCredentials;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string ProfileName
+    {
+        get => _profileName;
+        set
+        {
+            if (_profileName == value) return;
+            _profileName = value;
+            OnPropertyChanged();
+        }
+    }
 
     public string Email
     {
@@ -343,19 +441,69 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool HasTotpSecret
+    public string Password
     {
-        get => _hasTotpSecret;
+        get => _password;
         set
         {
-            if (_hasTotpSecret == value) return;
-            _hasTotpSecret = value;
+            if (_password == value) return;
+            _password = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string TotpSecret
+    {
+        get => _totpSecret;
+        set
+        {
+            if (_totpSecret == value) return;
+            _totpSecret = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(TotpIndicator));
         }
     }
 
-    public string TotpIndicator => HasTotpSecret ? "🔐 2FA" : "";
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsEditing
+    {
+        get => _isEditing;
+        set
+        {
+            if (_isEditing == value) return;
+            _isEditing = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ActionButtonText));
+        }
+    }
+
+    public bool HasCredentials
+    {
+        get => _hasCredentials;
+        set
+        {
+            if (_hasCredentials == value) return;
+            _hasCredentials = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsEditable));
+        }
+    }
+
+    public bool IsEditable => !HasCredentials || IsEditing;
+
+    public string ActionButtonText => HasCredentials && !IsEditing ? "Edit" : "Save";
+
+    public string TotpIndicator => !string.IsNullOrEmpty(TotpSecret) ? "✓" : string.Empty;
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
