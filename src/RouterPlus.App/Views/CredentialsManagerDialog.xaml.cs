@@ -2,6 +2,7 @@ using RouterPlus.App.ViewModels;
 using RouterPlus.App.Diagnostics;
 using RouterPlus.Core;
 using System.Windows;
+using System.Windows.Controls;
 using MessageBox = System.Windows.MessageBox;
 
 namespace RouterPlus.App.Views;
@@ -82,6 +83,14 @@ public partial class CredentialsManagerDialog : Window
             return;
 
         await _viewModel.RemoveGoogleAccountAsync(email);
+    }
+
+    private void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox passwordBox && passwordBox.DataContext is GoogleAccountRowViewModel row)
+        {
+            row.Password = passwordBox.Password;
+        }
     }
 
     // Codex Configuration
