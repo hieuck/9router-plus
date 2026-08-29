@@ -1,4 +1,6 @@
 using System.Text.Json;
+using RouterPlus.Core.Security;
+using RouterPlus.Infrastructure.Security;
 
 namespace RouterPlus.App.E2E;
 
@@ -30,8 +32,8 @@ public sealed class TestEnvironment : IAsyncDisposable
         {
             Profiles = new[]
             {
-                new { Name = "Test Profile 1", DirectoryName = "Default" },
-                new { Name = "Test Profile 2", DirectoryName = "Profile 1" }
+                new { Name = "Harness Alpha", DirectoryName = "Default" },
+                new { Name = "Harness Beta", DirectoryName = "Profile 1" }
             }
         };
 
@@ -39,7 +41,27 @@ public sealed class TestEnvironment : IAsyncDisposable
             env.ManifestPath,
             JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
 
+        await SeedGoogleVaultAsync(env);
         return env;
+    }
+
+    private static async Task SeedGoogleVaultAsync(TestEnvironment environment)
+    {
+        var paths = new GoogleAccountVaultPaths(Path.Combine(environment.RootPath, "Vault"));
+        using var store = new GoogleAccountVaultStore(paths);
+        await using var session = await store.CreateAsync(
+            paths.VaultPath,
+            "harness-vault-password",
+            CancellationToken.None);
+
+        var vault = new GoogleAccountVault(new[]
+        {
+            new GoogleLoginCredential("Harness Alpha", "alpha@example.test", "alpha-password", "NONE"),
+            new GoogleLoginCredential("Harness Beta", "beta@example.test", "beta-password", "JBSWY3DPEHPK3PXP")
+        });
+        session.Replace(vault);
+        await store.SaveAsync(session, CancellationToken.None);
+        await session.RememberAsync(CancellationToken.None);
     }
 
     public async ValueTask DisposeAsync()

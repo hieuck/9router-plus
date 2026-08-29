@@ -12,9 +12,9 @@ public sealed class ProfileManagementTests
         await using var app = await AppProcess.StartAsync(env);
         var driver = new AppDriver(app);
 
-        driver.ClickProfile("Test Profile 1");
+        driver.ClickProfile("Harness Alpha");
 
-        var selected = driver.TryFindProfile("Test Profile 1");
+        var selected = driver.TryFindProfile("Harness Alpha");
         Assert.NotNull(selected);
     }
 
@@ -25,12 +25,12 @@ public sealed class ProfileManagementTests
         await using var app = await AppProcess.StartAsync(env);
         var driver = new AppDriver(app);
 
-        driver.ClickProfile("Test Profile 1");
-        var profile1 = driver.TryFindProfile("Test Profile 1");
+        driver.ClickProfile("Harness Alpha");
+        var profile1 = driver.TryFindProfile("Harness Alpha");
         Assert.NotNull(profile1);
 
-        driver.ClickProfile("Test Profile 2");
-        var profile2 = driver.TryFindProfile("Test Profile 2");
+        driver.ClickProfile("Harness Beta");
+        var profile2 = driver.TryFindProfile("Harness Beta");
         Assert.NotNull(profile2);
     }
 }

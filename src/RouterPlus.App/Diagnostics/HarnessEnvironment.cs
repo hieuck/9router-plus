@@ -1,5 +1,7 @@
 using System.IO;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Security;
+using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
 
 namespace RouterPlus.App.Diagnostics;
@@ -42,6 +44,9 @@ internal static class HarnessEnvironment
 
     public static SettingsStore CreateSettingsStore() =>
         new(IsEnabled ? SettingsPath : null);
+
+    public static GoogleAccountVaultPaths CreateGoogleAccountVaultPaths() =>
+        new(Path.Combine(GetRequiredRootPath(), "Vault"));
 
     public static void Trace(string message)
     {

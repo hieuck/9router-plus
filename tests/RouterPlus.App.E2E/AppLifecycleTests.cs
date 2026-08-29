@@ -21,8 +21,8 @@ public sealed class AppLifecycleTests
         await using var app = await AppProcess.StartAsync(env);
         var driver = new AppDriver(app);
 
-        var profile1 = driver.TryFindProfile("Test Profile 1");
-        var profile2 = driver.TryFindProfile("Test Profile 2");
+        var profile1 = driver.TryFindProfile("Harness Alpha");
+        var profile2 = driver.TryFindProfile("Harness Beta");
 
         Assert.NotNull(profile1);
         Assert.NotNull(profile2);

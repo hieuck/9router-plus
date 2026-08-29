@@ -111,6 +111,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IExternalLinkLauncher? linkLauncher = null,
         bool runStartupUpdateCheck = false,
         IGoogleAccountVaultStore? googleLoginVaultStore = null,
+        GoogleAccountVaultPaths? googleLoginVaultPaths = null,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null,
         IReadOnlyList<ChromeProfile>? harnessProfiles = null)
     {
@@ -123,7 +124,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _runStartupUpdateCheck = runStartupUpdateCheck;
         _harnessProfiles = harnessProfiles;
         _harnessMode = harnessProfiles is not null;
-        _googleLoginVaultPaths = new GoogleAccountVaultPaths();
+        _googleLoginVaultPaths = googleLoginVaultPaths ?? new GoogleAccountVaultPaths();
         _googleLoginVaultStore = googleLoginVaultStore ?? new GoogleAccountVaultStore(_googleLoginVaultPaths);
 
         // Provider connection vault for new auth config system

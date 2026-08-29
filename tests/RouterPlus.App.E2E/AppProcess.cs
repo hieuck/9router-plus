@@ -24,6 +24,8 @@ public sealed class AppProcess : IAsyncDisposable
 
     public Window MainWindow { get; }
 
+    public AutomationElement Desktop => _automation.GetDesktop();
+
     public static async Task<AppProcess> StartAsync(TestEnvironment environment)
     {
         var exePath = Path.GetFullPath(

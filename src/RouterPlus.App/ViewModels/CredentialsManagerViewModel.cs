@@ -280,6 +280,15 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
     private async Task SaveRowAsync(GoogleAccountRowViewModel? row)
     {
         if (row == null) return;
+
+        // Existing rows enter edit mode before the command saves changes.
+        if (row.HasCredentials && !row.IsEditing)
+        {
+            row.IsEditing = true;
+            SetStatus($"Editing credentials for {row.ProfileName}");
+            return;
+        }
+
         if (_vaultSession == null)
         {
             SetStatus("Vault not unlocked");
