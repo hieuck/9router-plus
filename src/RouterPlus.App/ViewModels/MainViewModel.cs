@@ -1900,13 +1900,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
                     row.StatusMessage = "Đang đăng nhập...";
 
-                    // Note: Full provider-specific login logic would go here.
-                    // For now, simulate with delay to demonstrate UI flow.
-                    await Task.Delay(1500, ct);
-
-                    row.State = BatchLoginState.Success;
-                    row.StatusMessage = "Đăng nhập thành công";
+                    // Try login with each provider that has credentials
+                    var anySuccess = await TryLoginProfileAllProvidersAsync(profile, row, ct);
                     row.Duration = sw.Elapsed;
+
+                    if (anySuccess)
+                    {
+                        row.State = BatchLoginState.Success;
+                    }
+                    else if (row.State == BatchLoginState.InProgress)
+                    {
+                        row.State = BatchLoginState.Failed;
+                        if (string.IsNullOrEmpty(row.StatusMessage) || row.StatusMessage == "Đang đăng nhập...")
+                        {
+                            row.StatusMessage = "Không thể đăng nhập";
+                        }
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -1966,6 +1975,103 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void StopBatchLogin()
     {
         _batchLoginCts?.Cancel();
+    }
+
+    /// <summary>
+    /// Try auto-login for a profile across all providers that have credentials.
+    /// Returns true if any provider login succeeds.
+    /// </summary>
+    private async Task<bool> TryLoginProfileAllProvidersAsync(
+        ChromeProfile profile,
+        BatchLoginProgressRow row,
+        CancellationToken ct)
+    {
+        if (_installation is null)
+        {
+            row.StatusMessage = "Chrome chưa được cấu hình";
+            return false;
+        }
+
+        bool anySuccess = false;
+
+        foreach (ProviderKind kind in Enum.GetValues(typeof(ProviderKind)))
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return anySuccess;
+            }
+
+            // Skip providers without auto-login support
+            if (kind == ProviderKind.Ollama || kind == ProviderKind.Kimchi)
+            {
+                continue;
+            }
+
+            bool hasCreds = false;
+            try
+            {
+                hasCreds = await _providerConnectionVaultStore.HasCredentialsAsync(
+                    profile.Name, kind, ct);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!hasCreds)
+            {
+                continue;
+            }
+
+            row.StatusMessage = $"Đang đăng nhập {kind}...";
+
+            try
+            {
+                var startUri = GetProviderLoginUri(kind);
+                var result = await RunAutoLoginWithOrchestratorAsync(profile, kind, startUri, ct);
+
+                if (result.Success)
+                {
+                    row.StatusMessage = $"Thành công ({kind})";
+                    anySuccess = true;
+                    // Stop trying other providers once one succeeds
+                    break;
+                }
+                else
+                {
+                    row.StatusMessage = $"{kind}: {result.ErrorMessage}";
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                row.StatusMessage = $"{kind}: {ex.Message}";
+                DebugLogger.LogError(
+                    DiagnosticCategories.ViewModel,
+                    $"Provider {kind} login failed for {profile.Name}: {ex.Message}",
+                    ex);
+            }
+        }
+
+        return anySuccess;
+    }
+
+    /// <summary>
+    /// Get the login URL for a provider.
+    /// </summary>
+    private static Uri GetProviderLoginUri(ProviderKind provider)
+    {
+        return provider switch
+        {
+            ProviderKind.Codex => new Uri("https://chatgpt.com/"),
+            ProviderKind.Kiro => new Uri("https://view.awsapps.com/"),
+            ProviderKind.GitHub => new Uri("https://github.com/login"),
+            ProviderKind.OpenRouter => new Uri("https://openrouter.ai/"),
+            _ => new Uri("https://chatgpt.com/")
+        };
     }
 
     private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
