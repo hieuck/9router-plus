@@ -39,6 +39,8 @@ public sealed class AutoLoginOrchestrator
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(startUri);
+
         // Get connection config
         var connection = await _connectionVault.GetConnectionAsync(profileName, provider, cancellationToken);
         if (connection == null)
