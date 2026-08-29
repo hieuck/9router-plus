@@ -174,8 +174,11 @@ public sealed class AutoLoginOrchestrator
                     cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName, totpGenerator),
                 ProviderKind.Codex => new CodexOAuthAutomation(
                     cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName),
-                _ => new CodexOAuthAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName)
+                ProviderKind.GitHub => new GitHubOAuthAutomation(
+                    cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName),
+                ProviderKind.OpenRouter => new OpenRouterOAuthAutomation(
+                    cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName),
+                _ => throw new NotSupportedException($"Google OAuth not supported for provider {provider}")
             };
 
             var result = await automation.WaitAndConsentAsync(loginUrl, timeout, cancellationToken);
