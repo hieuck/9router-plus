@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
+using RouterPlus.Core.Chrome;
+using RouterPlus.Infrastructure.Storage;
 
 namespace RouterPlus.App.ViewModels;
 
@@ -12,19 +14,30 @@ namespace RouterPlus.App.ViewModels;
 /// </summary>
 public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
 {
-    private string _selectedTabName = "Google";
+    private int _selectedTabIndex;
     private string _statusMessage = string.Empty;
+    private GoogleAccountRowViewModel? _selectedGoogleAccount;
+    private ProviderConnectionRowViewModel? _selectedCodexConnection;
+    private ProviderConnectionRowViewModel? _selectedKiroConnection;
+    private ProviderConnectionRowViewModel? _selectedGitHubConnection;
+    private ProviderConnectionRowViewModel? _selectedOpenRouterConnection;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    // Selected tab
-    public string SelectedTabName
+    public CredentialsManagerViewModel(MainViewModel mainViewModel)
     {
-        get => _selectedTabName;
+        ArgumentNullException.ThrowIfNull(mainViewModel);
+        LoadData(mainViewModel);
+    }
+
+    // Selected tab index
+    public int SelectedTabIndex
+    {
+        get => _selectedTabIndex;
         set
         {
-            if (_selectedTabName == value) return;
-            _selectedTabName = value;
+            if (_selectedTabIndex == value) return;
+            _selectedTabIndex = value;
             OnPropertyChanged();
         }
     }
@@ -44,11 +57,104 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
     // Google Accounts section
     public ObservableCollection<GoogleAccountRowViewModel> GoogleAccounts { get; } = new();
 
+    public GoogleAccountRowViewModel? SelectedGoogleAccount
+    {
+        get => _selectedGoogleAccount;
+        set
+        {
+            if (_selectedGoogleAccount == value) return;
+            _selectedGoogleAccount = value;
+            OnPropertyChanged();
+        }
+    }
+
     // Provider connections per provider
     public ObservableCollection<ProviderConnectionRowViewModel> CodexConnections { get; } = new();
     public ObservableCollection<ProviderConnectionRowViewModel> KiroConnections { get; } = new();
     public ObservableCollection<ProviderConnectionRowViewModel> GitHubConnections { get; } = new();
     public ObservableCollection<ProviderConnectionRowViewModel> OpenRouterConnections { get; } = new();
+
+    public ProviderConnectionRowViewModel? SelectedCodexConnection
+    {
+        get => _selectedCodexConnection;
+        set
+        {
+            if (_selectedCodexConnection == value) return;
+            _selectedCodexConnection = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public ProviderConnectionRowViewModel? SelectedKiroConnection
+    {
+        get => _selectedKiroConnection;
+        set
+        {
+            if (_selectedKiroConnection == value) return;
+            _selectedKiroConnection = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public ProviderConnectionRowViewModel? SelectedGitHubConnection
+    {
+        get => _selectedGitHubConnection;
+        set
+        {
+            if (_selectedGitHubConnection == value) return;
+            _selectedGitHubConnection = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public ProviderConnectionRowViewModel? SelectedOpenRouterConnection
+    {
+        get => _selectedOpenRouterConnection;
+        set
+        {
+            if (_selectedOpenRouterConnection == value) return;
+            _selectedOpenRouterConnection = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private void LoadData(MainViewModel mainViewModel)
+    {
+        // TODO: Load Google accounts from GoogleAccountVaultStore
+        // For now, show placeholder
+        GoogleAccounts.Add(new GoogleAccountRowViewModel
+        {
+            Email = "example@gmail.com (placeholder)",
+            HasTotpSecret = true
+        });
+
+        SetStatus("Credentials Manager: UI skeleton ready. Vault integration pending.");
+
+        // TODO: Load provider connections from vault stores
+        // For now, create placeholders for each profile
+        foreach (var profile in mainViewModel.FilteredProfiles)
+        {
+            // Add placeholder for each provider
+            var providers = new[]
+            {
+                (ProviderKind.Codex, CodexConnections),
+                (ProviderKind.Kiro, KiroConnections),
+                (ProviderKind.GitHub, GitHubConnections),
+                (ProviderKind.OpenRouter, OpenRouterConnections)
+            };
+
+            foreach (var (kind, collection) in providers)
+            {
+                collection.Add(new ProviderConnectionRowViewModel
+                {
+                    ProfileName = profile.Name,
+                    PreferredMethod = AuthMethod.GoogleOAuth,
+                    LinkedGoogleAccount = "Not configured",
+                    HasDirectCredentials = false
+                });
+            }
+        }
+    }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {

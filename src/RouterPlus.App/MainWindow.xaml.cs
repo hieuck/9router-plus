@@ -148,7 +148,8 @@ public partial class MainWindow : Window
     private void OpenCredentialsManager_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("OpenCredentialsManager");
-        var dialog = new CredentialsManagerDialog(ViewModel)
+        var viewModel = new CredentialsManagerViewModel(ViewModel);
+        var dialog = new CredentialsManagerDialog(viewModel)
         {
             Owner = this
         };
