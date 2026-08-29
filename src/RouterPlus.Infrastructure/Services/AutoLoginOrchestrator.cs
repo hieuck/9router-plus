@@ -232,8 +232,11 @@ public sealed class AutoLoginOrchestrator
                     cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator),
                 ProviderKind.OpenRouter => new OpenRouterDirectLoginAutomation(
                     cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator),
-                _ => new GitHubDirectLoginAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator)
+                ProviderKind.Codex => new CodexDirectLoginAutomation(
+                    cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator),
+                ProviderKind.Kiro => new KiroDirectLoginAutomation(
+                    cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator),
+                _ => throw new NotSupportedException($"Direct login not supported for provider {provider}")
             };
 
             var result = await automation.RunAsync(timeout, cancellationToken);
