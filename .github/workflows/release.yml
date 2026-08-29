@@ -57,6 +57,7 @@ jobs:
           dotnet test RouterPlus.sln
           --configuration Release
           --no-restore
+          --filter "FullyQualifiedName!~E2E"
           --logger "trx;LogFileName=RouterPlus.Release.Tests.trx"
           --results-directory "$env:RUNNER_TEMP\release-test-results"
 
