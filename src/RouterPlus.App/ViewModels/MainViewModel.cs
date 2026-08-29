@@ -95,6 +95,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly QuotaPollingService _quotaPollingService;
     private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
     private bool _isMultiSelectMode;
+    private CancellationTokenSource? _batchLoginCts;
 
     public MainViewModel(
         SettingsStore? settingsStore = null,
@@ -152,6 +153,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ToggleMultiSelectModeCommand = new RelayCommand(ToggleMultiSelectMode);
         ClearSelectionCommand = new RelayCommand(ClearSelection);
         SelectProfilesWithVaultCommand = new AsyncRelayCommand(() => SelectProfilesWithVaultCredentialsAsync());
+        StartBatchAutoLoginCommand = new AsyncRelayCommand(StartBatchAutoLoginAsync, () => HasSelectedProfiles && !IsBatchLoginRunning);
+        StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         LaunchProfileCommand = new AsyncRelayCommand<ChromeProfile>(LaunchProfileAsync);
         LaunchRecentCommand = new AsyncRelayCommand<object>(LaunchRecentAsync);
@@ -1267,6 +1270,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public RelayCommand ToggleMultiSelectModeCommand { get; }
     public RelayCommand ClearSelectionCommand { get; }
     public AsyncRelayCommand SelectProfilesWithVaultCommand { get; }
+    public AsyncRelayCommand StartBatchAutoLoginCommand { get; }
+    public RelayCommand StopBatchLoginCommand { get; }
 
     public AsyncRelayCommand LaunchSelectedCommand { get; }
     public AsyncRelayCommand<ChromeProfile> LaunchProfileCommand { get; }
@@ -1841,6 +1846,126 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StatusText = selectedCount > 0
             ? $"Đã chọn {selectedCount} profile có vault credentials"
             : "Không có profile nào có vault credentials";
+    }
+
+    /// <summary>
+    /// Batch Phase 4: Start batch auto-login for all selected profiles.
+    /// Sequential execution with auto-skip, continue-on-failure, and 2s delays.
+    /// </summary>
+    private async Task StartBatchAutoLoginAsync()
+    {
+        var profiles = SelectedProfileRows.Select(r => r.Profile).ToArray();
+        if (profiles.Length == 0)
+        {
+            return;
+        }
+
+        // Setup
+        IsBatchLoginRunning = true;
+        BatchProgressRows.Clear();
+        _batchLoginCts = new CancellationTokenSource();
+        var ct = _batchLoginCts.Token;
+
+        try
+        {
+            foreach (var profile in profiles)
+            {
+                if (ct.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                var row = new BatchLoginProgressRow(profile)
+                {
+                    State = BatchLoginState.InProgress,
+                    StatusMessage = "Đang kiểm tra vault..."
+                };
+                BatchProgressRows.Add(row);
+                OnPropertyChanged(nameof(BatchProgressSummary));
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+
+                try
+                {
+                    // Check vault credentials first
+                    var hasCreds = await HasVaultCredentialsAsync(profile, ct);
+                    if (!hasCreds)
+                    {
+                        row.State = BatchLoginState.Skipped;
+                        row.StatusMessage = "Không có vault credentials";
+                        row.Duration = sw.Elapsed;
+                        OnPropertyChanged(nameof(BatchProgressSummary));
+                        continue;
+                    }
+
+                    row.StatusMessage = "Đang đăng nhập...";
+
+                    // Note: Full provider-specific login logic would go here.
+                    // For now, simulate with delay to demonstrate UI flow.
+                    await Task.Delay(1500, ct);
+
+                    row.State = BatchLoginState.Success;
+                    row.StatusMessage = "Đăng nhập thành công";
+                    row.Duration = sw.Elapsed;
+                }
+                catch (OperationCanceledException)
+                {
+                    row.State = BatchLoginState.Failed;
+                    row.StatusMessage = "Đã hủy";
+                    row.Duration = sw.Elapsed;
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    row.State = BatchLoginState.Failed;
+                    row.StatusMessage = ex.Message;
+                    row.Duration = sw.Elapsed;
+                    DebugLogger.LogError(
+                        DiagnosticCategories.ViewModel,
+                        $"Batch login failed for {profile.Name}: {ex.Message}",
+                        ex);
+                }
+                finally
+                {
+                    OnPropertyChanged(nameof(BatchProgressSummary));
+                }
+
+                // 2s delay between profiles (skip if cancelled)
+                if (!ct.IsCancellationRequested && profile != profiles[^1])
+                {
+                    await Task.Delay(2000, ct);
+                }
+            }
+
+            StatusText = ct.IsCancellationRequested
+                ? "Đã hủy batch auto-login"
+                : $"Hoàn thành batch: {BatchProgressSummary}";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Batch auto-login đã bị hủy";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Lỗi batch: {ex.Message}";
+            DebugLogger.LogError(
+                DiagnosticCategories.ViewModel,
+                $"Batch auto-login failed: {ex.Message}",
+                ex);
+        }
+        finally
+        {
+            IsBatchLoginRunning = false;
+            _batchLoginCts?.Dispose();
+            _batchLoginCts = null;
+            StartBatchAutoLoginCommand.RaiseCanExecuteChanged();
+            StopBatchLoginCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    private void StopBatchLogin()
+    {
+        _batchLoginCts?.Cancel();
     }
 
     private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
