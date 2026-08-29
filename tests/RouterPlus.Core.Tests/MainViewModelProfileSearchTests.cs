@@ -163,6 +163,24 @@ public sealed class MainViewModelProfileSearchTests
         false);
 
     [Fact]
+    public void Selecting_a_profile_updates_select_all_toolbar_state()
+    {
+        var profile = CreateProfile("Personal");
+        var viewModel = new MainViewModel(harnessProfiles: new[] { profile });
+        viewModel.RefreshProfiles();
+        var row = Assert.Single(viewModel.ProfileRows);
+        var changedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        row.IsSelected = true;
+
+        Assert.True(viewModel.AreAllProfilesSelected);
+        Assert.Equal("☐  Bỏ chọn tất cả", viewModel.SelectAllButtonText);
+        Assert.Contains(nameof(MainViewModel.AreAllProfilesSelected), changedProperties);
+        Assert.Contains(nameof(MainViewModel.SelectAllButtonText), changedProperties);
+    }
+
+    [Fact]
     public async Task AddProfile_provisions_persists_reloads_and_selects_the_new_profile()
     {
         var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));

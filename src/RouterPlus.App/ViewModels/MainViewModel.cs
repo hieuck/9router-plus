@@ -1789,6 +1789,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(HasSelectedProfiles));
         OnPropertyChanged(nameof(SelectedProfilesText));
+        OnPropertyChanged(nameof(AreAllProfilesSelected));
+        OnPropertyChanged(nameof(SelectAllButtonText));
     }
 
     /// <summary>

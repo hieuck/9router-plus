@@ -101,8 +101,25 @@ public sealed class CredentialsManagerDialogTests
             Assert.Contains(textBoxes, field => field.IsEnabled && !field.IsReadOnly);
 
             // User action 5: edit the first profile with synthetic values.
-            var editableEmail = textBoxes.First(field => field.IsEnabled && !field.IsReadOnly);
+            var editableEmail = dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleEmailEditor"))!.AsTextBox();
+            Assert.False(editableEmail.IsReadOnly);
             editableEmail.Text = "alpha-edited@example.test";
+
+            var passwordEditor = dialog.FindFirstDescendant(cf => cf.ByAutomationId("GooglePasswordEditor"));
+            Assert.NotNull(passwordEditor);
+            Assert.True(passwordEditor!.IsEnabled);
+            passwordEditor.Focus();
+            FlaUI.Core.Input.Keyboard.TypeSimultaneously(new[]
+            {
+                FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL,
+                FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_A
+            });
+            FlaUI.Core.Input.Keyboard.Type("alpha-edited-password");
+
+            var totpEditor = dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpEditor"))!.AsTextBox();
+            Assert.False(totpEditor.IsReadOnly);
+            totpEditor.Text = "JBSWY3DPEHPK3PXP";
+
             saveButton!.Click();
 
             var editButtonAfterSave = Retry.WhileNull(

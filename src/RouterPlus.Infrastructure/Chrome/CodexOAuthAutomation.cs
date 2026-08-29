@@ -42,7 +42,9 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         path.includes('/oauth') ||
         path.includes('/authorize') ||
         path.includes('/login') ||
-        path.includes('/signin')
+        path.includes('/signin') ||
+        path.includes('/choose-an-account') ||
+        path.includes('/consent')
     );
 
     // Treat any known OAuth provider page as an OAuth screen that may need interaction
@@ -150,9 +152,11 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
 
         DebugConsole.WriteLine($"[CodexOAuth] URL: {codexState.CurrentUrl}");
         DebugConsole.WriteLine($"[CodexOAuth] IsGoogleOAuth: {codexState.IsGoogleOAuthPage}");
+        DebugConsole.WriteLine($"[CodexOAuth] IsAnyOAuthPage: {codexState.IsAnyOAuthPage}");
         DebugConsole.WriteLine($"[CodexOAuth] HasConsentButton: {codexState.HasGoogleConsentButton}");
         DebugConsole.WriteLine($"[CodexOAuth] IsTargetService: {codexState.IsTargetService}");
         DebugConsole.WriteLine($"[CodexOAuth] HasAccountPicker: {codexState.HasAccountPicker}");
+        DebugConsole.WriteLine($"[CodexOAuth] ShouldClickAccountPicker: {ShouldClickAccountPicker(state)}");
     }
 
     // ========== Override virtual methods for Codex-specific behavior ==========
@@ -168,6 +172,14 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
 
         // Click account picker if present and no consent button yet
         return codexState.HasAccountPicker && !codexState.HasGoogleConsentButton;
+    }
+
+    protected override bool ShouldClickGoogleConsent(GoogleOAuthPageState state)
+    {
+        if (state is not CodexOAuthPageState codexState)
+            return false;
+
+        return codexState.IsAnyOAuthPage && codexState.HasGoogleConsentButton;
     }
 }
 

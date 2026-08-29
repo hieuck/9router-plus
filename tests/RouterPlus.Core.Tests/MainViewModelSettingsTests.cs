@@ -76,6 +76,32 @@ public sealed class MainViewModelSettingsTests
     }
 
     [Fact]
+    public void Missing_chrome_executable_blocks_save_with_specific_validation_message()
+    {
+        var viewModel = new MainViewModel
+        {
+            ChromeExecutablePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "chrome.exe")
+        };
+
+        Assert.True(viewModel.HasSettingsValidationError);
+        Assert.Equal("Không tìm thấy file Chrome đã chọn.", viewModel.SettingsValidationMessage);
+        Assert.False(viewModel.SaveSettingsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void Missing_chrome_user_data_directory_blocks_save_with_specific_validation_message()
+    {
+        var viewModel = new MainViewModel
+        {
+            ChromeUserDataDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
+        };
+
+        Assert.True(viewModel.HasSettingsValidationError);
+        Assert.Equal("Không tìm thấy thư mục dữ liệu Chrome đã chọn.", viewModel.SettingsValidationMessage);
+        Assert.False(viewModel.SaveSettingsCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void Valid_setting_change_reports_unsaved_state_and_allows_save()
     {
         var viewModel = new MainViewModel
