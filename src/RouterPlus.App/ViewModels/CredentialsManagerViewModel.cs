@@ -16,7 +16,7 @@ namespace RouterPlus.App.ViewModels;
 /// Manages Google accounts and provider connections.
 /// Phase 5 Step 5.2 - Complete vault integration
 /// </summary>
-public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
+public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly MainViewModel _mainViewModel;
     private readonly IGoogleAccountVaultStore _googleAccountVaultStore;
