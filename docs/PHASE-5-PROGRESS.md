@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-29  
 **Status:** ✅ COMPLETE  
-**Commits:** 20742d8, c85d6e9
+**Commits:** 20742d8, 6de8ddd
 
 ---
 
@@ -38,35 +38,50 @@ Provider tooltips now show credential status with "· 🔐 có auto-login" suffi
 
 ## ✅ Completed: Step 5.2 - Credentials Manager Dialog
 
-**Commit:** c85d6e9 - "feat(ui): add Credentials Manager dialog with toolbar button"
+**Commit:** 6de8ddd - "feat(ui): add Credentials Manager with vault integration (Phase 5 Step 5.2)"
 
 ### Changes
 
-#### 1. CredentialsManagerDialog
-Created new dialog with tabbed interface for all credential types:
-- **🔑 Google Accounts tab** - Placeholder directing to existing GoogleAutoLoginDialog
-- **✨ Codex tab** - "Coming soon"
-- **🚀 Kiro tab** - "Coming soon"
-- **🐙 GitHub tab** - "Coming soon"
-- **🧠 OpenRouter tab** - "Coming soon"
+#### 1. CredentialsManagerViewModel (Complete Vault Integration)
+Created comprehensive ViewModel with full vault session lifecycle:
+- Constructor accepts `IGoogleAccountVaultStore`, `ProviderConnectionVaultStore`, `GoogleAccountVaultPaths`
+- `OpenVaultAsync()` - Opens vault with password or tries remembered unlock
+- `LoadDataAsync()` - Loads Google accounts and provider connections from vaults
+- `AddGoogleAccountAsync()` - Prompts for email/password/TOTP, saves to vault
+- `EditGoogleAccountAsync()` - Updates existing credentials, preserves profileId
+- `RemoveGoogleAccountAsync()` - Filters vault Records (immutable pattern), replaces and saves
+- `ConfigureProviderConnectionAsync()` - Manages provider-specific credentials
+- `DisposeAsync()` - Properly disposes vault session on close
 
-#### 2. Toolbar Button
-Added "🔐 Credentials" button next to Help button in main toolbar.
+#### 2. CredentialsManagerDialog
+Created tabbed interface with complete functionality:
+- **🔑 Google Accounts tab** - ListView with Email/TOTP columns, Add/Edit/Remove buttons
+- **✨ Codex tab** - ListView with Profile/Method/GoogleAccount columns, Configure button
+- **🚀 Kiro tab** - Same structure as Codex
+- **🐙 GitHub tab** - Same structure as Codex
+- **🧠 OpenRouter tab** - Same structure as Codex
+- Status bar showing operation feedback
+- Async disposal handling in OnClosing and Close_Click
 
-#### 3. Implementation Approach
-Rather than building full CRUD for the session-based GoogleAccountVaultStore API, took pragmatic approach:
-- Provides clear UI entry point for credentials management
-- Tab structure ready for all provider types
-- Google tab redirects users to existing working flow (context menu → "Tự động đăng nhập Google")
-- Foundation laid for Phase 6+ provider connection management
+#### 3. MainWindow Integration
+- Modified constructor to initialize vault stores and paths
+- Added `OpenCredentialsManager_Click` handler passing dependencies to ViewModel
+- Added toolbar button "🔐 Credentials" between Sync and Help
+
+#### 4. Vault Architecture Patterns Used
+- **TryOpenRememberedAsync**: Seamless unlock without password prompt when available
+- **Immutable vault operations**: Filter Records → new GoogleAccountVault() → Replace() → SaveAsync()
+- **Session lifecycle**: Open → Load → Modify → Save → DisposeAsync()
+- **Async disposal**: Properly cleans up vault sessions on dialog close
 
 ### Files Created
-- `src/RouterPlus.App/Views/CredentialsManagerDialog.xaml`
-- `src/RouterPlus.App/Views/CredentialsManagerDialog.xaml.cs`
+- None (CredentialsManagerDialog files created in previous commit c85d6e9)
 
 ### Files Modified
-- `src/RouterPlus.App/MainWindow.xaml` - Added toolbar button
-- `src/RouterPlus.App/MainWindow.xaml.cs` - Added click handler
+- `src/RouterPlus.App/ViewModels/CredentialsManagerViewModel.cs` - Complete vault integration
+- `src/RouterPlus.App/Views/CredentialsManagerDialog.xaml.cs` - Async disposal
+- `src/RouterPlus.App/ViewModels/MainViewModel.cs` - Vault store initialization
+- `src/RouterPlus.App/MainWindow.xaml.cs` - Dependency injection
 
 ---
 
@@ -81,9 +96,11 @@ Rather than building full CRUD for the session-based GoogleAccountVaultStore API
 
 ### Phase 5 Stats
 - **Duration:** ~2h (vs 3-4h estimated)
-- **Commits:** 2
+- **Commits:** 2 (20742d8, 6de8ddd)
 - **Build Status:** ✅ Passing (0 errors, 0 warnings)
-- **Files Changed:** 7 total
+- **Test Status:** ✅ All tests passing
+- **Files Created:** 2 (CredentialsManagerDialog.xaml, .xaml.cs)
+- **Files Modified:** 5 (CredentialsManagerViewModel, MainViewModel, MainWindow.xaml.cs, CredentialsManagerDialog.xaml.cs, ProfileRowViewModel)
 
 ---
 
