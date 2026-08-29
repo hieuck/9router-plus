@@ -66,10 +66,15 @@ public sealed class CredentialsManagerDialogTests
             checkboxes[0].Click();
             checkboxes[1].Click();
 
-            var batchLoginButton = dialog.FindFirstDescendant(cf =>
-                cf.ByAutomationId("BatchLoginButton"));
+            var batchLoginButton = Retry.WhileNull(
+                () =>
+                {
+                    var button = dialog.FindFirstDescendant(cf => cf.ByAutomationId("BatchLoginButton"));
+                    return button?.IsEnabled == true ? button : null;
+                },
+                TimeSpan.FromSeconds(3),
+                throwOnTimeout: false).Result;
             Assert.NotNull(batchLoginButton);
-            Assert.True(batchLoginButton!.IsEnabled);
 
             // User action 4: enter edit mode for the first profile.
             var editButtons = googleList.FindAllDescendants(cf =>
@@ -84,8 +89,22 @@ public sealed class CredentialsManagerDialogTests
                 throwOnTimeout: false).Result;
             Assert.NotNull(saveButton);
 
-            // User action 5: submit unchanged credentials and verify persistence path.
+            var editableFields = googleList.FindAllDescendants(cf => cf.ByControlType(ControlType.Edit));
+            Assert.True(editableFields.Length >= 6);
+            Assert.True(editableFields.Count(field => field.IsEnabled) >= 3);
+            Assert.Contains(editableFields, field => !field.IsEnabled);
+
+            var textBoxes = editableFields
+                .Where(field => field.ControlType == ControlType.Edit)
+                .Select(field => field.AsTextBox())
+                .ToArray();
+            Assert.Contains(textBoxes, field => field.IsEnabled && !field.IsReadOnly);
+
+            // User action 5: edit the first profile with synthetic values.
+            var editableEmail = textBoxes.First(field => field.IsEnabled && !field.IsReadOnly);
+            editableEmail.Text = "alpha-edited@example.test";
             saveButton!.Click();
+
             var editButtonAfterSave = Retry.WhileNull(
                 () => googleList.FindFirstDescendant(cf =>
                     cf.ByControlType(ControlType.Button).And(cf.ByName("Edit"))),
@@ -93,9 +112,37 @@ public sealed class CredentialsManagerDialogTests
                 throwOnTimeout: false).Result;
             Assert.NotNull(editButtonAfterSave);
 
-            // User action 6: run batch login for the selected profiles.
-            batchLoginButton = dialog.FindFirstDescendant(cf =>
-                cf.ByAutomationId("BatchLoginButton"));
+            // User action 6: verify the saved value after reopening the manager.
+            var closeBeforeReload = dialog.FindFirstDescendant(cf =>
+                cf.ByAutomationId("CredentialsManagerCloseButton"));
+            Assert.NotNull(closeBeforeReload);
+            closeBeforeReload!.Click();
+            Assert.False(await IsCredentialsDialogOpenAsync(app, TimeSpan.FromSeconds(5)));
+
+            dialog = await OpenCredentialsManagerAsync(app);
+            googleList = dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleAccountsList"));
+            Assert.NotNull(googleList);
+            var savedEmail = googleList!.FindAllDescendants(cf => cf.ByControlType(ControlType.Edit))
+                .Select(field => field.AsTextBox())
+                .FirstOrDefault(field => string.Equals(field.Text, "alpha-edited@example.test", StringComparison.Ordinal));
+            Assert.NotNull(savedEmail);
+
+            // User action 7: select profiles again after reopening the manager.
+            var reloadedCheckboxes = googleList.FindAllDescendants(cf =>
+                cf.ByControlType(ControlType.CheckBox));
+            Assert.Equal(2, reloadedCheckboxes.Length);
+            reloadedCheckboxes[0].Click();
+            reloadedCheckboxes[1].Click();
+
+            // User action 8: run batch login for the selected profiles.
+            batchLoginButton = Retry.WhileNull(
+                () =>
+                {
+                    var button = dialog.FindFirstDescendant(cf => cf.ByAutomationId("BatchLoginButton"));
+                    return button?.IsEnabled == true ? button : null;
+                },
+                TimeSpan.FromSeconds(3),
+                throwOnTimeout: false).Result;
             Assert.NotNull(batchLoginButton);
             batchLoginButton!.Click();
 
@@ -133,6 +180,31 @@ public sealed class CredentialsManagerDialogTests
             await CaptureFailureAsync(environment, app);
             throw;
         }
+    }
+
+    private static Task<AutomationElement> OpenCredentialsManagerAsync(AppProcess app)
+    {
+        var button = app.MainWindow.FindFirstDescendant(cf => cf.ByAutomationId("CredentialsManagerButton"));
+        Assert.NotNull(button);
+        button!.Click();
+
+        var dialog = Retry.WhileNull(
+            () => app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
+                .FirstOrDefault(window =>
+                {
+                    try
+                    {
+                        return window.Name.Contains("Credentials Manager", StringComparison.OrdinalIgnoreCase);
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }),
+            TimeSpan.FromSeconds(5),
+            throwOnTimeout: false).Result;
+        Assert.NotNull(dialog);
+        return Task.FromResult(dialog!);
     }
 
     private static async Task<bool> IsCredentialsDialogOpenAsync(AppProcess app, TimeSpan timeout)

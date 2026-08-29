@@ -520,6 +520,7 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
             if (_isEditing == value) return;
             _isEditing = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsEditable));
             OnPropertyChanged(nameof(ActionButtonText));
         }
     }
