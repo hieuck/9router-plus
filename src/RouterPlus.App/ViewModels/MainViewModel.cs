@@ -43,6 +43,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     internal IGoogleAccountVaultStore GoogleAccountVaultStore => _googleLoginVaultStore;
     internal GoogleAccountVaultPaths GoogleAccountVaultPaths => _googleLoginVaultPaths;
     internal ProviderConnectionVaultStore ProviderConnectionVaultStore => _providerConnectionVaultStore;
+    internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginAutomation => _googleLoginAutomation;
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
     private readonly HttpClient _httpClient;
     private readonly IUpdateService _updateService;

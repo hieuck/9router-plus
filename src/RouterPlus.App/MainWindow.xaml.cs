@@ -153,7 +153,8 @@ public partial class MainWindow : Window
             ViewModel,
             ViewModel.GoogleAccountVaultStore,
             ViewModel.ProviderConnectionVaultStore,
-            ViewModel.GoogleAccountVaultPaths);
+            ViewModel.GoogleAccountVaultPaths,
+            ViewModel.GoogleLoginAutomation);
         var dialog = new CredentialsManagerDialog(viewModel)
         {
             Owner = this

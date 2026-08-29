@@ -22,6 +22,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     private readonly IGoogleAccountVaultStore _googleAccountVaultStore;
     private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
     private readonly GoogleAccountVaultPaths _vaultPaths;
+    private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
 
     private int _selectedTabIndex;
     private string _statusMessage = string.Empty;
@@ -31,6 +32,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     private ProviderConnectionRowViewModel? _selectedGitHubConnection;
     private ProviderConnectionRowViewModel? _selectedOpenRouterConnection;
     private GoogleAccountVaultSession? _vaultSession;
+    private bool _isBatchLoginRunning;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -38,17 +40,19 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         MainViewModel mainViewModel,
         IGoogleAccountVaultStore googleAccountVaultStore,
         ProviderConnectionVaultStore providerConnectionVaultStore,
-        GoogleAccountVaultPaths vaultPaths)
+        GoogleAccountVaultPaths vaultPaths,
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleLoginAutomation)
     {
         _mainViewModel = mainViewModel ?? throw new ArgumentNullException(nameof(mainViewModel));
         _googleAccountVaultStore = googleAccountVaultStore ?? throw new ArgumentNullException(nameof(googleAccountVaultStore));
         _providerConnectionVaultStore = providerConnectionVaultStore ?? throw new ArgumentNullException(nameof(providerConnectionVaultStore));
         _vaultPaths = vaultPaths ?? throw new ArgumentNullException(nameof(vaultPaths));
+        _googleLoginAutomation = googleLoginAutomation ?? throw new ArgumentNullException(nameof(googleLoginAutomation));
 
         // Initialize commands
         SaveRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(SaveRowAsync);
         RemoveGoogleAccountCommand = new AsyncRelayCommand(RemoveGoogleAccountAsync, () => SelectedGoogleAccount != null);
-        BatchLoginCommand = new AsyncRelayCommand(BatchLoginAsync, () => GoogleAccounts.Any(a => a.IsSelected && a.HasCredentials));
+        BatchLoginCommand = new AsyncRelayCommand(BatchLoginAsync, () => GoogleAccounts.Any(a => a.IsSelected && a.HasCredentials) && !IsBatchLoginRunning);
         RefreshCommand = new AsyncRelayCommand(RefreshDataAsync);
 
         _ = LoadDataAsync();
@@ -82,6 +86,18 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     public ObservableCollection<GoogleAccountRowViewModel> GoogleAccounts { get; } = new();
 
     public int SelectedCount => GoogleAccounts.Count(a => a.IsSelected && a.HasCredentials);
+
+    public bool IsBatchLoginRunning
+    {
+        get => _isBatchLoginRunning;
+        private set
+        {
+            if (_isBatchLoginRunning == value) return;
+            _isBatchLoginRunning = value;
+            OnPropertyChanged();
+            BatchLoginCommand.RaiseCanExecuteChanged();
+        }
+    }
 
     public GoogleAccountRowViewModel? SelectedGoogleAccount
     {
@@ -345,17 +361,76 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             return;
         }
 
-        SetStatus($"Starting batch login for {selectedRows.Count} profile(s)...");
-
-        // TODO: Integrate with AutoLoginOrchestrator
-        // For now, just show progress
-        foreach (var row in selectedRows)
+        if (_vaultSession == null)
         {
-            SetStatus($"Logging in {row.ProfileName}...");
-            await Task.Delay(500); // Simulate work
+            SetStatus("Vault not unlocked. Please unlock the vault first.");
+            return;
         }
 
-        SetStatus($"Batch login completed for {selectedRows.Count} profile(s)");
+        IsBatchLoginRunning = true;
+        var successCount = 0;
+        var failCount = 0;
+
+        try
+        {
+            SetStatus($"Starting batch login for {selectedRows.Count} profile(s)...");
+
+            foreach (var row in selectedRows)
+            {
+                // Find matching profile
+                var profile = _mainViewModel.FilteredProfiles.FirstOrDefault(p => p.Name == row.ProfileName);
+                if (profile == null)
+                {
+                    SetStatus($"❌ {row.ProfileName}: Profile not found");
+                    failCount++;
+                    await Task.Delay(1000);
+                    continue;
+                }
+
+                // Create credential from row
+                var credential = new GoogleLoginCredential(
+                    row.ProfileName,
+                    row.Email,
+                    row.Password,
+                    string.IsNullOrEmpty(row.TotpSecret) ? string.Empty : row.TotpSecret);
+
+                SetStatus($"🚀 Logging in {row.ProfileName}...");
+
+                try
+                {
+                    var result = await _googleLoginAutomation(profile, credential, CancellationToken.None);
+
+                    if (result.Category == GoogleLoginResultCategory.Success)
+                    {
+                        SetStatus($"✓ {row.ProfileName}: Login successful");
+                        successCount++;
+                    }
+                    else if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
+                    {
+                        SetStatus($"⚠ {row.ProfileName}: Manual intervention required");
+                        failCount++;
+                    }
+                    else
+                    {
+                        SetStatus($"❌ {row.ProfileName}: {result.Message ?? result.Category.ToString()}");
+                        failCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SetStatus($"❌ {row.ProfileName}: {ex.Message}");
+                    failCount++;
+                }
+
+                await Task.Delay(1500);
+            }
+
+            SetStatus($"Batch login completed: {successCount} succeeded, {failCount} failed");
+        }
+        finally
+        {
+            IsBatchLoginRunning = false;
+        }
     }
 
     private async Task RemoveGoogleAccountAsync()

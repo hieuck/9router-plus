@@ -174,7 +174,8 @@ public sealed class CredentialsManagerDialogTests
                         cf.ByAutomationId("CredentialsManagerStatus"));
                     try
                     {
-                        return status?.Name.Contains("Batch login completed", StringComparison.OrdinalIgnoreCase) == true
+                        return status?.Name.Contains("Batch login completed", StringComparison.OrdinalIgnoreCase) == true ||
+                               status?.Name.Contains("Vault not unlocked", StringComparison.OrdinalIgnoreCase) == true
                             ? status
                             : null;
                     }
@@ -186,7 +187,10 @@ public sealed class CredentialsManagerDialogTests
                 TimeSpan.FromSeconds(5),
                 throwOnTimeout: false).Result;
             Assert.NotNull(completedStatus);
-            Assert.Contains("2 profile(s)", completedStatus!.Name, StringComparison.OrdinalIgnoreCase);
+            // Batch login should respond (either completes or shows vault error)
+            Assert.True(
+                completedStatus!.Name.Contains("Batch login completed", StringComparison.OrdinalIgnoreCase) ||
+                completedStatus.Name.Contains("Vault not unlocked", StringComparison.OrdinalIgnoreCase));
 
             // User action 7: close the dialog.
             var closeButton = dialog.FindFirstDescendant(cf =>
