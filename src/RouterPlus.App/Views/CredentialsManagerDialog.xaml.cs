@@ -34,6 +34,89 @@ public partial class CredentialsManagerDialog : Window
         Close();
     }
 
+    private async void UnlockVault_Click(object sender, RoutedEventArgs e)
+    {
+        UIEventLogger.LogClick("CredentialsManager.UnlockVault");
+
+        // Create simple password dialog
+        var passwordWindow = new Window
+        {
+            Title = "Unlock Google Vault",
+            Width = 400,
+            Height = 200,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.NoResize
+        };
+
+        var stackPanel = new System.Windows.Controls.StackPanel
+        {
+            Margin = new Thickness(16)
+        };
+
+        stackPanel.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = "Enter vault password:",
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+
+        var passwordBox = new System.Windows.Controls.PasswordBox
+        {
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+
+        var rememberCheckBox = new System.Windows.Controls.CheckBox
+        {
+            Content = "Remember on this device (encrypted with Windows DPAPI)",
+            Margin = new Thickness(0, 0, 0, 16)
+        };
+
+        var buttonPanel = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+        };
+
+        var okButton = new System.Windows.Controls.Button
+        {
+            Content = "Unlock",
+            Width = 80,
+            Margin = new Thickness(0, 0, 8, 0),
+            IsDefault = true
+        };
+
+        var cancelButton = new System.Windows.Controls.Button
+        {
+            Content = "Cancel",
+            Width = 80,
+            IsCancel = true
+        };
+
+        okButton.Click += (s, args) =>
+        {
+            passwordWindow.DialogResult = true;
+            passwordWindow.Close();
+        };
+
+        buttonPanel.Children.Add(okButton);
+        buttonPanel.Children.Add(cancelButton);
+
+        stackPanel.Children.Add(passwordBox);
+        stackPanel.Children.Add(rememberCheckBox);
+        stackPanel.Children.Add(buttonPanel);
+
+        passwordWindow.Content = stackPanel;
+
+        var result = passwordWindow.ShowDialog();
+
+        if (result != true || string.IsNullOrWhiteSpace(passwordBox.Password))
+        {
+            return;
+        }
+
+        await _viewModel.UnlockVaultAsync(passwordBox.Password, rememberCheckBox.IsChecked == true);
+    }
+
     // Google Account Management
     private void AddGoogleAccount_Click(object sender, RoutedEventArgs e)
     {
