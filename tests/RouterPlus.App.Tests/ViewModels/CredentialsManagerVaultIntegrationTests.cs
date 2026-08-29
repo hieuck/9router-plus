@@ -116,6 +116,168 @@ public sealed class CredentialsManagerVaultIntegrationTests : IDisposable
         await session.DisposeAsync();
     }
 
+    [Fact]
+    public async Task VaultSession_EmptyVault_ReturnsNoRecords()
+    {
+        // Arrange - Create empty vault
+        var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "test-password",
+            CancellationToken.None);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+        await session.RememberAsync(CancellationToken.None);
+        await session.DisposeAsync();
+
+        // Act - Reopen empty vault
+        var reopened = await _googleVaultStore.TryOpenRememberedAsync(
+            _vaultPaths.VaultPath,
+            CancellationToken.None);
+
+        // Assert
+        Assert.NotNull(reopened);
+        Assert.Empty(reopened.Vault.Records);
+
+        await reopened.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task VaultSession_MultipleProfiles_MaintainsSeparateCredentials()
+    {
+        // Arrange - Create vault with multiple profiles
+        var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "test-password",
+            CancellationToken.None);
+
+        var cred1 = new GoogleLoginCredential("Work", "work@example.com", "workpass", "worktotp");
+        var cred2 = new GoogleLoginCredential("Personal", "personal@example.com", "personalpass", "");
+        var cred3 = new GoogleLoginCredential("Gaming", "gaming@example.com", "gamingpass", "gamingtotp");
+
+        var vault = session.Vault
+            .Upsert(cred1)
+            .Upsert(cred2)
+            .Upsert(cred3);
+        session.Replace(vault);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Act - Query by profile
+        var workCred = vault.Records.FirstOrDefault(r => r.ProfileId == "Work");
+        var personalCred = vault.Records.FirstOrDefault(r => r.ProfileId == "Personal");
+
+        // Assert
+        Assert.Equal(3, vault.Records.Count());
+        Assert.NotNull(workCred);
+        Assert.Equal("work@example.com", workCred.Email);
+        Assert.Equal("worktotp", workCred.TotpSecret);
+        Assert.NotNull(personalCred);
+        Assert.Equal("", personalCred.TotpSecret); // Empty TOTP is valid
+
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task VaultSession_RemoveNonExistentCredential_NoEffect()
+    {
+        // Arrange - Create vault with one credential
+        var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "test-password",
+            CancellationToken.None);
+
+        var cred = new GoogleLoginCredential("profile1", "user@example.com", "pass", "totp");
+        var vault = session.Vault.Upsert(cred);
+        session.Replace(vault);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Act - Try to remove non-existent credential
+        var filtered = vault.Records.Where(r => r.Email != "nonexistent@example.com");
+        var newVault = new GoogleAccountVault(filtered);
+        session.Replace(newVault);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Assert - Original credential still exists
+        Assert.Single(session.Vault.Records);
+        Assert.Equal("user@example.com", session.Vault.Records.First().Email);
+
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task VaultSession_UpsertSameProfileId_ReplacesOldCredential()
+    {
+        // Arrange - Create vault with one credential
+        var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "test-password",
+            CancellationToken.None);
+
+        var original = new GoogleLoginCredential("profile1", "old@example.com", "oldpass", "oldtotp");
+        var vault = session.Vault.Upsert(original);
+        session.Replace(vault);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Act - Upsert with same ProfileId but different email
+        var updated = new GoogleLoginCredential("profile1", "new@example.com", "newpass", "newtotp");
+        var newVault = session.Vault.Upsert(updated);
+        session.Replace(newVault);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Assert - Only one credential exists with new values
+        Assert.Single(session.Vault.Records);
+        var record = session.Vault.Records.First();
+        Assert.Equal("new@example.com", record.Email);
+        Assert.Equal("newpass", record.Password);
+
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task VaultSession_RemoveAllCredentials_EmptyVault()
+    {
+        // Arrange - Create vault with multiple credentials
+        var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "test-password",
+            CancellationToken.None);
+
+        var cred1 = new GoogleLoginCredential("profile1", "user1@example.com", "pass1", "");
+        var cred2 = new GoogleLoginCredential("profile2", "user2@example.com", "pass2", "");
+
+        var vault = session.Vault.Upsert(cred1).Upsert(cred2);
+        session.Replace(vault);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Act - Remove all credentials
+        var newVault = new GoogleAccountVault(Enumerable.Empty<GoogleLoginCredential>());
+        session.Replace(newVault);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Assert
+        Assert.Empty(session.Vault.Records);
+
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public void GoogleLoginCredential_RequiresAllParameters()
+    {
+        // Arrange & Act & Assert - Empty email throws
+        Assert.Throws<ArgumentException>(() =>
+            new GoogleLoginCredential("profile", "", "password", "totp"));
+
+        // Empty password throws
+        Assert.Throws<ArgumentException>(() =>
+            new GoogleLoginCredential("profile", "email@example.com", "", "totp"));
+
+        // Empty ProfileId throws
+        Assert.Throws<ArgumentException>(() =>
+            new GoogleLoginCredential("", "email@example.com", "password", "totp"));
+
+        // Empty TOTP is allowed (not all users use 2FA)
+        var validWithoutTotp = new GoogleLoginCredential("profile", "email@example.com", "password", "");
+        Assert.Equal("", validWithoutTotp.TotpSecret);
+    }
+
     public void Dispose()
     {
         try
