@@ -10,50 +10,79 @@ namespace RouterPlus.App.Tests.ViewModels;
 public sealed class GoogleAccountRowViewModelTests
 {
     [Fact]
-    public void Constructor_WithEmail_SetsProperties()
+    public void Properties_default_to_expected_values()
     {
         // Arrange & Act
-        var viewModel = new GoogleAccountRowViewModel
-        {
-            Email = "test@example.com",
-            HasTotpSecret = true
-        };
+        var viewModel = new GoogleAccountRowViewModel();
 
         // Assert
-        Assert.Equal("test@example.com", viewModel.Email);
-        Assert.True(viewModel.HasTotpSecret);
+        Assert.Equal(string.Empty, viewModel.ProfileName);
+        Assert.Equal(string.Empty, viewModel.Email);
+        Assert.Equal(string.Empty, viewModel.Password);
+        Assert.Equal(string.Empty, viewModel.TotpSecret);
+        Assert.False(viewModel.IsSelected);
+        Assert.False(viewModel.IsEditing);
+        Assert.False(viewModel.HasCredentials);
     }
 
     [Fact]
-    public void Constructor_WithoutTotpSecret_HasTotpSecretIsFalse()
+    public void Email_property_updates_correctly()
     {
-        // Arrange & Act
-        var viewModel = new GoogleAccountRowViewModel
-        {
-            Email = "test@example.com",
-            HasTotpSecret = false
-        };
+        // Arrange
+        var viewModel = new GoogleAccountRowViewModel();
+
+        // Act
+        viewModel.Email = "test@example.com";
 
         // Assert
         Assert.Equal("test@example.com", viewModel.Email);
-        Assert.False(viewModel.HasTotpSecret);
+    }
+
+    [Fact]
+    public void TotpSecret_property_updates_correctly()
+    {
+        // Arrange
+        var viewModel = new GoogleAccountRowViewModel();
+
+        // Act
+        viewModel.TotpSecret = "JBSWY3DPEHPK3PXP";
+
+        // Assert
+        Assert.Equal("JBSWY3DPEHPK3PXP", viewModel.TotpSecret);
+    }
+
+    [Fact]
+    public void TotpIndicator_returns_checkmark_when_totp_present()
+    {
+        // Arrange
+        var viewModel = new GoogleAccountRowViewModel
+        {
+            TotpSecret = "JBSWY3DPEHPK3PXP"
+        };
+
+        // Act
+        var indicator = viewModel.TotpIndicator;
+
+        // Assert
+        Assert.Equal("✓", indicator);
     }
 
     [Theory]
-    [InlineData("user@gmail.com", true)]
-    [InlineData("admin@example.com", false)]
-    [InlineData("test@domain.org", true)]
-    public void Properties_CanBeSetAndRead(string email, bool hasTotp)
+    [InlineData("", "")]
+    [InlineData("JBSWY3DPEHPK3PXP", "✓")]
+    [InlineData("ABCD1234", "✓")]
+    public void TotpIndicator_scenarios(string totpSecret, string expectedIndicator)
     {
-        // Arrange & Act
+        // Arrange
         var viewModel = new GoogleAccountRowViewModel
         {
-            Email = email,
-            HasTotpSecret = hasTotp
+            TotpSecret = totpSecret
         };
 
+        // Act
+        var indicator = viewModel.TotpIndicator;
+
         // Assert
-        Assert.Equal(email, viewModel.Email);
-        Assert.Equal(hasTotp, viewModel.HasTotpSecret);
+        Assert.Equal(expectedIndicator, indicator);
     }
 }

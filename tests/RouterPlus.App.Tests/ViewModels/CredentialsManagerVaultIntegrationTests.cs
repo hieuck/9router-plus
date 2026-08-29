@@ -150,7 +150,7 @@ public sealed class CredentialsManagerVaultIntegrationTests : IDisposable
             CancellationToken.None);
 
         var cred1 = new GoogleLoginCredential("Work", "work@example.com", "workpass", "worktotp");
-        var cred2 = new GoogleLoginCredential("Personal", "personal@example.com", "personalpass", "");
+        var cred2 = new GoogleLoginCredential("Personal", "personal@example.com", "personalpass", "NONE");
         var cred3 = new GoogleLoginCredential("Gaming", "gaming@example.com", "gamingpass", "gamingtotp");
 
         var vault = session.Vault
@@ -170,7 +170,7 @@ public sealed class CredentialsManagerVaultIntegrationTests : IDisposable
         Assert.Equal("work@example.com", workCred.Email);
         Assert.Equal("worktotp", workCred.TotpSecret);
         Assert.NotNull(personalCred);
-        Assert.Equal("", personalCred.TotpSecret); // Empty TOTP is valid
+        Assert.Equal("NONE", personalCred.TotpSecret); // NONE placeholder for no TOTP
 
         await session.DisposeAsync();
     }
@@ -240,8 +240,8 @@ public sealed class CredentialsManagerVaultIntegrationTests : IDisposable
             "test-password",
             CancellationToken.None);
 
-        var cred1 = new GoogleLoginCredential("profile1", "user1@example.com", "pass1", "");
-        var cred2 = new GoogleLoginCredential("profile2", "user2@example.com", "pass2", "");
+        var cred1 = new GoogleLoginCredential("profile1", "user1@example.com", "pass1", "NONE");
+        var cred2 = new GoogleLoginCredential("profile2", "user2@example.com", "pass2", "NONE");
 
         var vault = session.Vault.Upsert(cred1).Upsert(cred2);
         session.Replace(vault);
@@ -273,9 +273,17 @@ public sealed class CredentialsManagerVaultIntegrationTests : IDisposable
         Assert.Throws<ArgumentException>(() =>
             new GoogleLoginCredential("", "email@example.com", "password", "totp"));
 
-        // Empty TOTP is allowed (not all users use 2FA)
-        var validWithoutTotp = new GoogleLoginCredential("profile", "email@example.com", "password", "");
-        Assert.Equal("", validWithoutTotp.TotpSecret);
+        // Empty TOTP throws (TOTP is required)
+        Assert.Throws<ArgumentException>(() =>
+            new GoogleLoginCredential("profile", "email@example.com", "password", ""));
+
+        // Valid credential with TOTP
+        var validWithTotp = new GoogleLoginCredential("profile", "email@example.com", "password", "JBSWY3DPEHPK3PXP");
+        Assert.Equal("JBSWY3DPEHPK3PXP", validWithTotp.TotpSecret);
+
+        // Valid credential with NONE placeholder (for accounts without 2FA)
+        var validWithoutTotp = new GoogleLoginCredential("profile", "email@example.com", "password", "NONE");
+        Assert.Equal("NONE", validWithoutTotp.TotpSecret);
     }
 
     public void Dispose()

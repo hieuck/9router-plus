@@ -300,12 +300,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
 
         try
         {
-            // Create credential
+            // Create credential (TOTP required - use placeholder if empty)
             var credential = new GoogleLoginCredential(
                 row.ProfileName,
                 row.Email.Trim(),
                 row.Password,
-                string.IsNullOrWhiteSpace(row.TotpSecret) ? string.Empty : row.TotpSecret.Trim());
+                string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
 
             // Upsert into vault (immutable pattern)
             var currentVault = _vaultSession.Vault;
