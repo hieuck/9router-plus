@@ -131,6 +131,56 @@ public sealed class MainViewModelProfileSearchTests
     }
 
     [Fact]
+    public void Provider_filter_cycles_through_has_not_has_and_off_states()
+    {
+        var connected = CreateProfile("Connected");
+        var unassigned = CreateProfile("Unassigned");
+        var viewModel = new MainViewModel();
+        viewModel.Profiles.Add(connected);
+        viewModel.Profiles.Add(unassigned);
+
+        var connectedRow = new ProfileRowViewModel(connected, viewModel.Providers);
+        connectedRow.UpdateConnections(new[]
+        {
+            new ProviderConnection("codex-1", ProviderKind.Codex, "Connected", 1, true)
+        });
+        var unassignedRow = new ProfileRowViewModel(unassigned, viewModel.Providers);
+        unassignedRow.UpdateConnections(Array.Empty<ProviderConnection>());
+        viewModel.ProfileRows.Add(connectedRow);
+        viewModel.ProfileRows.Add(unassignedRow);
+
+        viewModel.ToggleProvider(ProviderKind.Codex);
+        Assert.Equal(new[] { connected }, viewModel.FilteredProfiles);
+
+        viewModel.ToggleProvider(ProviderKind.Codex);
+        Assert.Equal(new[] { unassigned }, viewModel.FilteredProfiles);
+
+        viewModel.ToggleProvider(ProviderKind.Codex);
+        Assert.Equal(new[] { connected, unassigned }, viewModel.FilteredProfiles);
+        Assert.False(viewModel.IsProviderFilterActive);
+    }
+
+    [Fact]
+    public void Select_all_command_toggles_every_profile_selection()
+    {
+        var profiles = new[] { CreateProfile("Personal"), CreateProfile("Work") };
+        var viewModel = new MainViewModel(harnessProfiles: profiles);
+        viewModel.RefreshProfiles();
+
+        viewModel.ToggleSelectAllCommand.Execute(null);
+
+        Assert.All(viewModel.ProfileRows, row => Assert.True(row.IsSelected));
+        Assert.True(viewModel.AreAllProfilesSelected);
+        Assert.Equal("☐  Bỏ chọn tất cả", viewModel.SelectAllButtonText);
+
+        viewModel.ToggleSelectAllCommand.Execute(null);
+
+        Assert.All(viewModel.ProfileRows, row => Assert.False(row.IsSelected));
+        Assert.False(viewModel.AreAllProfilesSelected);
+        Assert.Equal("☑  Chọn tất cả", viewModel.SelectAllButtonText);
+    }
+
+    [Fact]
     public void Selecting_provider_filter_clears_unassigned_filter()
     {
         var viewModel = new MainViewModel();

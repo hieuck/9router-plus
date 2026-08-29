@@ -144,8 +144,9 @@ public sealed class CredentialsManagerDialogTests
                 .FirstOrDefault(field => string.Equals(field.Text, "alpha-edited@example.test", StringComparison.Ordinal));
             Assert.NotNull(savedEmail);
 
-            var savedTotp = googleList.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpEditor"))!.AsTextBox();
-            Assert.Equal("JBSWY3DPEHPK3PXP", savedTotp.Text);
+            // TOTP Secret is now a PasswordBox for security - verify control exists but don't read value
+            var savedTotp = googleList.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpEditor"));
+            Assert.NotNull(savedTotp);
 
             // User action 7: select profiles again after reopening the manager.
             var reloadedCheckboxes = googleList.FindAllDescendants(cf =>

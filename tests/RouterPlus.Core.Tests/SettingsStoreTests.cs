@@ -95,6 +95,41 @@ public sealed class SettingsStoreTests
     }
 
     [Fact]
+    public async Task UpdateQuotaAutoDisableMarkers_preserves_existing_settings()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            var store = new SettingsStore(filePath);
+            var existingSettings = new RouterSettings(
+                DashboardBaseUrl: "http://localhost:20129",
+                ManagedProfiles: [new("Work", "Profile 1", "C:\\Chrome\\User Data")]);
+            await store.SaveAsync(existingSettings);
+            var resetAt = DateTimeOffset.UtcNow.AddHours(1);
+
+            await store.UpdateQuotaAutoDisableMarkersAsync([
+                new("connection-1", RouterPlus.Core.Providers.ProviderKind.Codex, "Work", resetAt)
+            ]);
+
+            var loaded = await store.LoadAsync();
+            var marker = Assert.Single(loaded.QuotaAutoDisableMarkers!);
+            Assert.Equal("http://localhost:20129", loaded.DashboardBaseUrl);
+            Assert.Equal(existingSettings.ManagedProfiles, loaded.ManagedProfiles);
+            Assert.Equal("connection-1", marker.ConnectionId);
+            Assert.Equal(resetAt, marker.ResetAt);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Legacy_keyboard_shortcut_fields_are_ignored_and_not_written_back()
     {
         var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
