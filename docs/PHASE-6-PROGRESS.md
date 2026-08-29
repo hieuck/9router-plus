@@ -1,344 +1,162 @@
 # Phase 6: Batch Auto-Login Integration - Progress Report
 
-**Phase:** 6 of 6  
-**Status:** ✅ Infrastructure Complete  
-**Date:** 2026-08-28  
-**Estimate:** 2-3 hours  
-**Actual:** 1 hour (infrastructure only)
+**Date:** 2026-08-29  
+**Status:** ✅ COMPLETE  
+**Commits:** Already integrated during Batch Phase 4
 
 ---
 
 ## Overview
 
-Phase 6 creates the infrastructure to integrate AutoLoginOrchestrator with MainViewModel, enabling future batch auto-login functionality. This phase provides the foundation for sequential profile login with fallback support.
+Phase 6 integrates the AutoLoginOrchestrator with the batch auto-login workflow, enabling unified authentication with fallback support across all providers.
 
 ---
 
-## Completed Tasks
+## ✅ Implementation Status
 
-### ✅ Step 6.1: Create IChromeLauncher Adapter (30 min)
+### Integration Complete
 
-**New file:** `src/RouterPlus.Infrastructure/Chrome/ChromeLauncherAdapter.cs`
+The batch auto-login already uses `AutoLoginOrchestrator` through the following flow:
 
-**What it does:**
-- Implements `IChromeLauncher` interface required by AutoLoginOrchestrator
-- Bridges concrete `ChromeLauncher` to the abstraction
-- Manages Chrome session lifecycle (launch + cleanup)
+**File:** `src/RouterPlus.App/ViewModels/MainViewModel.cs`
 
-**Key features:**
-- Accepts `ChromeLauncher`, `ChromeInstallation`, and `ChromeProfile` in constructor
-- `LaunchAsync()`: Launches managed Chrome session and returns `CdpSession`
-- `CleanupAsync()`: Disposes Chrome session after login completes
-
-**Code structure:**
+#### 1. Batch Entry Point
 ```csharp
-public sealed class ChromeLauncherAdapter : IChromeLauncher
+StartBatchAutoLoginAsync()
+  └─> TryLoginProfileAllProvidersAsync(profile, row, ct)
+      └─> RunAutoLoginWithOrchestratorAsync(profile, kind, startUri, ct)
+          └─> AutoLoginOrchestrator.LoginAsync()
+```
+
+#### 2. Key Methods
+
+**`TryLoginProfileAllProvidersAsync` (Lines 2027-2101)**
+- Iterates through all providers with credentials
+- Calls orchestrator for each provider
+- Stops on first success
+- Handles cancellation and errors gracefully
+
+**`RunAutoLoginWithOrchestratorAsync` (Lines 3688-3733)**
+- Creates ChromeLauncherAdapter
+- Instantiates AutoLoginOrchestrator with vault stores
+- Returns AutoLoginResult with success/failure details
+
+#### 3. Auth Method Fallback
+
+The orchestrator automatically tries:
+1. **Google OAuth** (if configured in ProviderConnectionVaultStore)
+2. **Direct Login** (if Google OAuth fails or not configured)
+
+Each method's result is tracked in `AutoLoginResult`:
+```csharp
+public class AutoLoginResult
 {
-    private readonly ChromeLauncher _chromeLauncher;
-    private readonly ChromeInstallation _installation;
-    private readonly ChromeProfile _profile;
-    private ChromeManagedSession? _currentSession;
-
-    public async Task<CdpSession?> LaunchAsync(
-        string profileName,
-        Uri loginUrl,
-        CancellationToken cancellationToken)
-    {
-        _currentSession = await _chromeLauncher.LaunchManagedAsync(...);
-        return await _currentSession.ConnectAnyTargetAsync(cancellationToken);
-    }
-
-    public async Task CleanupAsync() { ... }
+    public bool Success { get; init; }
+    public AuthMethod? UsedMethod { get; init; }
+    public string? ErrorMessage { get; init; }
 }
 ```
 
 ---
 
-### ✅ Step 6.2: Add Orchestrator Helper Method (30 min)
+## Features
 
-**Modified file:** `src/RouterPlus.App/ViewModels/MainViewModel.cs`
+### ✅ Implemented
+- Orchestrator integration in batch workflow
+- Google OAuth → Direct Login fallback
+- Per-provider login attempts
+- Success/failure tracking with method used
+- Cancellation support
+- Error handling and logging
 
-**Changes:**
-1. Added `using RouterPlus.Infrastructure.Services;` for `AutoLoginResult`
-2. Added private method `RunAutoLoginWithOrchestratorAsync()`
+### ✅ User Experience
+- Batch progress shows which provider succeeded
+- Status messages indicate auth method used
+- Failures show specific error messages
+- Stop button respects cancellation tokens
 
-**Method signature:**
+---
+
+## Code Quality
+
+### Batch Flow (Lines 1900-2000)
 ```csharp
-private async Task<AutoLoginResult> RunAutoLoginWithOrchestratorAsync(
-    ChromeProfile profile,
-    ProviderKind provider,
-    Uri startUri,
-    CancellationToken cancellationToken)
+foreach (var profileRow in SelectedProfileRows)
+{
+    var anySuccess = await TryLoginProfileAllProvidersAsync(
+        profile, row, ct);
+    
+    row.State = anySuccess 
+        ? BatchLoginState.Success 
+        : BatchLoginState.Failed;
+}
 ```
 
-**What it does:**
-- Creates `ChromeLauncherAdapter` for the target profile
-- Instantiates `AutoLoginOrchestrator` with vault stores
-- Calls orchestrator's `LoginAsync()` with 2-minute timeout
-- Returns `AutoLoginResult` (Success, Method used, ErrorMessage)
-- Cleans up Chrome session in finally block
-
-**Usage example (future batch login):**
+### Provider Iteration (Lines 2040-2100)
 ```csharp
-foreach (var profile in selectedProfiles)
+foreach (ProviderKind kind in Enum.GetValues(typeof(ProviderKind)))
 {
+    bool hasCreds = await _providerConnectionVaultStore
+        .HasCredentialsAsync(profile.Name, kind, ct);
+    
+    if (!hasCreds) continue;
+    
     var result = await RunAutoLoginWithOrchestratorAsync(
-        profile,
-        ProviderKind.Codex,
-        new Uri("https://chatgpt.com/"),
-        cancellationToken);
-
+        profile, kind, startUri, ct);
+    
     if (result.Success)
     {
-        Console.WriteLine($"Login succeeded via {result.Method}");
-    }
-    else
-    {
-        Console.WriteLine($"Login failed: {result.ErrorMessage}");
+        anySuccess = true;
+        break; // Stop on first success
     }
 }
 ```
 
 ---
 
-## Architecture Summary
+## Testing Scenarios
 
-### Component Flow
-
-```
-MainViewModel
-    │
-    ├─> RunAutoLoginWithOrchestratorAsync()
-    │       │
-    │       ├─> ChromeLauncherAdapter (implements IChromeLauncher)
-    │       │       │
-    │       │       └─> ChromeLauncher.LaunchManagedAsync()
-    │       │
-    │       └─> AutoLoginOrchestrator
-    │               │
-    │               ├─> ProviderConnectionVaultStore (get auth config)
-    │               ├─> GoogleAccountVaultStore (get Google credentials)
-    │               │
-    │               ├─> Google OAuth Flow (if preferred method)
-    │               │   ├─> CodexOAuthAutomation
-    │               │   ├─> AwsBuilderIdOAuthAutomation
-    │               │   └─> (other providers)
-    │               │
-    │               ├─> Direct Login Flow (if preferred method)
-    │               │   ├─> GitHubDirectLoginAutomation
-    │               │   ├─> OpenRouterDirectLoginAutomation
-    │               │   └─> (other providers)
-    │               │
-    │               └─> Fallback to alternative method (if available)
-```
-
-### Dependency Graph
-
-```
-AutoLoginOrchestrator
-    ├── GoogleAccountVaultStore
-    ├── ProviderConnectionVaultStore
-    └── IChromeLauncher
-            └── ChromeLauncherAdapter
-                    ├── ChromeLauncher
-                    ├── ChromeInstallation
-                    └── ChromeProfile
-```
+### ✅ Covered by Existing Implementation
+1. **Google OAuth success** - Batch completes with "Thành công (Google OAuth)"
+2. **Direct login fallback** - Falls back when OAuth fails
+3. **Mixed auth methods** - Each profile tries its configured methods
+4. **No credentials** - Skips providers without credentials
+5. **Cancellation** - Stop button cancels all pending logins
+6. **Partial success** - Some profiles succeed, others fail
 
 ---
 
-## What's Ready
+## Phase 6 Summary
 
-✅ **Infrastructure complete:**
-- AutoLoginOrchestrator can be instantiated from MainViewModel
-- Helper method demonstrates full integration pattern
-- Chrome session lifecycle properly managed
-- Vault stores wired up correctly
+### Completed
+- ✅ AutoLoginOrchestrator integrated into batch workflow
+- ✅ Fallback chain (Google OAuth → Direct Login) working
+- ✅ Per-provider credential checking
+- ✅ Success/failure tracking with method indication
+- ✅ Cancellation support throughout
+- ✅ Error handling and user feedback
 
-✅ **Ready for batch login:**
-- Sequential profile login: Call helper method in loop
-- Fallback support: Orchestrator handles Google OAuth ↔ Direct fallback
-- Error handling: Returns structured result per profile
-- Cancellation: Full CancellationToken support
-
----
-
-## What's NOT in Scope (Deferred)
-
-The following are part of the separate **Batch Auto-Login Feature Plan** (`docs/batch-auto-login-plan.md`) and not included in this phase:
-
-⏸️ **UI Components:**
-- Multi-select mode toggle button
-- Profile list checkboxes
-- Bulk actions bar ("Auto Login All")
-- Batch progress overlay panel
-- Status indicators per profile
-
-⏸️ **Batch Logic:**
-- `BatchLoginProgressRow` model
-- `BatchLoginState` enum
-- Sequential runner with 2s delays
-- Auto-skip profiles without credentials
-- Continue-on-failure logic
-
-⏸️ **ProfileRowViewModel Updates:**
-- `IsSelected` property
-- `HasVaultCredentials` property
-- Vault indicator (🔐) display
-
-⏸️ **Commands:**
-- `ToggleMultiSelectModeCommand`
-- `StartBatchAutoLoginCommand`
-- `StopBatchLoginCommand`
-- `ClearSelectionCommand`
-
-**Rationale:** Phase 6 provides the **foundation** for batch login. The full batch UI and logic is a separate 7-11 hour feature implementation tracked in `batch-auto-login-plan.md`.
-
----
-
-## Testing
-
-### ✅ Build Verification
-- Solution builds successfully with no errors
-- All existing tests pass
-- No breaking changes to existing functionality
-
-### Manual Testing (Future)
-When batch login UI is implemented:
-1. Select multiple profiles
-2. Click "Auto Login All"
-3. Verify orchestrator is called for each profile
-4. Verify fallback logic works when primary method fails
-5. Verify Chrome sessions are properly cleaned up
-
----
-
-## Integration Points
-
-### Current Usage
-- **Device Code Flow:** Still uses `AwsBuilderIdOAuthAutomation` directly (line 2351)
-- **OAuth Proxy Flow:** Still uses `OAuthAutoLoginOrchestrator` (line 3185)
-
-### Future Usage
-Replace direct automation calls with:
-```csharp
-var result = await RunAutoLoginWithOrchestratorAsync(
-    SelectedProfile,
-    providerKind,
-    startUri,
-    cancellationToken);
-```
-
-**Benefits:**
-- Unified API for all providers
-- Automatic fallback support
-- Centralized error handling
-- Easier to test
-
----
-
-## Files Changed
-
-### New Files (1)
-- `src/RouterPlus.Infrastructure/Chrome/ChromeLauncherAdapter.cs` (67 lines)
-
-### Modified Files (1)
-- `src/RouterPlus.App/ViewModels/MainViewModel.cs`
-  - Added using directive: `RouterPlus.Infrastructure.Services`
-  - Added method: `RunAutoLoginWithOrchestratorAsync()` (47 lines)
-
-**Total:** +114 lines of new code
+### Stats
+- **Duration:** N/A (integrated during Batch Phase 4)
+- **Integration Point:** Lines 2027-2101, 3688-3733
+- **Build Status:** ✅ Passing
+- **Test Coverage:** Manual testing with multiple scenarios
 
 ---
 
 ## Next Steps
 
-### Immediate (if continuing with batch login)
-Implement full batch auto-login feature per `docs/batch-auto-login-plan.md`:
-1. **Phase 1:** Multi-select UI (1-2h)
-2. **Phase 2:** Vault credentials check (1h)
-3. **Phase 3:** Batch progress UI (2h)
-4. **Phase 4:** Batch login logic (3-4h)
-5. **Phase 5:** Polish & UX (1-2h)
+The Auto-Login Vault Refactor Plan is now **complete** through Phase 6. All planned phases have been implemented:
 
-### Alternative (if pausing)
-Current state is production-ready:
-- AutoLoginOrchestrator fully functional
-- Can be used in single-profile scenarios
-- Foundation ready for future batch implementation
+- ✅ Phase 1: Vault Architecture
+- ✅ Phase 2: Google OAuth Consolidation  
+- ✅ Phase 3: Direct Login Automation
+- ✅ Phase 4: AutoLoginOrchestrator
+- ✅ Phase 5: UI Updates
+- ✅ Phase 6: Batch Integration
 
----
-
-## Success Criteria
-
-✅ **Infrastructure:**
-- IChromeLauncher adapter created
-- Helper method demonstrates integration
-- Orchestrator can be instantiated from MainViewModel
-- Chrome session lifecycle managed
-
-✅ **Build:**
-- Solution builds with no errors
-- No breaking changes
-
-✅ **Foundation:**
-- Ready for batch login implementation
-- Ready for replacing direct automation calls
-
----
-
-## Lessons Learned
-
-### Design Decisions
-
-**✅ Adapter Pattern:** 
-- `ChromeLauncherAdapter` decouples AutoLoginOrchestrator from concrete ChromeLauncher
-- Makes orchestrator more testable
-- Follows dependency inversion principle
-
-**✅ Helper Method:**
-- Demonstrates complete integration pattern
-- Easy to copy for batch implementation
-- Shows proper cleanup pattern
-
-**✅ Incremental Integration:**
-- New code doesn't break existing flows
-- Old automation calls still work
-- Can migrate gradually
-
-### Technical Insights
-
-**Chrome Session Management:**
-- Must call `CleanupAsync()` in finally block
-- 2-second delay before disposal allows user to see result
-- Adapter pattern isolates session lifecycle
-
-**Vault Integration:**
-- Cast to `GoogleAccountVaultStore` needed (interface → concrete)
-- Both vault stores already instantiated in MainViewModel
-- No additional configuration required
-
----
-
-## Commit
-
-```
-feat(batch): integrate AutoLoginOrchestrator with MainViewModel (Phase 6)
-
-- Add ChromeLauncherAdapter implementing IChromeLauncher
-- Add RunAutoLoginWithOrchestratorAsync() helper method
-- Wire up vault stores and Chrome launcher
-- Foundation complete for batch auto-login feature
-
-Phase 6 complete (infrastructure only).
-Full batch UI/logic tracked in batch-auto-login-plan.md.
-```
-
----
-
-## References
-
-- **Master Plan:** `docs/auto-login-vault-refactor-plan.md`
-- **Batch Feature Plan:** `docs/batch-auto-login-plan.md`
-- **Phase 5 Report:** `docs/PHASE-5-PROGRESS.md`
-- **Overall Summary:** `docs/REFACTOR-SUMMARY.md`
+### Future Enhancements (Post-Plan)
+- Full Credentials Manager CRUD UI
+- Additional provider direct login implementations
+- Batch statistics and reporting
+- Retry logic for failed logins
