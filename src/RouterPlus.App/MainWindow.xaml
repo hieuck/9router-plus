@@ -704,27 +704,56 @@
                                 </Style>
                             </Button.Style>
                         </Button>
-                        <Button Content="☑  Chọn nhiều"
-                                Command="{Binding ToggleMultiSelectModeCommand}"
-                                ToolTip="Bật/tắt chế độ chọn nhiều profiles"
-                                Margin="0,0,0,6"
-                                Padding="8,5"
-                                HorizontalContentAlignment="Left">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                    <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsMultiSelectMode}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
-                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                            <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Content="☑  Chọn nhiều"
+                                    Command="{Binding ToggleMultiSelectModeCommand}"
+                                    ToolTip="Bật/tắt chế độ chọn nhiều profiles (Ctrl+A)"
+                                    Padding="8,5"
+                                    HorizontalContentAlignment="Left">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsMultiSelectMode}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Grid.Column="2"
+                                    Padding="8,5"
+                                    HorizontalContentAlignment="Left"
+                                    ToolTip="Chọn tất cả / Bỏ chọn tất cả profiles"
+                                    Command="{Binding ToggleSelectAllCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding AreAllProfilesSelected}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                                <Button.Content>
+                                    <TextBlock Text="{Binding SelectAllButtonText}" />
+                                </Button.Content>
+                            </Button>
+                        </Grid>
                         <ItemsControl ItemsSource="{Binding ProviderFilterOptions}" Margin="0,0,0,8">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>

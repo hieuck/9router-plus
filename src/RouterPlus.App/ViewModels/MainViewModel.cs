@@ -152,6 +152,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ClearProfileSearchCommand = new AsyncRelayCommand(ClearProfileSearchAsync, () => CanClearProfileSearch);
         ToggleMultiSelectModeCommand = new RelayCommand(ToggleMultiSelectMode);
         ClearSelectionCommand = new RelayCommand(ClearSelection);
+        ToggleSelectAllCommand = new RelayCommand(ToggleSelectAll);
         SelectProfilesWithVaultCommand = new AsyncRelayCommand(() => SelectProfilesWithVaultCredentialsAsync());
         StartBatchAutoLoginCommand = new AsyncRelayCommand(StartBatchAutoLoginAsync, () => HasSelectedProfiles && !IsBatchLoginRunning);
         StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
@@ -1270,6 +1271,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public RelayCommand ToggleMultiSelectModeCommand { get; }
     public RelayCommand ClearSelectionCommand { get; }
+    public RelayCommand ToggleSelectAllCommand { get; }
     public AsyncRelayCommand SelectProfilesWithVaultCommand { get; }
     public AsyncRelayCommand StartBatchAutoLoginCommand { get; }
     public RelayCommand StopBatchLoginCommand { get; }
@@ -1772,6 +1774,37 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasSelectedProfiles));
         OnPropertyChanged(nameof(SelectedProfilesText));
     }
+
+    /// <summary>
+    /// Toggle select/deselect all profiles.
+    /// If any profile is unselected → select all.
+    /// If all profiles are selected → deselect all.
+    /// </summary>
+    private void ToggleSelectAll()
+    {
+        // Auto-enable multi-select mode
+        if (!_isMultiSelectMode)
+        {
+            IsMultiSelectMode = true;
+        }
+
+        // Check if all are currently selected
+        bool allSelected = ProfileRows.All(row => row.IsSelected);
+
+        // Toggle: if all selected, deselect all; otherwise select all
+        bool newState = !allSelected;
+        foreach (var row in ProfileRows)
+        {
+            row.IsSelected = newState;
+        }
+
+        OnPropertyChanged(nameof(HasSelectedProfiles));
+        OnPropertyChanged(nameof(SelectedProfilesText));
+    }
+
+    public bool AreAllProfilesSelected => ProfileRows.Any() && ProfileRows.All(row => row.IsSelected);
+
+    public string SelectAllButtonText => AreAllProfilesSelected ? "☐  Bỏ chọn tất cả" : "☑  Chọn tất cả";
 
     /// <summary>
     /// Batch Phase 2: Check if a profile has vault credentials for any provider.
