@@ -30,7 +30,6 @@ $requiredFiles = @(
     'docs\assets\9router-profile-workspace.png',
     '.github\workflows\ci.yml',
     '.github\workflows\release.yml',
-    '.github\workflows\release-personal.yml',
     'scripts\package-release.ps1',
     'src\RouterPlus.Updater\RouterPlus.Updater.csproj'
 )
