@@ -18,12 +18,14 @@ public sealed class ThemeTemplateTests
     {
         var themeDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "Styles", "Theme.xaml")));
 
+        var xNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
+
         // Get only top-level Style elements (not nested inside ControlTemplates)
         var toggleButtonStyle = themeDocument.Root!
             .Elements()
             .Single(element => element.Name.LocalName == "Style"
                 && (string?)element.Attribute("TargetType") == "ToggleButton"
-                && element.Attribute("Key") == null); // Default style without x:Key
+                && element.Attribute(XName.Get("Key", xNamespace)) == null); // Default style without x:Key
 
         var contentPresenter = toggleButtonStyle
             .Descendants()
@@ -41,12 +43,14 @@ public sealed class ThemeTemplateTests
     {
         var themeDocument = XDocument.Load(FindRepositoryFile(Path.Combine("src", "RouterPlus.App", "Styles", "Theme.xaml")));
 
+        var xNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
+
         // Get only top-level Style elements (not nested inside ControlTemplates)
         var toggleButtonStyle = themeDocument.Root!
             .Elements()
             .Single(element => element.Name.LocalName == "Style"
                 && (string?)element.Attribute("TargetType") == "ToggleButton"
-                && element.Attribute("Key") == null); // Default style without x:Key
+                && element.Attribute(XName.Get("Key", xNamespace)) == null); // Default style without x:Key
 
         var styleTriggers = toggleButtonStyle
             .Elements()

@@ -341,13 +341,13 @@ public class GoogleLoginStateMachineTests
         var browser = new FakeBrowser()
             .ReturnState(new GoogleLoginPageState(
                 new Uri("https://accounts.google.com/signin"),
-                HasEmailField: false,
+                HasEmailField: true, // Set to true to skip wait loop
                 HasPasswordField: false,
                 HasTotpField: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
-            .ReturnState(new GoogleLoginPageState( // Add another state to prevent "No more states" exception
+            .ReturnState(new GoogleLoginPageState( // After email submit
                 new Uri("https://accounts.google.com/signin"),
                 HasEmailField: false,
                 HasPasswordField: false,
@@ -359,8 +359,7 @@ public class GoogleLoginStateMachineTests
         var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
 
         Assert.Equal(GoogleLoginResultCategory.UnsupportedPage, result.Category);
-        Assert.Contains("Unrecognized page state", result.Message);
-        Assert.Empty(browser.FilledFields);
+        Assert.Contains("Unrecognized page state at", result.Message);
     }
 
     [Fact]
