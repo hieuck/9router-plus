@@ -1577,7 +1577,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var profile in profiles)
         {
             Profiles.Add(profile);
-            ProfileRows.Add(new ProfileRowViewModel(profile, Providers));
+            var row = new ProfileRowViewModel(profile, Providers);
+            row.SelectionChanged += OnProfileSelectionChanged;
+            ProfileRows.Add(row);
         }
 
         var restoredProfile = Profiles.FirstOrDefault(profile => profile.Id == previousProfileId)
@@ -1600,7 +1602,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var profile in profiles)
         {
             Profiles.Add(profile);
-            ProfileRows.Add(new ProfileRowViewModel(profile, Providers));
+            var row = new ProfileRowViewModel(profile, Providers);
+            row.SelectionChanged += OnProfileSelectionChanged;
+            ProfileRows.Add(row);
         }
 
         ApplyProfileFilter();
@@ -1771,6 +1775,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             row.IsSelected = false;
         }
+        OnPropertyChanged(nameof(HasSelectedProfiles));
+        OnPropertyChanged(nameof(SelectedProfilesText));
+    }
+
+    private void OnProfileSelectionChanged(object? sender, EventArgs e)
+    {
         OnPropertyChanged(nameof(HasSelectedProfiles));
         OnPropertyChanged(nameof(SelectedProfilesText));
     }
