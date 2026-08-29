@@ -22,10 +22,14 @@ public partial class CredentialsManagerDialog : Window
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         UIEventLogger.LogDialogClose("CredentialsManager");
+
+        // Dispose vault session asynchronously
+        _ = _viewModel.DisposeAsync();
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e)
+    private async void Close_Click(object sender, RoutedEventArgs e)
     {
+        await _viewModel.DisposeAsync();
         DialogResult = true;
         Close();
     }

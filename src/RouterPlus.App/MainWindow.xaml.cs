@@ -148,7 +148,11 @@ public partial class MainWindow : Window
     private void OpenCredentialsManager_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("OpenCredentialsManager");
-        var viewModel = new CredentialsManagerViewModel(ViewModel);
+        var viewModel = new CredentialsManagerViewModel(
+            ViewModel,
+            ViewModel.GoogleAccountVaultStore,
+            ViewModel.ProviderConnectionVaultStore,
+            ViewModel.GoogleAccountVaultPaths);
         var dialog = new CredentialsManagerDialog(viewModel)
         {
             Owner = this

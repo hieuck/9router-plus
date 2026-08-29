@@ -1,19 +1,28 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
 using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Storage;
+using RouterPlus.Infrastructure.Security;
 
 namespace RouterPlus.App.ViewModels;
 
 /// <summary>
 /// ViewModel for unified credentials manager dialog.
 /// Manages Google accounts and provider connections.
+/// Phase 5 Step 5.2 - Complete vault integration
 /// </summary>
 public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
 {
+    private readonly MainViewModel _mainViewModel;
+    private readonly IGoogleAccountVaultStore _googleAccountVaultStore;
+    private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
+    private readonly GoogleAccountVaultPaths _vaultPaths;
+
     private int _selectedTabIndex;
     private string _statusMessage = string.Empty;
     private GoogleAccountRowViewModel? _selectedGoogleAccount;
@@ -21,13 +30,28 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
     private ProviderConnectionRowViewModel? _selectedKiroConnection;
     private ProviderConnectionRowViewModel? _selectedGitHubConnection;
     private ProviderConnectionRowViewModel? _selectedOpenRouterConnection;
+    private GoogleAccountVaultSession? _vaultSession;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public CredentialsManagerViewModel(MainViewModel mainViewModel)
+    public CredentialsManagerViewModel(
+        MainViewModel mainViewModel,
+        IGoogleAccountVaultStore googleAccountVaultStore,
+        ProviderConnectionVaultStore providerConnectionVaultStore,
+        GoogleAccountVaultPaths vaultPaths)
     {
-        ArgumentNullException.ThrowIfNull(mainViewModel);
-        LoadData(mainViewModel);
+        _mainViewModel = mainViewModel ?? throw new ArgumentNullException(nameof(mainViewModel));
+        _googleAccountVaultStore = googleAccountVaultStore ?? throw new ArgumentNullException(nameof(googleAccountVaultStore));
+        _providerConnectionVaultStore = providerConnectionVaultStore ?? throw new ArgumentNullException(nameof(providerConnectionVaultStore));
+        _vaultPaths = vaultPaths ?? throw new ArgumentNullException(nameof(vaultPaths));
+
+        // Initialize commands
+        AddGoogleAccountCommand = new AsyncRelayCommand(AddGoogleAccountAsync);
+        EditGoogleAccountCommand = new AsyncRelayCommand(EditGoogleAccountAsync, () => SelectedGoogleAccount != null);
+        RemoveGoogleAccountCommand = new AsyncRelayCommand(RemoveGoogleAccountAsync, () => SelectedGoogleAccount != null);
+        RefreshCommand = new AsyncRelayCommand(RefreshDataAsync);
+
+        _ = LoadDataAsync();
     }
 
     // Selected tab index
@@ -65,6 +89,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
             if (_selectedGoogleAccount == value) return;
             _selectedGoogleAccount = value;
             OnPropertyChanged();
+            EditGoogleAccountCommand.RaiseCanExecuteChanged();
+            RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -118,23 +144,63 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
         }
     }
 
-    private void LoadData(MainViewModel mainViewModel)
+    // Commands
+    public AsyncRelayCommand AddGoogleAccountCommand { get; }
+    public AsyncRelayCommand EditGoogleAccountCommand { get; }
+    public AsyncRelayCommand RemoveGoogleAccountCommand { get; }
+    public AsyncRelayCommand RefreshCommand { get; }
+
+    private async Task LoadDataAsync()
     {
-        // TODO: Load Google accounts from GoogleAccountVaultStore
-        // For now, show placeholder
-        GoogleAccounts.Add(new GoogleAccountRowViewModel
+        try
         {
-            Email = "example@gmail.com (placeholder)",
-            HasTotpSecret = true
-        });
+            SetStatus("Loading vault data...");
 
-        SetStatus("Credentials Manager: UI skeleton ready. Vault integration pending.");
+            // Try to open Google vault with remembered key
+            _vaultSession = await _googleAccountVaultStore.TryOpenRememberedAsync(
+                _vaultPaths.VaultPath,
+                CancellationToken.None);
 
-        // TODO: Load provider connections from vault stores
-        // For now, create placeholders for each profile
-        foreach (var profile in mainViewModel.FilteredProfiles)
+            if (_vaultSession == null)
+            {
+                SetStatus("Google vault locked. Use 'Tự động đăng nhập Google' to unlock first.");
+                // Load provider connections only
+                await LoadProviderConnectionsAsync();
+                return;
+            }
+
+            // Load Google accounts from vault
+            GoogleAccounts.Clear();
+            foreach (var credential in _vaultSession.Vault.Records)
+            {
+                GoogleAccounts.Add(new GoogleAccountRowViewModel
+                {
+                    Email = credential.Email,
+                    HasTotpSecret = !string.IsNullOrEmpty(credential.TotpSecret)
+                });
+            }
+
+            // Load provider connections
+            await LoadProviderConnectionsAsync();
+
+            SetStatus($"Loaded {GoogleAccounts.Count} Google accounts and provider connections.");
+        }
+        catch (Exception ex)
         {
-            // Add placeholder for each provider
+            SetStatus($"Error loading vault: {ex.Message}");
+        }
+    }
+
+    private async Task LoadProviderConnectionsAsync()
+    {
+        CodexConnections.Clear();
+        KiroConnections.Clear();
+        GitHubConnections.Clear();
+        OpenRouterConnections.Clear();
+
+        foreach (var profile in _mainViewModel.FilteredProfiles)
+        {
+            // Load connections for each provider
             var providers = new[]
             {
                 (ProviderKind.Codex, CodexConnections),
@@ -145,14 +211,94 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
 
             foreach (var (kind, collection) in providers)
             {
-                collection.Add(new ProviderConnectionRowViewModel
+                var connection = await _providerConnectionVaultStore.GetConnectionAsync(
+                    profile.Name,
+                    kind,
+                    CancellationToken.None);
+
+                if (connection != null)
                 {
-                    ProfileName = profile.Name,
-                    PreferredMethod = AuthMethod.GoogleOAuth,
-                    LinkedGoogleAccount = "Not configured",
-                    HasDirectCredentials = false
-                });
+                    collection.Add(new ProviderConnectionRowViewModel
+                    {
+                        ProfileName = connection.ProfileName,
+                        PreferredMethod = connection.PreferredMethod,
+                        LinkedGoogleAccount = connection.LinkedGoogleAccount ?? "Not linked",
+                        HasDirectCredentials = connection.DirectCredential != null
+                    });
+                }
+                else
+                {
+                    // Show unconfigured row
+                    collection.Add(new ProviderConnectionRowViewModel
+                    {
+                        ProfileName = profile.Name,
+                        PreferredMethod = AuthMethod.GoogleOAuth,
+                        LinkedGoogleAccount = "Not configured",
+                        HasDirectCredentials = false
+                    });
+                }
             }
+        }
+    }
+
+    private async Task RefreshDataAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task AddGoogleAccountAsync()
+    {
+        SetStatus("Feature coming soon: Add Google account");
+        // TODO: Open GoogleAutoLoginDialog in "add new" mode
+        await Task.CompletedTask;
+    }
+
+    private async Task EditGoogleAccountAsync()
+    {
+        if (SelectedGoogleAccount == null) return;
+        SetStatus($"Feature coming soon: Edit {SelectedGoogleAccount.Email}");
+        // TODO: Open GoogleAutoLoginDialog with selected account
+        await Task.CompletedTask;
+    }
+
+    private async Task RemoveGoogleAccountAsync()
+    {
+        if (SelectedGoogleAccount == null) return;
+        if (_vaultSession == null)
+        {
+            SetStatus("Vault not unlocked");
+            return;
+        }
+
+        var email = SelectedGoogleAccount.Email;
+
+        try
+        {
+            // Find credential in vault
+            var credential = _vaultSession.Vault.Records
+                .FirstOrDefault(c => string.Equals(c.Email, email, StringComparison.OrdinalIgnoreCase));
+
+            if (credential == null)
+            {
+                SetStatus($"Account {email} not found in vault");
+                return;
+            }
+
+            // Remove from vault (immutable - filter and replace)
+            var currentVault = _vaultSession.Vault;
+            var filteredRecords = currentVault.Records.Where(r => r.Email != email);
+            var newVault = new GoogleAccountVault(filteredRecords);
+            _vaultSession.Replace(newVault);
+            await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
+
+            // Remove from UI
+            GoogleAccounts.Remove(SelectedGoogleAccount);
+
+            SetStatus($"Removed {email} from vault");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error removing account: {ex.Message}");
         }
     }
 
@@ -164,6 +310,15 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
     public void SetStatus(string message)
     {
         StatusMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_vaultSession != null)
+        {
+            await _vaultSession.DisposeAsync();
+            _vaultSession = null;
+        }
     }
 }
 
