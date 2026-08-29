@@ -22,6 +22,9 @@
         <KeyBinding Key="Down" Command="{Binding MoveQuickLaunchSelectionCommand}" CommandParameter="1" />
         <KeyBinding Key="Up" Command="{Binding MoveQuickLaunchSelectionCommand}" CommandParameter="-1" />
         <KeyBinding Key="Enter" Command="{Binding ConfirmQuickLaunchSelectionCommand}" CommandParameter="{Binding SelectedQuickLaunchProfile}" />
+        <KeyBinding Modifiers="Ctrl" Key="A" Command="{Binding ToggleMultiSelectModeCommand}" />
+        <KeyBinding Modifiers="Ctrl+Shift" Key="A" Command="{Binding SelectProfilesWithVaultCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CloseBatchProgressCommand}" />
     </Window.InputBindings>
     <Window.Resources>
         <Style x:Key="SidebarTextStyle"
@@ -846,6 +849,7 @@
                             <Button Grid.Column="2"
                                     Content="▶ Auto Login All"
                                     Command="{Binding StartBatchAutoLoginCommand}"
+                                    ToolTip="Tự động đăng nhập tất cả profile đã chọn (sequential, với fallback)"
                                     Padding="8,4"
                                     FontSize="10"
                                     Margin="0,0,6,0"
@@ -2372,6 +2376,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <!-- Header -->
@@ -2421,6 +2426,38 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
+
+                    <!-- Action Buttons -->
+                    <StackPanel Grid.Row="3"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Margin="0,16,0,0">
+                        <Button Content="■ Stop"
+                                Command="{Binding StopBatchLoginCommand}"
+                                Padding="12,6"
+                                Margin="0,0,8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="✓ Close"
+                                Command="{Binding CloseBatchProgressCommand}"
+                                Padding="12,6"
+                                FontWeight="SemiBold">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsBatchLoginRunning}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </Border>
         </Border>

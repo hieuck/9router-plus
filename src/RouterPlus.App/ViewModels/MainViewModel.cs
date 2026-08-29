@@ -155,6 +155,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SelectProfilesWithVaultCommand = new AsyncRelayCommand(() => SelectProfilesWithVaultCredentialsAsync());
         StartBatchAutoLoginCommand = new AsyncRelayCommand(StartBatchAutoLoginAsync, () => HasSelectedProfiles && !IsBatchLoginRunning);
         StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
+        CloseBatchProgressCommand = new RelayCommand(CloseBatchProgress, () => !IsBatchLoginRunning);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         LaunchProfileCommand = new AsyncRelayCommand<ChromeProfile>(LaunchProfileAsync);
         LaunchRecentCommand = new AsyncRelayCommand<object>(LaunchRecentAsync);
@@ -1272,6 +1273,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AsyncRelayCommand SelectProfilesWithVaultCommand { get; }
     public AsyncRelayCommand StartBatchAutoLoginCommand { get; }
     public RelayCommand StopBatchLoginCommand { get; }
+    public RelayCommand CloseBatchProgressCommand { get; }
 
     public AsyncRelayCommand LaunchSelectedCommand { get; }
     public AsyncRelayCommand<ChromeProfile> LaunchProfileCommand { get; }
@@ -1975,6 +1977,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void StopBatchLogin()
     {
         _batchLoginCts?.Cancel();
+    }
+
+    private void CloseBatchProgress()
+    {
+        // Exit multi-select mode after batch completes
+        IsMultiSelectMode = false;
+        BatchProgressRows.Clear();
+        OnPropertyChanged(nameof(BatchProgressSummary));
     }
 
     /// <summary>
