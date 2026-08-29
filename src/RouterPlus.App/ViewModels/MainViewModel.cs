@@ -151,6 +151,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ClearProfileSearchCommand = new AsyncRelayCommand(ClearProfileSearchAsync, () => CanClearProfileSearch);
         ToggleMultiSelectModeCommand = new RelayCommand(ToggleMultiSelectMode);
         ClearSelectionCommand = new RelayCommand(ClearSelection);
+        SelectProfilesWithVaultCommand = new AsyncRelayCommand(() => SelectProfilesWithVaultCredentialsAsync());
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         LaunchProfileCommand = new AsyncRelayCommand<ChromeProfile>(LaunchProfileAsync);
         LaunchRecentCommand = new AsyncRelayCommand<object>(LaunchRecentAsync);
@@ -1234,6 +1235,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public RelayCommand ToggleMultiSelectModeCommand { get; }
     public RelayCommand ClearSelectionCommand { get; }
+    public AsyncRelayCommand SelectProfilesWithVaultCommand { get; }
 
     public AsyncRelayCommand LaunchSelectedCommand { get; }
     public AsyncRelayCommand<ChromeProfile> LaunchProfileCommand { get; }
@@ -1731,6 +1733,83 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         OnPropertyChanged(nameof(HasSelectedProfiles));
         OnPropertyChanged(nameof(SelectedProfilesText));
+    }
+
+    /// <summary>
+    /// Batch Phase 2: Check if a profile has vault credentials for any provider.
+    /// Used to filter profiles eligible for batch auto-login.
+    /// </summary>
+    public async Task<bool> HasVaultCredentialsAsync(
+        ChromeProfile profile,
+        CancellationToken cancellationToken = default)
+    {
+        if (profile is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            // Check all providers - returns true if any provider has credentials
+            foreach (ProviderKind kind in Enum.GetValues(typeof(ProviderKind)))
+            {
+                if (kind == ProviderKind.Ollama || kind == ProviderKind.Kimchi)
+                {
+                    // Skip providers without auto-login support
+                    continue;
+                }
+
+                var hasCreds = await _providerConnectionVaultStore.HasCredentialsAsync(
+                    profile.Name,
+                    kind,
+                    cancellationToken);
+
+                if (hasCreds)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.LogError(
+                DiagnosticCategories.ViewModel,
+                $"Failed to check vault credentials for {profile.Name}: {ex.Message}",
+                ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Batch Phase 2: Select only profiles that have vault credentials configured.
+    /// Useful for quick batch auto-login setup.
+    /// </summary>
+    public async Task SelectProfilesWithVaultCredentialsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!_isMultiSelectMode)
+        {
+            IsMultiSelectMode = true;
+        }
+
+        int selectedCount = 0;
+        foreach (var row in ProfileRows)
+        {
+            var hasCreds = await HasVaultCredentialsAsync(row.Profile, cancellationToken);
+            row.IsSelected = hasCreds;
+            if (hasCreds)
+            {
+                selectedCount++;
+            }
+        }
+
+        OnPropertyChanged(nameof(HasSelectedProfiles));
+        OnPropertyChanged(nameof(SelectedProfilesText));
+        StatusText = selectedCount > 0
+            ? $"Đã chọn {selectedCount} profile có vault credentials"
+            : "Không có profile nào có vault credentials";
     }
 
     private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)

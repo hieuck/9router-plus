@@ -825,6 +825,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="✓" FontSize="14" Foreground="{DynamicResource AccentContentBrush}" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="Bold" />
@@ -835,6 +836,13 @@
                                            VerticalAlignment="Center" />
                             </StackPanel>
                             <Button Grid.Column="1"
+                                    Content="🔐 Chọn có vault"
+                                    Command="{Binding SelectProfilesWithVaultCommand}"
+                                    Padding="8,4"
+                                    FontSize="10"
+                                    Margin="0,0,6,0"
+                                    VerticalAlignment="Center" />
+                            <Button Grid.Column="2"
                                     Content="✕ Bỏ chọn"
                                     Command="{Binding ClearSelectionCommand}"
                                     Padding="8,4"
