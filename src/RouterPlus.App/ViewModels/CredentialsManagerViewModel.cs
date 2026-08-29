@@ -380,7 +380,35 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            SetStatus($"Error removing credentials: {ex.Message}");
+            SetStatus($"Error removing account: {ex.Message}");
+        }
+    }
+
+    public async Task RemoveGoogleAccountAsync(string email)
+    {
+        if (_vaultSession == null)
+        {
+            SetStatus("Vault not unlocked");
+            return;
+        }
+
+        try
+        {
+            // Remove from vault (immutable - filter by email)
+            var currentVault = _vaultSession.Vault;
+            var filteredRecords = currentVault.Records.Where(r => r.Email != email);
+            var newVault = new GoogleAccountVault(filteredRecords);
+            _vaultSession.Replace(newVault);
+            await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
+
+            // Refresh UI
+            await LoadDataAsync();
+
+            SetStatus($"Removed Google account: {email}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error removing account: {ex.Message}");
         }
     }
 

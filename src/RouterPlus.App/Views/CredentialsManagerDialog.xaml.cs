@@ -65,7 +65,7 @@ public partial class CredentialsManagerDialog : Window
             MessageBoxImage.Information);
     }
 
-    private void RemoveGoogleAccount_Click(object sender, RoutedEventArgs e)
+    private async void RemoveGoogleAccount_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("CredentialsManager.RemoveGoogleAccount");
         if (_viewModel.SelectedGoogleAccount == null)
@@ -81,14 +81,7 @@ public partial class CredentialsManagerDialog : Window
         if (result != MessageBoxResult.Yes)
             return;
 
-        _viewModel.SetStatus($"Feature coming soon: Remove {email}");
-
-        // TODO: Remove account from GoogleAccountVaultStore
-        MessageBox.Show(
-            "Feature not yet implemented.",
-            "Remove Google Account",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        await _viewModel.RemoveGoogleAccountAsync(email);
     }
 
     // Codex Configuration
