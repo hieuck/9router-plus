@@ -10,6 +10,8 @@ obj/
 *.suo
 publish/
 artifacts/
+e2e-results/
+tests/RouterPlus.App.E2E/TestResults/
 .worktrees/
 
 # ============================================================
