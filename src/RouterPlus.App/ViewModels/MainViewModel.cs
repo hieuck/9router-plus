@@ -45,6 +45,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     internal ProviderConnectionVaultStore ProviderConnectionVaultStore => _providerConnectionVaultStore;
     internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginAutomation => _googleLoginAutomation;
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
+    private readonly IGoogleAuthenticationService _googleAuthenticationService;
     private readonly HttpClient _httpClient;
     private readonly IUpdateService _updateService;
     private readonly IExternalLinkLauncher _linkLauncher;
@@ -114,7 +115,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IGoogleAccountVaultStore? googleLoginVaultStore = null,
         GoogleAccountVaultPaths? googleLoginVaultPaths = null,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null,
-        IReadOnlyList<ChromeProfile>? harnessProfiles = null)
+        IReadOnlyList<ChromeProfile>? harnessProfiles = null,
+        IGoogleAuthenticationService? googleAuthenticationService = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
@@ -133,6 +135,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Path.GetDirectoryName(_googleLoginVaultPaths.VaultPath) ?? string.Empty,
             "provider-connections.vault");
         _providerConnectionVaultStore = new ProviderConnectionVaultStore(providerConnectionPath);
+        _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _quotaPollingService = new QuotaPollingService(
             RefreshForQuotaPollingAsync,
@@ -3147,7 +3150,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 else
                 {
                     DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login: session cookies did not authenticate, starting state machine");
-                    result = await GoogleLoginStateMachine.RunAsync(browser, credential, cancellationToken);
+                    result = await _googleAuthenticationService.AuthenticateAsync(
+                        new GoogleAuthenticationRequest(credential, browser),
+                        cancellationToken);
                 }
 
                 DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login state machine completed: {result.Category}");
