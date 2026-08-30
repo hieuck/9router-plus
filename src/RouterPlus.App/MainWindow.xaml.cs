@@ -150,17 +150,28 @@ public partial class MainWindow : Window
     private void OpenCredentialsManager_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("OpenCredentialsManager");
-        var viewModel = new CredentialsManagerViewModel(
-            ViewModel,
-            ViewModel.GoogleAccountVaultStore,
-            ViewModel.ProviderConnectionVaultStore,
-            ViewModel.GoogleAccountVaultPaths,
-            ViewModel.GoogleLoginAutomation);
-        var dialog = new CredentialsManagerDialog(viewModel)
+        try
         {
-            Owner = this
-        };
-        dialog.ShowDialog();
+            var viewModel = new CredentialsManagerViewModel(
+                ViewModel,
+                ViewModel.GoogleAccountVaultStore,
+                ViewModel.ProviderConnectionVaultStore,
+                ViewModel.GoogleAccountVaultPaths,
+                ViewModel.GoogleLoginAutomation);
+            var dialog = new CredentialsManagerDialog(viewModel)
+            {
+                Owner = this
+            };
+            dialog.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Failed to open Credentials Manager:\n\n{ex.Message}\n\n{ex.StackTrace}",
+                "Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private async void RunSetupWizard_Click(object sender, RoutedEventArgs e)

@@ -85,6 +85,38 @@ public sealed class CredentialsManagerDialogTests
             Assert.True(editableFields.Count(field => field.IsEnabled) >= 3);
             Assert.Contains(editableFields, field => !field.IsEnabled);
 
+            var passwordVisibilityButton = dialog.FindFirstDescendant(cf =>
+                cf.ByAutomationId("GooglePasswordVisibilityButton"));
+            var totpVisibilityButton = dialog.FindFirstDescendant(cf =>
+                cf.ByAutomationId("GoogleTotpVisibilityButton"));
+            Assert.NotNull(passwordVisibilityButton);
+            Assert.NotNull(totpVisibilityButton);
+            Assert.Contains("Show", passwordVisibilityButton!.Name, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Show", totpVisibilityButton!.Name, StringComparison.OrdinalIgnoreCase);
+
+            passwordVisibilityButton.Click();
+            var visiblePasswordEditor = Retry.WhileNull(
+                () => dialog.FindFirstDescendant(cf => cf.ByAutomationId("GooglePasswordVisibleEditor")),
+                TimeSpan.FromSeconds(2),
+                throwOnTimeout: false).Result;
+            Assert.NotNull(visiblePasswordEditor);
+
+            passwordVisibilityButton = dialog.FindFirstDescendant(cf =>
+                cf.ByAutomationId("GooglePasswordVisibilityButton"));
+            Assert.NotNull(passwordVisibilityButton);
+            Assert.Equal("Hide", passwordVisibilityButton!.Name);
+
+            passwordVisibilityButton.Click();
+            Assert.Null(dialog.FindFirstDescendant(cf => cf.ByAutomationId("GooglePasswordVisibleEditor")));
+
+            totpVisibilityButton.Click();
+            var visibleTotpEditor = Retry.WhileNull(
+                () => dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpVisibleEditor")),
+                TimeSpan.FromSeconds(2),
+                throwOnTimeout: false).Result;
+            Assert.NotNull(visibleTotpEditor);
+            Assert.NotNull(dialog.FindFirstDescendant(cf => cf.ByAutomationId("GooglePasswordEditor")));
+
             var textBoxes = editableFields
                 .Where(field => field.ControlType == ControlType.Edit)
                 .Select(field => field.AsTextBox())
@@ -107,7 +139,10 @@ public sealed class CredentialsManagerDialogTests
             });
             FlaUI.Core.Input.Keyboard.Type("alpha-edited-password");
 
-            var totpEditor = dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpEditor"));
+            var editableRow = googleList.FindAllChildren(cf => cf.ByControlType(ControlType.ListItem))
+                .First(row => row.FindFirstDescendant(cf =>
+                    cf.ByAutomationId("GoogleEmailEditor"))?.AsTextBox().IsReadOnly == false);
+            var totpEditor = editableRow.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpEditor"));
             Assert.NotNull(totpEditor);
             Assert.True(totpEditor!.IsEnabled);
             SetPassword(totpEditor, "JBSWY3DPEHPK3PXP");

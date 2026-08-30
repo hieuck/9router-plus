@@ -78,6 +78,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         Assert.True(viewModel.IsVaultLocked);
         Assert.Contains("locked", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.False(viewModel.GoogleAccounts[0].HasCredentials);
+        Assert.False(viewModel.GoogleAccounts[0].IsEditable);
     }
 
     [Fact]
@@ -298,6 +299,89 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         Assert.False(viewModel.IsVaultLocked);
         Assert.False(Assert.Single(viewModel.GoogleAccounts).HasCredentials);
         Assert.Contains("Removed Google account", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GoogleAccountRow_masks_sensitive_values_by_default()
+    {
+        var row = new GoogleAccountRowViewModel
+        {
+            Password = "synthetic-password",
+            TotpSecret = "synthetic-totp"
+        };
+
+        Assert.False(row.IsPasswordVisible);
+        Assert.False(row.IsTotpSecretVisible);
+    }
+
+    [Fact]
+    public void GoogleAccountRow_toggles_password_and_totp_visibility_independently()
+    {
+        var row = new GoogleAccountRowViewModel
+        {
+            IsVaultUnlocked = true
+        };
+
+        row.TogglePasswordVisibility();
+        Assert.True(row.IsPasswordVisible);
+        Assert.False(row.IsTotpSecretVisible);
+
+        row.ToggleTotpSecretVisibility();
+        Assert.True(row.IsPasswordVisible);
+        Assert.True(row.IsTotpSecretVisible);
+
+        row.TogglePasswordVisibility();
+        Assert.False(row.IsPasswordVisible);
+        Assert.True(row.IsTotpSecretVisible);
+    }
+
+    [Fact]
+    public void GoogleAccountRow_resets_sensitive_visibility_when_editing_ends_or_credentials_clear()
+    {
+        var row = new GoogleAccountRowViewModel
+        {
+            HasCredentials = true,
+            IsEditing = true,
+            IsVaultUnlocked = true
+        };
+        row.TogglePasswordVisibility();
+        row.ToggleTotpSecretVisibility();
+
+        row.IsEditing = false;
+
+        Assert.False(row.IsPasswordVisible);
+        Assert.False(row.IsTotpSecretVisible);
+
+        row.IsEditing = true;
+        row.TogglePasswordVisibility();
+        row.ToggleTotpSecretVisibility();
+        row.HasCredentials = false;
+
+        Assert.False(row.IsPasswordVisible);
+        Assert.False(row.IsTotpSecretVisible);
+    }
+
+    [Fact]
+    public async Task RemoveGoogleAccountAsync_resets_sensitive_visibility_for_removed_row()
+    {
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "user@example.test",
+            "synthetic-login-password",
+            "synthetic-totp"));
+        var viewModel = CreateViewModel();
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        row.IsEditing = true;
+        row.TogglePasswordVisibility();
+        row.ToggleTotpSecretVisibility();
+
+        await viewModel.RemoveGoogleAccountAsync("Test Profile");
+
+        Assert.False(row.IsPasswordVisible);
+        Assert.False(row.IsTotpSecretVisible);
     }
 
     [Fact]

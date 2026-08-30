@@ -129,6 +129,22 @@ public partial class CredentialsManagerDialog : Window
         }
     }
 
+    private void TogglePasswordVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is GoogleAccountRowViewModel row)
+        {
+            row.TogglePasswordVisibility();
+        }
+    }
+
+    private void ToggleTotpVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is GoogleAccountRowViewModel row)
+        {
+            row.ToggleTotpSecretVisibility();
+        }
+    }
+
     // Google Account Management
     private void AddGoogleAccount_Click(object sender, RoutedEventArgs e)
     {

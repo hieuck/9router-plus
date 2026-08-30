@@ -32,10 +32,18 @@ public sealed class CredentialsManagerUnlockJourneyTests
                 () => dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleAccountsList")),
                 TimeSpan.FromSeconds(5));
             Assert.NotNull(googleList);
-            var lockedLoginButtons = googleList!.FindAllDescendants(cf =>
-                cf.ByAutomationId("GoogleLoginRowButton"));
-            Assert.Equal(2, lockedLoginButtons.Length);
-            Assert.All(lockedLoginButtons, button => Assert.False(button.IsEnabled));
+            var rows = googleList!.FindAllChildren(cf =>
+                cf.ByControlType(ControlType.ListItem));
+            Assert.Equal(2, rows.Length);
+            var lockedLoginButtons = rows
+                .Select(row => row.FindFirstDescendant(cf =>
+                    cf.ByAutomationId("GoogleLoginRowButton")))
+                .ToArray();
+            Assert.All(lockedLoginButtons, button =>
+            {
+                Assert.NotNull(button);
+                Assert.False(button!.IsEnabled);
+            });
 
             unlockButton.Click();
             var passwordDialog = await FindWindowAsync(
@@ -61,10 +69,18 @@ public sealed class CredentialsManagerUnlockJourneyTests
             Assert.Contains("Vault unlocked", status, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("2 configured profiles", status, StringComparison.OrdinalIgnoreCase);
 
-            var loadedLoginButtons = googleList.FindAllDescendants(cf =>
-                cf.ByAutomationId("GoogleLoginRowButton"));
-            Assert.Equal(2, loadedLoginButtons.Length);
-            Assert.All(loadedLoginButtons, button => Assert.True(button.IsEnabled));
+            rows = googleList.FindAllChildren(cf =>
+                cf.ByControlType(ControlType.ListItem));
+            Assert.Equal(2, rows.Length);
+            var loadedLoginButtons = rows
+                .Select(row => row.FindFirstDescendant(cf =>
+                    cf.ByAutomationId("GoogleLoginRowButton")))
+                .ToArray();
+            Assert.All(loadedLoginButtons, button =>
+            {
+                Assert.NotNull(button);
+                Assert.True(button!.IsEnabled);
+            });
 
             await CloseCredentialsManagerAsync(app, dialog);
         }
@@ -140,12 +156,18 @@ public sealed class CredentialsManagerUnlockJourneyTests
             var googleList = dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleAccountsList"));
             Assert.NotNull(googleList);
 
-            var loginButtons = googleList!.FindAllDescendants(cf =>
-                cf.ByAutomationId("GoogleLoginRowButton"));
-            Assert.Equal(2, loginButtons.Length);
-            Assert.All(loginButtons, button => Assert.True(button.IsEnabled));
+            var rows = googleList!.FindAllChildren(cf =>
+                cf.ByControlType(ControlType.ListItem));
+            Assert.Equal(2, rows.Length);
 
-            loginButtons[0].Click();
+            var alphaRow = rows.Single(row =>
+                row.FindFirstDescendant(cf => cf.ByName("Harness Alpha")) is not null);
+            var loginButton = alphaRow.FindFirstDescendant(cf =>
+                cf.ByAutomationId("GoogleLoginRowButton"));
+            Assert.NotNull(loginButton);
+            Assert.True(loginButton!.IsEnabled);
+
+            loginButton.Click();
             var status = await WaitForStatusAsync(
                 dialog,
                 text => text.Contains("Harness Alpha", StringComparison.OrdinalIgnoreCase)

@@ -238,7 +238,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                 TotpSecret = credential?.TotpSecret ?? string.Empty,
                 HasCredentials = credential != null,
                 IsEditing = false,
-                IsSelected = false
+                IsSelected = false,
+                IsVaultUnlocked = session != null
             };
 
             // Subscribe to property changes to update SelectedCount
@@ -679,6 +680,9 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
     private bool _isSelected;
     private bool _isEditing;
     private bool _hasCredentials;
+    private bool _isPasswordVisible;
+    private bool _isTotpSecretVisible;
+    private bool _isVaultUnlocked;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -745,6 +749,11 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
         {
             if (_isEditing == value) return;
             _isEditing = value;
+            if (!value)
+            {
+                ResetSensitiveVisibility();
+            }
+
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsEditable));
             OnPropertyChanged(nameof(ActionButtonText));
@@ -758,16 +767,89 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
         {
             if (_hasCredentials == value) return;
             _hasCredentials = value;
+            if (!value)
+            {
+                ResetSensitiveVisibility();
+            }
+
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsEditable));
         }
     }
 
-    public bool IsEditable => !HasCredentials || IsEditing;
+    public bool IsVaultUnlocked
+    {
+        get => _isVaultUnlocked;
+        set
+        {
+            if (_isVaultUnlocked == value) return;
+            _isVaultUnlocked = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsEditable));
+        }
+    }
+
+    public bool IsEditable => IsVaultUnlocked && (!HasCredentials || IsEditing);
+
+    public bool IsPasswordVisible
+    {
+        get => _isPasswordVisible;
+        internal set
+        {
+            if (_isPasswordVisible == value) return;
+            _isPasswordVisible = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PasswordVisibilityButtonText));
+            OnPropertyChanged(nameof(PasswordVisibilityToolTip));
+        }
+    }
+
+    public bool IsTotpSecretVisible
+    {
+        get => _isTotpSecretVisible;
+        internal set
+        {
+            if (_isTotpSecretVisible == value) return;
+            _isTotpSecretVisible = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TotpVisibilityButtonText));
+            OnPropertyChanged(nameof(TotpVisibilityToolTip));
+        }
+    }
+
+    public string PasswordVisibilityButtonText => IsPasswordVisible ? "Hide" : "Show";
+
+    public string PasswordVisibilityToolTip => IsPasswordVisible ? "Hide password" : "Show password";
+
+    public string TotpVisibilityButtonText => IsTotpSecretVisible ? "Hide" : "Show";
+
+    public string TotpVisibilityToolTip => IsTotpSecretVisible ? "Hide TOTP Secret" : "Show TOTP Secret";
 
     public string ActionButtonText => HasCredentials && !IsEditing ? "Edit" : "Save";
 
     public string TotpIndicator => !string.IsNullOrEmpty(TotpSecret) ? "✓" : string.Empty;
+
+    public void TogglePasswordVisibility()
+    {
+        if (IsEditable)
+        {
+            IsPasswordVisible = !IsPasswordVisible;
+        }
+    }
+
+    public void ToggleTotpSecretVisibility()
+    {
+        if (IsEditable)
+        {
+            IsTotpSecretVisible = !IsTotpSecretVisible;
+        }
+    }
+
+    public void ResetSensitiveVisibility()
+    {
+        IsPasswordVisible = false;
+        IsTotpSecretVisible = false;
+    }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
