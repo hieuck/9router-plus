@@ -102,21 +102,6 @@ public sealed class AppDriver
         }
     }
 
-    public void SetDashboardUrl(string value)
-    {
-        var textBox = _app.MainWindow.FindFirstDescendant(cf => cf.ByAutomationId("DashboardUrlTextBox"))
-            ?? throw new InvalidOperationException("Dashboard URL text box not found");
-        _app.Instrumentation.Record("SET_DASHBOARD_URL", $"length={value.Length}");
-        textBox.AsTextBox().Text = value;
-    }
-
-    public string ReadDashboardUrl()
-    {
-        var textBox = _app.MainWindow.FindFirstDescendant(cf => cf.ByAutomationId("DashboardUrlTextBox"))
-            ?? throw new InvalidOperationException("Dashboard URL text box not found");
-        return _app.Instrumentation.ReadText(textBox, "dashboard-url");
-    }
-
     public string ReadSettingsStatus()
     {
         var status = _app.MainWindow.FindFirstDescendant(cf => cf.ByAutomationId("SettingsStatusText"))
