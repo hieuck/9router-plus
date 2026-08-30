@@ -177,8 +177,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 var hasPwd = vobj.GetProperty("hasPasswordField").GetBoolean();
                 var hasTotp = vobj.GetProperty("hasTotpField").GetBoolean();
                 var hasEmail = vobj.GetProperty("hasEmailField").GetBoolean();
-                var emailValue = vobj.TryGetProperty("emailValue", out var ev) ? ev.GetString() : "";
-                DebugConsole.WriteLine($"[ReadState] path={path?.Substring(0, Math.Min(60, path?.Length ?? 0))} Email={hasEmail}({emailValue}) 2FA={has2FA} Pwd={hasPwd} Totp={hasTotp}");
+                DebugConsole.WriteLine($"[ReadState] path={path?.Substring(0, Math.Min(60, path?.Length ?? 0))} Email={hasEmail} 2FA={has2FA} Pwd={hasPwd} Totp={hasTotp}");
             }
             catch { }
         }
@@ -267,9 +266,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         const t = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '')).toLowerCase();
         return ['next','tiep','tiếp','continue','sign in','đăng nhập','submit','try another way','resend'].some(l => t.includes(l));
     }).length;
-    const visibleClickableSample = Array.from(document.querySelectorAll('button, [role=""button""], li, div[onclick], a')).filter(isVisible).slice(0, 15).map(el => {
-        return ((el.tagName || '') + ':' + ((el.innerText || '').substring(0, 30)) + ':' + (el.getAttribute('aria-label') || '').substring(0, 30)).replace(/[|\\]/g, '_');
-    }).join('|');
+    const visibleClickableCount = Array.from(document.querySelectorAll('button, [role=""button""], li, div[onclick], a')).filter(isVisible).length;
     const hasAccountPicker = has('[data-accounts-email], [data-email]') || !!document.querySelector('ul[role=""listbox""]');
     const hasVerifyChallenge = !!document.querySelector('[data-challenge-id], [data-challenge-type], .captcha, #captcha, [aria-label*=""verify"" i], [aria-label*=""recaptcha"" i]');
     const has2FAMethodPicker = !!document.querySelector('[data-challenge-type=""selectChallenge""], [data-second-factor-type], [aria-label*=""2-step"" i], [aria-label*=""two-step"" i]') ||
@@ -277,9 +274,6 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     const hasPhonePrompt = !!document.querySelector('input[type=""tel""], input[name*=""phone"" i]');
     const hasSecurityKeyOption = !!document.querySelector('[data-challenge-type=""securityKey""], [data-second-factor-type=""SECURITY_KEY""]');
     const alerts = document.querySelectorAll('[role=""alert""], [aria-live=""assertive""]').length;
-    const iframes = Array.from(document.querySelectorAll('iframe')).map(f => {
-        return (f.getAttribute('name') || '') + '|' + (f.getAttribute('src') || '').slice(0, 80);
-    }).join(';');
     const forms = document.querySelectorAll('form').length;
     const inputs = Array.from(document.querySelectorAll('input')).map(i => {
         return (i.getAttribute('type') || '') + ':' + (i.getAttribute('name') || '') + ':' + (i.getAttribute('autocomplete') || '');
@@ -305,7 +299,8 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         buttonCandidates, buttonsByLabel, alerts, forms,
         hasAccountPicker, hasVerifyChallenge, has2FAMethodPicker,
         hasPhonePrompt, hasSecurityKeyOption,
-        iframes, inputs, textMarkers, visibleClickableSample
+        iframes: (Array.from(document.querySelectorAll('iframe')).filter(isVisible).length),
+        inputs, textMarkers, visibleClickableCount
     };
 })()
 ";
@@ -334,8 +329,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 return;
             }
 
+            // Redact the full line (timestamp + field + diagnostic JSON) before it is
+            // written so the artifact is clean by construction.
             var line = $"[{DateTimeOffset.UtcNow:O}] field={submittedField} {diagnosticJson}{Environment.NewLine}";
-            await File.AppendAllTextAsync(filePath, line, cancellationToken);
+            await File.AppendAllTextAsync(filePath, DiagnosticRedactor.Redact(line), cancellationToken);
         }
         catch
         {
@@ -516,14 +513,8 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     const skipKeywords = ['skip', 'not now', 'bỏ qua', 'để sau', 'remind me later', 'nhắc tôi sau', 'maybe later', 'no thanks'];
     const buttons = Array.from(document.querySelectorAll('button, [role=""button""], a'));
 
-    // Diagnostic: dump all visible buttons
-    const allButtons = buttons
-        .filter(isVisible)
-        .map(btn => ({
-            tag: btn.tagName,
-            text: (btn.innerText || '').substring(0, 80),
-            ariaLabel: (btn.getAttribute('aria-label') || '').substring(0, 80)
-        }));
+    // Diagnostic: count visible buttons only; never capture their text or labels.
+    const allButtons = buttons.filter(isVisible).map(btn => ({ tag: btn.tagName }));
 
     for (const btn of buttons) {
         if (!isVisible(btn)) continue;
@@ -594,14 +585,8 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             // Dump available buttons for debugging
             if (value.TryGetProperty("allButtons", out var allButtons) && allButtons.ValueKind == JsonValueKind.Array)
             {
-                DebugConsole.WriteLine($"[GoogleLogin] No skip button found. Available buttons ({allButtons.GetArrayLength()}):");
-                foreach (var btn in allButtons.EnumerateArray())
-                {
-                    var tag = btn.TryGetProperty("tag", out var t) ? t.GetString() : "";
-                    var text = btn.TryGetProperty("text", out var txt) ? txt.GetString() : "";
-                    var aria = btn.TryGetProperty("ariaLabel", out var a) ? a.GetString() : "";
-                    DebugConsole.WriteLine($"  {tag}: text=\"{text}\" aria=\"{aria}\"");
-                }
+                // Log only a count of visible buttons; never their text or labels.
+                DebugConsole.WriteLine($"[GoogleLogin] No skip button found. Visible buttons: {allButtons.GetArrayLength()}");
             }
             else
             {
@@ -687,17 +672,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         return element.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
     };
 
-    // Debug: capture ALL clickable elements with their full text and attributes
+    // Debug: count clickable elements only; never capture their text or labels.
     const allClickable = Array.from(document.querySelectorAll('li, div[role=""link""], div[role=""button""], button, [role=""radio""], div[data-challengetype], div[data-challenge-type], div[jsname], div[data-challenge-id]'))
         .filter(isVisible)
-        .map(el => ({
-            tag: el.tagName,
-            role: el.getAttribute('role') || '',
-            text: (el.innerText || el.textContent || '').substring(0, 100).trim(),
-            dataChallenge: el.getAttribute('data-challengetype') || el.getAttribute('data-challenge-type') || '',
-            jsname: el.getAttribute('jsname') || '',
-            ariaLabel: el.getAttribute('aria-label') || ''
-        }));
+        .map(el => ({ tag: el.tagName, role: el.getAttribute('role') || '' }));
 
     // Find clickable elements matching Authenticator/Google prompts/Verification code keywords
     const candidates = Array.from(document.querySelectorAll('li, div[role=""link""], div[role=""button""], button, [role=""radio""], div[data-challengetype], div[data-challenge-type]')).filter(el => {
@@ -794,25 +772,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 {
                     DebugConsole.WriteLine($"[GoogleLogin] Attempt {attempt}: {reason.GetString()}");
 
-                    // Log available options for debugging
+                    // Log only a count of clickable elements; never their text or labels.
                     if (vobj.TryGetProperty("allClickable", out var allClickableArray) && allClickableArray.ValueKind == JsonValueKind.Array)
                     {
-                        DebugConsole.WriteLine($"[GoogleLogin] All clickable elements on 2FA page:");
-                        foreach (var item in allClickableArray.EnumerateArray())
-                        {
-                            try
-                            {
-                                var tag = item.TryGetProperty("tag", out var t) ? t.GetString() : "";
-                                var role = item.TryGetProperty("role", out var r) ? r.GetString() : "";
-                                var text = item.TryGetProperty("text", out var txt) ? txt.GetString() : "";
-                                var dataChallenge = item.TryGetProperty("dataChallenge", out var dc) ? dc.GetString() : "";
-                                var jsname = item.TryGetProperty("jsname", out var jn) ? jn.GetString() : "";
-                                var ariaLabel = item.TryGetProperty("ariaLabel", out var al) ? al.GetString() : "";
-
-                                DebugConsole.WriteLine($"  - tag={tag} role={role} text=\"{text}\" dataChallenge={dataChallenge} jsname={jsname} ariaLabel=\"{ariaLabel}\"");
-                            }
-                            catch { }
-                        }
+                        DebugConsole.WriteLine($"[GoogleLogin] Clickable elements on 2FA page: {allClickableArray.GetArrayLength()}");
                     }
                 }
             }
@@ -931,10 +894,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         }
 
         // Insert text using Input.insertText (does not use clipboard)
-        var maskedValue = field == GoogleLoginField.Password || field == GoogleLoginField.Totp
-            ? new string('*', value.Length)
-            : value;
-        DebugConsole.WriteLine($"[Fill] {field} - Inserting text (length={value.Length}, masked={maskedValue})...");
+        DebugConsole.WriteLine($"[Fill] {field} - Inserting text (length={value.Length})...");
         await _client.CallAsync("Input.insertText", new { text = value }, cancellationToken, _sessionId);
 
         await Task.Delay(1000, cancellationToken);
