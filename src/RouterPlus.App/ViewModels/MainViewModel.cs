@@ -44,6 +44,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     internal GoogleAccountVaultPaths GoogleAccountVaultPaths => _googleLoginVaultPaths;
     internal ProviderConnectionVaultStore ProviderConnectionVaultStore => _providerConnectionVaultStore;
     internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginAutomation => _googleLoginAutomation;
+
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
     private readonly IGoogleAuthenticationService _googleAuthenticationService;
     private readonly HttpClient _httpClient;
@@ -66,6 +67,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly List<ManagedChromeProfile> _managedProfiles = new();
     private readonly List<RecentProfile> _recentProfiles = new();
     private ChromeProfile? _selectedProfile;
+    // Auto-Get-Key seam (mirrors _googleLoginAutomation): runs the Chrome-based
+    // OpenRouter key flow for a profile + vault credential. Testable standalone.
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult>> _openRouterKeyFlow = null!;
+    private Func<ChromeProfile, CancellationToken, Task<GoogleLoginCredential?>> _autoGetKeyCredentials = null!;
     private string _quickLaunchFilterText = string.Empty;
     private bool _isQuickLaunchOpen;
     private ChromeProfile? _selectedQuickLaunchProfile;
@@ -137,6 +142,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _providerConnectionVaultStore = new ProviderConnectionVaultStore(providerConnectionPath);
         _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
+        _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
+        _autoGetKeyCredentials = CreateDefaultAutoGetKeyCredentials();
         _quotaPollingService = new QuotaPollingService(
             RefreshForQuotaPollingAsync,
             QuotaPollingOptions.Default);
@@ -181,6 +188,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         TestConnectionCommand = new AsyncRelayCommand<ProviderKind>(TestConnectionAsync, _ => SelectedProfile is not null);
         DeleteConnectionCommand = new AsyncRelayCommand<ProviderKind>(DeleteConnectionAsync, _ => SelectedProfile is not null);
         OpenQuickLinkCommand = new AsyncRelayCommand<ProviderKind>(OpenQuickLinkAsync);
+        AutoGetKeyCommand = new AsyncRelayCommand(() => AutoGetKeyAsync(), () => SelectedProfile is not null);
         CancelWorkflowCommand = new AsyncRelayCommand(CancelWorkflowAsync, () => IsWorkflowInProgress);
         WaitForConnectionCommand = new AsyncRelayCommand(WaitForConnectionAsync, () => !_workflowInProgress && _currentWorkflowProvider is not null && SelectedProfile is not null);
         OpenHelpCommand = new AsyncRelayCommand(OpenHelpAsync);
@@ -301,6 +309,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             TestConnectionCommand.RaiseCanExecuteChanged();
             DeleteConnectionCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
+            AutoGetKeyCommand.RaiseCanExecuteChanged();
             _ = LoadSelectedProfileApiKeysAsync();
         }
     }
@@ -1283,6 +1292,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public RelayCommand ClearSelectionCommand { get; }
     public RelayCommand ToggleSelectAllCommand { get; }
     public AsyncRelayCommand SelectProfilesWithVaultCommand { get; }
+    public AsyncRelayCommand AutoGetKeyCommand { get; }
     public AsyncRelayCommand StartBatchAutoLoginCommand { get; }
     public RelayCommand StopBatchLoginCommand { get; }
     public RelayCommand CloseBatchProgressCommand { get; }
@@ -2423,6 +2433,62 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Injectable seam for the Chrome-based OpenRouter key flow (mirrors
+    /// <see cref="GoogleLoginAutomation"/>), so tests can drive the flow
+    /// without launching a browser.
+    /// </summary>
+    public Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult>> OpenRouterKeyFlow
+    {
+        get => _openRouterKeyFlow;
+        set => _openRouterKeyFlow = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
+    /// Injectable seam for loading the Google login credential (from the
+    /// Google account vault) used by <see cref="AutoGetKeyAsync"/>.
+    /// </summary>
+    public Func<ChromeProfile, CancellationToken, Task<GoogleLoginCredential?>> AutoGetKeyCredentials
+    {
+        get => _autoGetKeyCredentials;
+        set => _autoGetKeyCredentials = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
+    /// Auto-get an OpenRouter API key: run the key flow (opening Chrome, Google
+    /// sign-in from the vault, onboarding), then automatically save the returned
+    /// key into 9Router for the selected profile.
+    /// </summary>
+    public async Task<bool> AutoGetKeyAsync(CancellationToken cancellationToken = default)
+    {
+        var profile = SelectedProfile;
+        if (profile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            ShowToast(StatusText, ToastType.Warning);
+            return false;
+        }
+
+        var credential = await _autoGetKeyCredentials(profile, cancellationToken);
+        if (credential is null)
+        {
+            StatusText = "Không có thông tin Google trong Vault cho profile này.";
+            ShowToast(StatusText, ToastType.Warning);
+            return false;
+        }
+
+        var flowResult = await _openRouterKeyFlow(profile, credential, cancellationToken);
+        if (!flowResult.Success)
+        {
+            StatusText = $"Không lấy được OpenRouter key: {flowResult.ErrorMessage}";
+            ShowToast(StatusText, ToastType.Error);
+            return false;
+        }
+
+        SelectedApiKeyProvider = ProviderKind.OpenRouter;
+        return await AddApiKeyAsync(SelectedApiKeyProvider, flowResult.ApiKey!);
+    }
+
     public Task<bool> AddApiKeyAsync(string apiKey) =>
         AddApiKeyAsync(SelectedApiKeyProvider, apiKey);
 
@@ -3227,6 +3293,81 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
 
                 return GoogleLoginResult.BrowserDisconnected($"{ex.GetType().Name}: {ex.Message}");
+            }
+        };
+    }
+
+    private Func<ChromeProfile, CancellationToken, Task<GoogleLoginCredential?>> CreateDefaultAutoGetKeyCredentials()
+    {
+        return (profile, cancellationToken) => LoadGoogleCredentialForProfileAsync(profile, cancellationToken);
+    }
+
+    private async Task<GoogleLoginCredential?> LoadGoogleCredentialForProfileAsync(
+        ChromeProfile profile,
+        CancellationToken cancellationToken)
+    {
+        if (_googleLoginVaultStore is null)
+        {
+            return null;
+        }
+
+        var vaultSession = await _googleLoginVaultStore.TryOpenRememberedAsync(
+            _googleLoginVaultPaths.VaultPath,
+            cancellationToken);
+        if (vaultSession is null)
+        {
+            return null;
+        }
+
+        await using (vaultSession)
+        {
+            return vaultSession.Vault.Records.FirstOrDefault(c =>
+                string.Equals(c.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult>> CreateDefaultOpenRouterKeyFlow()
+    {
+        return async (profile, credential, cancellationToken) =>
+        {
+            var installation = _installation ?? throw new InvalidOperationException("Chrome installation not configured.");
+
+            ChromeManagedSession? session = null;
+            try
+            {
+                var settings = await _settingsStore.LoadAsync();
+                session = await _chromeLauncher.LaunchManagedAsync(
+                    installation,
+                    profile,
+                    new Uri("https://openrouter.ai/settings/keys"),
+                    cancellationToken,
+                    settings.UseOriginalProfileForAutoLogin);
+
+                // The session connects both adapters (OpenRouter page + Google sign-in)
+                // from one CDP session behind the public interface pair.
+                var (onboarding, googleLogin) = await session.ConnectOpenRouterFlowAsync(cancellationToken);
+                return await OpenRouterKeyFlowOrchestrator.RunAsync(
+                    onboarding,
+                    null,
+                    credential,
+                    googleLogin,
+                    cancellationToken,
+                    _googleAuthenticationService);
+            }
+            catch (OperationCanceledException)
+            {
+                return new OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult(false, null, "Đã hủy.");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+            {
+                return new OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult(false, null, ex.Message);
+            }
+            finally
+            {
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                }
             }
         };
     }
