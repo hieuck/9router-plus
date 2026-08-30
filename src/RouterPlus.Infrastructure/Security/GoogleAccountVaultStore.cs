@@ -536,8 +536,18 @@ public sealed class GoogleAccountVaultStore : IGoogleAccountVaultStore, IDisposa
             }
 
             var tempPath = path + $".tmp.{Guid.NewGuid():N}";
-            await File.WriteAllTextAsync(tempPath, content, cancellationToken);
-            File.Move(tempPath, path, overwrite: true);
+            try
+            {
+                await File.WriteAllTextAsync(tempPath, content, cancellationToken);
+                File.Move(tempPath, path, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
         }
         finally
         {
@@ -621,6 +631,8 @@ public sealed class GoogleAccountVaultStore : IGoogleAccountVaultStore, IDisposa
 
         public async Task RemoveRememberedAsync(CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
             await Task.Run(() =>
             {
                 if (File.Exists(Paths.RememberedKeyPath))
