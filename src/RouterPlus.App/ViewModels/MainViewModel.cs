@@ -2652,7 +2652,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             StatusText = "Đang mở đăng nhập Codex và tự động xác nhận OAuth…";
-            await RunOAuthAutoLoginAsync(session.AuthUrl, new Uri("https://chatgpt.com"), cancellationToken);
+            await RunOAuthAutoLoginAsync(provider, session.AuthUrl, new Uri("https://chatgpt.com"), cancellationToken);
             await WaitForOAuthProxyAsync(
                 api,
                 provider,
@@ -2671,7 +2671,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var targetUri = definition.QuickLink is { } ql ? new Uri(ql) : null;
             if (targetUri is not null)
             {
-                await RunOAuthAutoLoginAsync(session.AuthUrl, targetUri, cancellationToken);
+                await RunOAuthAutoLoginAsync(provider, session.AuthUrl, targetUri, cancellationToken);
             }
             var callback = await callbackListener.WaitForCallbackAsync(
                 TimeSpan.FromMinutes(10),
@@ -3625,6 +3625,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// Never throws — failures fall back to the user-completed flow already in progress.
     /// </summary>
     private async Task RunOAuthAutoLoginAsync(
+        ProviderKind provider,
         string authUrl,
         Uri targetServiceUri,
         CancellationToken cancellationToken)
@@ -3651,7 +3652,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StatusText = $"Đã mở Chrome với profile {SelectedProfile.Name}. Đang chờ Google account picker…";
 
             var cdp = await chromeSession.ConnectAnyTargetAsync(cancellationToken);
-            await using var orchestrator = new OAuthAutoLoginOrchestrator(chromeSession, cdp);
+            await using var orchestrator = new OAuthAutoLoginOrchestrator(
+                chromeSession,
+                cdp,
+                provider);
 
             var result = await orchestrator.RunAsync(
                 new Uri(authUrl),

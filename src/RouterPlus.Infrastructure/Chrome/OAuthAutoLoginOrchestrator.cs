@@ -1,4 +1,6 @@
+using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Diagnostics;
+using RouterPlus.Infrastructure.Services;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
@@ -11,13 +13,24 @@ public sealed class OAuthAutoLoginOrchestrator : IAsyncDisposable
 {
     private readonly ChromeManagedSession _session;
     private readonly CdpSession _cdpSession;
+    private readonly ProviderKind _provider;
+    private readonly IProviderOAuthAdapterRegistry _adapterRegistry;
+    private readonly IGoogleAuthenticationService _googleAuthenticationService;
 
     private bool _disposed;
 
-    public OAuthAutoLoginOrchestrator(ChromeManagedSession session, CdpSession cdpSession)
+    public OAuthAutoLoginOrchestrator(
+        ChromeManagedSession session,
+        CdpSession cdpSession,
+        ProviderKind provider,
+        IProviderOAuthAdapterRegistry? adapterRegistry = null,
+        IGoogleAuthenticationService? googleAuthenticationService = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _cdpSession = cdpSession ?? throw new ArgumentNullException(nameof(cdpSession));
+        _provider = provider;
+        _adapterRegistry = adapterRegistry ?? new ProviderOAuthAdapterRegistry();
+        _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
     }
 
     /// <summary>
@@ -42,8 +55,17 @@ public sealed class OAuthAutoLoginOrchestrator : IAsyncDisposable
         // Give Chrome a moment to render the initial page before polling
         await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
 
-        var automation = new CodexOAuthAutomation(_cdpSession.Client, _cdpSession.SessionId, _cdpSession.TargetId, profileEmail);
-        var consent = await automation.WaitAndConsentAsync(targetServiceUri, timeout, cancellationToken);
+        var adapter = _adapterRegistry.Get(_provider);
+        var consent = await adapter.RunAsync(
+            new ProviderOAuthRequest(
+                _provider,
+                authUrl,
+                targetServiceUri,
+                profileEmail,
+                timeout,
+                _cdpSession),
+            _googleAuthenticationService,
+            cancellationToken);
 
         if (consent.Success)
         {

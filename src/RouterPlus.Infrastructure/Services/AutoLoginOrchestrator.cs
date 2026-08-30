@@ -17,15 +17,21 @@ public sealed class AutoLoginOrchestrator
     private readonly GoogleAccountVaultStore _googleAccountVault;
     private readonly ProviderConnectionVaultStore _connectionVault;
     private readonly IChromeLauncher _chromeLauncher;
+    private readonly IProviderOAuthAdapterRegistry _oauthAdapterRegistry;
+    private readonly IGoogleAuthenticationService _googleAuthenticationService;
 
     public AutoLoginOrchestrator(
         GoogleAccountVaultStore googleAccountVault,
         ProviderConnectionVaultStore connectionVault,
-        IChromeLauncher chromeLauncher)
+        IChromeLauncher chromeLauncher,
+        IProviderOAuthAdapterRegistry? oauthAdapterRegistry = null,
+        IGoogleAuthenticationService? googleAuthenticationService = null)
     {
         _googleAccountVault = googleAccountVault ?? throw new ArgumentNullException(nameof(googleAccountVault));
         _connectionVault = connectionVault ?? throw new ArgumentNullException(nameof(connectionVault));
         _chromeLauncher = chromeLauncher ?? throw new ArgumentNullException(nameof(chromeLauncher));
+        _oauthAdapterRegistry = oauthAdapterRegistry ?? new ProviderOAuthAdapterRegistry();
+        _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
     }
 
     /// <summary>
@@ -169,21 +175,18 @@ public sealed class AutoLoginOrchestrator
 
         try
         {
-            // Create provider-specific OAuth automation
-            GoogleOAuthFlowAutomation automation = provider switch
-            {
-                ProviderKind.Kiro => new AwsBuilderIdOAuthAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName, totpGenerator),
-                ProviderKind.Codex => new CodexOAuthAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName),
-                ProviderKind.GitHub => new GitHubOAuthAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName),
-                ProviderKind.OpenRouter => new OpenRouterOAuthAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, connection.ProfileName),
-                _ => throw new NotSupportedException($"Google OAuth not supported for provider {provider}")
-            };
-
-            var result = await automation.WaitAndConsentAsync(loginUrl, timeout, cancellationToken);
+            var adapter = _oauthAdapterRegistry.Get(provider);
+            var result = await adapter.RunAsync(
+                new ProviderOAuthRequest(
+                    provider,
+                    loginUrl,
+                    loginUrl,
+                    connection.ProfileName,
+                    timeout,
+                    cdp,
+                    totpGenerator),
+                _googleAuthenticationService,
+                cancellationToken);
             return new AutoLoginResult(
                 Success: result.Success,
                 Method: AuthMethod.GoogleOAuth,
