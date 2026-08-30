@@ -200,8 +200,7 @@ public sealed class CredentialsManagerUnlockJourneyTests
 
     private static AutomationElement? FindCredentialsManagerWindow(AppProcess app)
     {
-        return app.Desktop.FindAllChildren(cf => cf.ByControlType(ControlType.Window))
-            .Concat(app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window)))
+        return app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
             .FirstOrDefault(window =>
             {
                 try

@@ -142,10 +142,10 @@ public sealed class CredentialsManagerDialogTests
             var editableRow = googleList.FindAllChildren(cf => cf.ByControlType(ControlType.ListItem))
                 .First(row => row.FindFirstDescendant(cf =>
                     cf.ByAutomationId("GoogleEmailEditor"))?.AsTextBox().IsReadOnly == false);
-            var totpEditor = editableRow.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpEditor"));
+            var totpEditor = editableRow.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpVisibleEditor"));
             Assert.NotNull(totpEditor);
             Assert.True(totpEditor!.IsEnabled);
-            SetPassword(totpEditor, "JBSWY3DPEHPK3PXP");
+            totpEditor.AsTextBox().Text = "JBSWY3DPEHPK3PXP";
 
             saveButton!.Click();
 
@@ -250,8 +250,7 @@ public sealed class CredentialsManagerDialogTests
 
     private static AutomationElement? FindCredentialsManagerWindow(AppProcess app)
     {
-        return app.Desktop.FindAllChildren(cf => cf.ByControlType(ControlType.Window))
-            .Concat(app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window)))
+        return app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
             .FirstOrDefault(window =>
             {
                 try

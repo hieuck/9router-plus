@@ -36,7 +36,9 @@ internal sealed class E2EInstrumentation
         var names = profileList.FindAllDescendants(cf => cf.ByControlType(ControlType.ListItem))
             .Select(item => item.FindAllDescendants(cf => cf.ByControlType(ControlType.Text))
                 .Select(text => text.Name)
-                .Where(name => !string.IsNullOrWhiteSpace(name) && !int.TryParse(name, out _))
+                .Where(name => !string.IsNullOrWhiteSpace(name)
+                    && !int.TryParse(name, out _)
+                    && !IsTransientProfileStatus(name))
                 .OrderByDescending(name => name.Length)
                 .FirstOrDefault())
             .Where(name => !string.IsNullOrWhiteSpace(name))
@@ -44,6 +46,19 @@ internal sealed class E2EInstrumentation
             .ToArray();
         Record("READ_VISIBLE_PROFILES", string.Join(",", names));
         return names;
+    }
+
+    private static bool IsTransientProfileStatus(string text)
+    {
+        if (text.Contains("đồng bộ", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("đang chờ", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("syncing", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("loading", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     public bool ReadSelectedState(AutomationElement element)

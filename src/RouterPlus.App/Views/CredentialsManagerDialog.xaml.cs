@@ -38,62 +38,119 @@ public partial class CredentialsManagerDialog : Window
     {
         UIEventLogger.LogClick("CredentialsManager.UnlockVault");
 
-        // Create simple password dialog
         var passwordWindow = new Window
         {
             Title = "Unlock Google Vault",
-            Width = 400,
-            Height = 200,
+            Width = 430,
+            Height = 270,
+            MinWidth = 430,
+            MinHeight = 270,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Owner = this,
-            ResizeMode = ResizeMode.NoResize
+            ResizeMode = ResizeMode.NoResize,
+            Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush"),
+            Foreground = (System.Windows.Media.Brush)FindResource("TextBrush"),
+            FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+            FontSize = 13
         };
 
-        var stackPanel = new System.Windows.Controls.StackPanel
+        var root = new System.Windows.Controls.Grid
         {
-            Margin = new Thickness(16)
+            Margin = new Thickness(24, 20, 24, 20)
         };
+        root.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+        root.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+        root.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+        root.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+        root.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
 
-        stackPanel.Children.Add(new System.Windows.Controls.TextBlock
+        var title = new System.Windows.Controls.TextBlock
         {
-            Text = "Enter vault password:",
-            Margin = new Thickness(0, 0, 0, 8)
-        });
+            Text = "Unlock Google Vault",
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (System.Windows.Media.Brush)FindResource("TextBrush"),
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        System.Windows.Controls.Grid.SetRow(title, 0);
+        root.Children.Add(title);
+
+        var description = new System.Windows.Controls.TextBlock
+        {
+            Text = "Enter your vault password to access saved credentials.",
+            FontSize = 11,
+            Foreground = (System.Windows.Media.Brush)FindResource("MutedTextBrush"),
+            Margin = new Thickness(0, 0, 0, 18)
+        };
+        System.Windows.Controls.Grid.SetRow(description, 1);
+        root.Children.Add(description);
+
+        var passwordLabel = new System.Windows.Controls.TextBlock
+        {
+            Text = "Vault password",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        System.Windows.Controls.Grid.SetRow(passwordLabel, 2);
+        root.Children.Add(passwordLabel);
+
+        var contentPanel = new System.Windows.Controls.StackPanel();
+        System.Windows.Controls.Grid.SetRow(contentPanel, 3);
 
         var passwordBox = new System.Windows.Controls.PasswordBox
         {
             Name = "VaultPasswordBox",
+            Height = 34,
+            Padding = new Thickness(10, 6, 10, 6),
             Margin = new Thickness(0, 0, 0, 12)
         };
         System.Windows.Automation.AutomationProperties.SetAutomationId(passwordBox, "VaultPasswordBox");
+        contentPanel.Children.Add(passwordBox);
 
         var rememberCheckBox = new System.Windows.Controls.CheckBox
         {
             Name = "RememberVaultCheckBox",
-            Content = "Remember on this device (encrypted with Windows DPAPI)",
-            Margin = new Thickness(0, 0, 0, 16)
+            Content = "Remember on this device",
+            ToolTip = "Store an encrypted unlock key using Windows DPAPI.",
+            Margin = new Thickness(0, 0, 0, 8)
         };
         System.Windows.Automation.AutomationProperties.SetAutomationId(rememberCheckBox, "RememberVaultCheckBox");
+        contentPanel.Children.Add(rememberCheckBox);
+
+        var hint = new System.Windows.Controls.TextBlock
+        {
+            Text = "The password is never stored directly.",
+            FontSize = 10,
+            Foreground = (System.Windows.Media.Brush)FindResource("MutedTextBrush")
+        };
+        contentPanel.Children.Add(hint);
+        root.Children.Add(contentPanel);
 
         var buttonPanel = new System.Windows.Controls.StackPanel
         {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Right
         };
+        System.Windows.Controls.Grid.SetRow(buttonPanel, 4);
 
         var okButton = new System.Windows.Controls.Button
         {
             Content = "Unlock",
-            Width = 80,
-            Margin = new Thickness(0, 0, 8, 0),
-            IsDefault = true
+            Width = 88,
+            Height = 34,
+            IsDefault = true,
+            Style = (System.Windows.Style)FindResource("PrimaryButtonStyle"),
+            Margin = new Thickness(0, 0, 8, 0)
         };
 
         var cancelButton = new System.Windows.Controls.Button
         {
             Content = "Cancel",
-            Width = 80,
-            IsCancel = true
+            Width = 88,
+            Height = 34,
+            IsCancel = true,
+            Style = (System.Windows.Style)FindResource("DialogButtonStyle"),
+            Margin = new Thickness(0)
         };
 
         okButton.Click += (s, args) =>
@@ -104,12 +161,8 @@ public partial class CredentialsManagerDialog : Window
 
         buttonPanel.Children.Add(okButton);
         buttonPanel.Children.Add(cancelButton);
-
-        stackPanel.Children.Add(passwordBox);
-        stackPanel.Children.Add(rememberCheckBox);
-        stackPanel.Children.Add(buttonPanel);
-
-        passwordWindow.Content = stackPanel;
+        root.Children.Add(buttonPanel);
+        passwordWindow.Content = root;
 
         var result = passwordWindow.ShowDialog();
 
@@ -128,7 +181,6 @@ public partial class CredentialsManagerDialog : Window
             passwordBox.Clear();
         }
     }
-
     private void TogglePasswordVisibility_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is GoogleAccountRowViewModel row)
@@ -283,3 +335,4 @@ public partial class CredentialsManagerDialog : Window
             MessageBoxImage.Information);
     }
 }
+

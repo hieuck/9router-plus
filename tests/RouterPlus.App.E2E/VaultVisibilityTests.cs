@@ -12,7 +12,7 @@ public sealed class VaultVisibilityTests
     [Fact]
     public async Task Vault_unlock_button_visible_when_locked()
     {
-        await using var environment = await TestEnvironment.CreateAsync();
+        await using var environment = await TestEnvironment.CreateAsync(rememberVault: false);
         await using var app = await AppProcess.StartAsync(environment);
 
         var credentialsButton = app.MainWindow.FindFirstDescendant(cf =>
@@ -28,8 +28,11 @@ public sealed class VaultVisibilityTests
         Assert.NotNull(dialog);
 
         // Vault should be locked initially
-        var unlockButton = dialog!.FindFirstDescendant(cf =>
-            cf.ByAutomationId("UnlockVaultButton"));
+        var unlockButton = Retry.WhileNull(
+            () => dialog!.FindFirstDescendant(cf =>
+                cf.ByAutomationId("UnlockVaultButton")),
+            TimeSpan.FromSeconds(5),
+            throwOnTimeout: false).Result;
 
         Assert.NotNull(unlockButton);
         Assert.True(unlockButton.IsEnabled);
@@ -45,7 +48,7 @@ public sealed class VaultVisibilityTests
     [Fact]
     public async Task Vault_unlock_button_hidden_after_successful_unlock()
     {
-        await using var environment = await TestEnvironment.CreateAsync();
+        await using var environment = await TestEnvironment.CreateAsync(rememberVault: false);
         await using var app = await AppProcess.StartAsync(environment);
 
         var credentialsButton = app.MainWindow.FindFirstDescendant(cf =>
@@ -60,8 +63,11 @@ public sealed class VaultVisibilityTests
 
         Assert.NotNull(dialog);
 
-        var unlockButton = dialog!.FindFirstDescendant(cf =>
-            cf.ByAutomationId("UnlockVaultButton"));
+        var unlockButton = Retry.WhileNull(
+            () => dialog!.FindFirstDescendant(cf =>
+                cf.ByAutomationId("UnlockVaultButton")),
+            TimeSpan.FromSeconds(5),
+            throwOnTimeout: false).Result;
         Assert.NotNull(unlockButton);
 
         // Click unlock
@@ -70,8 +76,7 @@ public sealed class VaultVisibilityTests
 
         // Password dialog should appear
         var passwordDialog = Retry.WhileNull(
-            () => app.Desktop.FindAllChildren(cf => cf.ByControlType(ControlType.Window))
-                .Concat(app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window)))
+            () => app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
                 .FirstOrDefault(w =>
                 {
                     try
@@ -93,7 +98,7 @@ public sealed class VaultVisibilityTests
         Assert.NotNull(passwordBox);
 
         // Enter password and unlock
-        passwordBox!.AsTextBox().Text = "test-password";
+        passwordBox!.AsTextBox().Text = "harness-vault-password";
 
         var unlockDialogButton = passwordDialog.FindFirstDescendant(cf =>
             cf.ByName("Unlock"));
@@ -117,8 +122,7 @@ public sealed class VaultVisibilityTests
 
     private static AutomationElement? FindCredentialsManagerWindow(AppProcess app)
     {
-        return app.Desktop.FindAllChildren(cf => cf.ByControlType(ControlType.Window))
-            .Concat(app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window)))
+        return app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
             .FirstOrDefault(window =>
             {
                 try
