@@ -19,7 +19,7 @@ namespace RouterPlus.Infrastructure.Security;
 /// - Batch login: HasCredentialsAsync to filter profiles
 ///
 /// Data Schema:
-/// Dictionary&lt;profileName, Dictionary&lt;ProviderKind, ProviderConnection&gt;&gt;
+/// Dictionary&lt;profileName, Dictionary&lt;ProviderKind, ProviderAuthConnection&gt;&gt;
 ///
 /// File: provider-connections.vault (DPAPI encrypted)
 /// User request: "dùng ProviderConnectionVaultStore" - Phase 1 Step 1.2
@@ -35,6 +35,8 @@ public sealed class ProviderConnectionVaultStore : IDisposable
     private int _pendingOperations;
     private bool _disposalStarted;
     private bool _disposed;
+    private bool _loadFailed;
+    private Exception? _loadException;
 
     // In-memory cache: profileName → (provider → connection)
     private Dictionary<string, Dictionary<ProviderKind, ProviderAuthConnection>>? _connections;
@@ -163,6 +165,11 @@ public sealed class ProviderConnectionVaultStore : IDisposable
         if (_connections != null)
             return;
 
+        if (_loadFailed)
+        {
+            throw new CryptographicException("Vault load failed previously", _loadException);
+        }
+
         await LoadAsync(cancellationToken);
     }
 
@@ -187,17 +194,44 @@ public sealed class ProviderConnectionVaultStore : IDisposable
                     json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                _connections = deserialized ?? new Dictionary<string, Dictionary<ProviderKind, ProviderAuthConnection>>(
-                    StringComparer.Ordinal);
+                if (deserialized == null)
+                {
+                    throw new CryptographicException("Vault deserialized to null");
+                }
+
+                // Filter out unknown provider kinds - only keep valid enum values
+                var filtered = new Dictionary<string, Dictionary<ProviderKind, ProviderAuthConnection>>(StringComparer.Ordinal);
+                foreach (var (profileName, providers) in deserialized)
+                {
+                    var validProviders = new Dictionary<ProviderKind, ProviderAuthConnection>();
+                    foreach (var (kind, connection) in providers)
+                    {
+                        if (Enum.IsDefined(typeof(ProviderKind), kind))
+                        {
+                            validProviders[kind] = connection;
+                        }
+                        else
+                        {
+                            DebugConsole.WriteLine($"[ProviderConnectionVault] Ignoring unknown provider kind: {(int)kind}");
+                        }
+                    }
+                    if (validProviders.Count > 0)
+                    {
+                        filtered[profileName] = validProviders;
+                    }
+                }
+
+                _connections = filtered;
 
                 DebugConsole.WriteLine(
                     $"[ProviderConnectionVault] Loaded vault: {_connections.Count} profiles, {_connections.Values.Sum(p => p.Count)} connections");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is JsonException or CryptographicException or FormatException)
             {
-                DebugConsole.WriteLine($"[ProviderConnectionVault] ERROR loading vault: {ex.Message}, initializing empty");
-                _connections = new Dictionary<string, Dictionary<ProviderKind, ProviderAuthConnection>>(
-                    StringComparer.Ordinal);
+                _loadFailed = true;
+                _loadException = ex;
+                DebugConsole.WriteLine($"[ProviderConnectionVault] ERROR loading vault: {ex.Message}");
+                throw new CryptographicException("Invalid vault format", ex);
             }
         }, cancellationToken);
     }
@@ -223,7 +257,18 @@ public sealed class ProviderConnectionVaultStore : IDisposable
                     Directory.CreateDirectory(directory);
                 }
 
-                await File.WriteAllBytesAsync(_vaultPath, encryptedBytes, cancellationToken);
+                // Atomic write: write to temp file, then replace
+                var tempPath = _vaultPath + ".tmp";
+                await File.WriteAllBytesAsync(tempPath, encryptedBytes, cancellationToken);
+
+                // Flush to ensure data is on disk
+                using (var fs = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    await fs.FlushAsync(cancellationToken);
+                }
+
+                // Atomic replace
+                File.Move(tempPath, _vaultPath, overwrite: true);
 
                 DebugConsole.WriteLine(
                     $"[ProviderConnectionVault] Saved vault: {_connections!.Count} profiles, {_connections.Values.Sum(p => p.Count)} connections");
@@ -231,6 +276,12 @@ public sealed class ProviderConnectionVaultStore : IDisposable
             finally
             {
                 _writeLock.Release();
+                // Clean up temp file if it still exists
+                var tempPath = _vaultPath + ".tmp";
+                if (File.Exists(tempPath))
+                {
+                    try { File.Delete(tempPath); } catch { /* best effort */ }
+                }
             }
         }, cancellationToken);
     }
@@ -280,7 +331,20 @@ public sealed class ProviderConnectionVaultStore : IDisposable
     private async Task EnterGateAsync(CancellationToken cancellationToken)
     {
         await _operationGate.WaitAsync(cancellationToken);
-        _operationGate.Release();
+        try
+        {
+            lock (_disposalLock)
+            {
+                if (_disposalStarted)
+                {
+                    throw new ObjectDisposedException(nameof(ProviderConnectionVaultStore));
+                }
+            }
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
     }
 
     private void EnterOperation()
