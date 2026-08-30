@@ -420,7 +420,6 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             const rect = btn.getBoundingClientRect();
             return {
                 found: true,
-                text: (btn.innerText || '').substring(0, 50),
                 centerX: rect.left + rect.width / 2,
                 centerY: rect.top + rect.height / 2
             };
@@ -447,11 +446,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 && value.TryGetProperty("centerX", out var centerX)
                 && value.TryGetProperty("centerY", out var centerY))
             {
-                var text = value.TryGetProperty("text", out var t) ? t.GetString() : "";
                 var x = centerX.GetDouble();
                 var y = centerY.GetDouble();
 
-                DebugConsole.WriteLine($"[GoogleLogin] Clicking skip button at ({x:F0}, {y:F0}), text=\"{text}\"");
+                DebugConsole.WriteLine($"[GoogleLogin] Clicking skip button at ({x:F0}, {y:F0})");
 
                 // Click using CDP mouse events
                 await _client.CallAsync("Input.dispatchMouseEvent", new
@@ -523,7 +521,6 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             const rect = btn.getBoundingClientRect();
             return {
                 found: true,
-                text: (btn.innerText || '').substring(0, 50),
                 centerX: rect.left + rect.width / 2,
                 centerY: rect.top + rect.height / 2,
                 allButtons: allButtons
@@ -551,11 +548,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 && value.TryGetProperty("centerX", out var centerX)
                 && value.TryGetProperty("centerY", out var centerY))
             {
-                var text = value.TryGetProperty("text", out var t) ? t.GetString() : "";
                 var x = centerX.GetDouble();
                 var y = centerY.GetDouble();
 
-                DebugConsole.WriteLine($"[GoogleLogin] Clicking skip button at ({x:F0}, {y:F0}), text=\"{text}\"");
+                DebugConsole.WriteLine($"[GoogleLogin] Clicking skip button at ({x:F0}, {y:F0})");
 
                 // Click using CDP mouse events
                 await _client.CallAsync("Input.dispatchMouseEvent", new
@@ -696,12 +692,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     // Get bounding rect of first matching option for CDP mouse click
     const target = candidates[0];
     const rect = target.getBoundingClientRect();
-    const clickedText = (target.innerText || target.textContent || '').substring(0, 100);
 
     return {
         clicked: false,
         needsCdpClick: true,
-        clickedText: clickedText,
         centerX: rect.left + rect.width / 2,
         centerY: rect.top + rect.height / 2
     };
@@ -723,11 +717,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                         && value.TryGetProperty("centerX", out var centerX)
                         && value.TryGetProperty("centerY", out var centerY))
                     {
-                        var clickedText = value.TryGetProperty("clickedText", out var ct) ? ct.GetString() : "(no text)";
                         var x = centerX.GetDouble();
                         var y = centerY.GetDouble();
 
-                        DebugConsole.WriteLine($"[GoogleLogin] Using CDP mouse click at ({x:F0}, {y:F0}), text=\"{clickedText}\"");
+                        DebugConsole.WriteLine($"[GoogleLogin] Using CDP mouse click at ({x:F0}, {y:F0})");
 
                         // Dispatch mouse events via CDP
                         await _client.CallAsync("Input.dispatchMouseEvent", new
@@ -757,8 +750,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     if (value.TryGetProperty("clicked", out var clicked)
                         && clicked.ValueKind == JsonValueKind.True)
                     {
-                        var clickedText = value.TryGetProperty("clickedText", out var ct) ? ct.GetString() : "(no text)";
-                        DebugConsole.WriteLine($"[GoogleLogin] Clicked Authenticator method (attempt {attempt}), text=\"{clickedText}\"");
+                        DebugConsole.WriteLine($"[GoogleLogin] Clicked Authenticator method (attempt {attempt})");
                         return true;
                     }
                 }
