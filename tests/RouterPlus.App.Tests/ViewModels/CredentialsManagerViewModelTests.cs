@@ -385,6 +385,137 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task LoadProfileRowsAsync_adopts_legacy_name_keyed_record_when_name_is_unique()
+    {
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "legacy@example.test",
+            "legacy-password",
+            "NONE"));
+        var viewModel = CreateViewModel();
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        Assert.Equal(_profile.Id, row.ProfileId);
+        Assert.True(row.HasCredentials);
+        Assert.Equal("legacy@example.test", row.Email);
+        Assert.Equal("legacy-password", row.Password);
+    }
+
+    [Fact]
+    public async Task LoadProfileRowsAsync_finds_stable_profile_id_keyed_record()
+    {
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            _profile.Id,
+            "stable@example.test",
+            "stable-password",
+            "NONE"));
+        var viewModel = CreateViewModel();
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        Assert.Equal(_profile.Id, row.ProfileId);
+        Assert.True(row.HasCredentials);
+        Assert.Equal("stable@example.test", row.Email);
+    }
+
+    [Fact]
+    public async Task SaveRowCommand_persists_record_under_stable_profile_id()
+    {
+        await CreateVaultAsync("synthetic-password");
+        var viewModel = CreateViewModel();
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        row.Email = "saved@example.test";
+        row.Password = "saved-password";
+        row.TotpSecret = "NONE";
+
+        viewModel.SaveRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Saved credentials", StringComparison.OrdinalIgnoreCase));
+
+        await using var reopened = await _googleVaultStore.OpenAsync(
+            _vaultPaths.VaultPath,
+            "synthetic-password",
+            CancellationToken.None);
+        var record = Assert.Single(reopened.Vault.Records);
+        Assert.Equal(_profile.Id, record.ProfileId);
+        Assert.NotEqual("Test Profile", record.ProfileId);
+        Assert.Equal("saved@example.test", record.Email);
+    }
+
+    [Fact]
+    public async Task Shared_name_record_is_neither_shown_when_ambiguous_nor_deleted_on_remove()
+    {
+        // Two sibling profiles with distinct Ids but the same display name.
+        var siblingRoot = Path.GetTempPath() + $"RouterPlus-Ambiguous-{Guid.NewGuid():N}";
+        Directory.CreateDirectory(siblingRoot);
+        var first = new ChromeProfile(
+            ChromeProfile.CreateId(siblingRoot, "Alpha"),
+            "Shared Display",
+            "Alpha",
+            siblingRoot,
+            true);
+        var second = new ChromeProfile(
+            ChromeProfile.CreateId(siblingRoot, "Beta"),
+            "Shared Display",
+            "Beta",
+            siblingRoot,
+            true);
+        Assert.Equal(first.Name, second.Name);
+        Assert.NotEqual(first.Id, second.Id);
+
+        var mainViewModel = new MainViewModel(
+            googleLoginVaultPaths: _vaultPaths,
+            harnessProfiles: new[] { first, second });
+        await mainViewModel.InitializeAsync();
+
+        await using (var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "synthetic-password",
+            CancellationToken.None))
+        {
+            // A single legacy record keyed by the shared display name.
+            session.Replace(new GoogleAccountVault(new[]
+            {
+                new GoogleLoginCredential("Shared Display", "shared@example.test", "shared-password", "NONE")
+            }));
+            await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+        }
+
+        var viewModel = new CredentialsManagerViewModel(
+            mainViewModel,
+            _googleVaultStore,
+            _providerVaultStore,
+            _vaultPaths,
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()));
+        _viewModels.Add(viewModel);
+
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+
+        // Neither row may adopt the ambiguous shared-name record (no silent merge).
+        Assert.Equal(2, viewModel.GoogleAccounts.Count);
+        Assert.All(viewModel.GoogleAccounts, row => Assert.False(row.HasCredentials));
+
+        // Removing one profile must not delete the shared-name record.
+        await viewModel.RemoveGoogleAccountAsync("Shared Display");
+
+        await using var reopened = await _googleVaultStore.OpenAsync(
+            _vaultPaths.VaultPath,
+            "synthetic-password",
+            CancellationToken.None);
+        var remaining = Assert.Single(reopened.Vault.Records);
+        Assert.Equal("Shared Display", remaining.ProfileId);
+
+        await mainViewModel.DisposeGoogleLoginSessionsAsync();
+    }
+
+    [Fact]
     public async Task RemoveGoogleAccountAsync_removes_only_the_requested_profile_when_emails_match()
     {
         await CreateVaultAsync("synthetic-password");

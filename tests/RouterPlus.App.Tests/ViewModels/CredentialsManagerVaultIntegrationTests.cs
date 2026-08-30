@@ -1,3 +1,4 @@
+using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Security;
 using Xunit;
@@ -254,6 +255,133 @@ public sealed class CredentialsManagerVaultIntegrationTests : IDisposable
 
         // Assert
         Assert.Empty(session.Vault.Records);
+
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task VaultSession_StableProfileId_RoundTripsThroughStore()
+    {
+        var root = Path.Combine(_tempDir, "profiles");
+        var profileDir = Path.Combine(root, "Default");
+        Directory.CreateDirectory(profileDir);
+        var profile = new ChromeProfile(
+            ChromeProfile.CreateId(root, "Default"),
+            "Display Name",
+            "Default",
+            root,
+            true);
+
+        // Arrange - Create vault with a record keyed by the stable profile Id.
+        var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "test-password",
+            CancellationToken.None);
+        var credential = new GoogleLoginCredential(profile.Id, "stable@example.com", "pass", "NONE");
+        var vault = session.Vault.Upsert(credential);
+        session.Replace(vault);
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+        await session.RememberAsync(CancellationToken.None);
+        await session.DisposeAsync();
+
+        // Act - Reopen with remembered session.
+        var reopened = await _googleVaultStore.TryOpenRememberedAsync(
+            _vaultPaths.VaultPath,
+            CancellationToken.None);
+
+        // Assert - Lookup by stable Id round-trips; display name is not a key.
+        Assert.NotNull(reopened);
+        Assert.Single(reopened!.Vault.Records);
+        Assert.NotNull(reopened.Vault.Find(profile.Id));
+        Assert.Equal("stable@example.com", reopened.Vault.Find(profile.Id)!.Email);
+        Assert.Null(reopened.Vault.Find(profile.Name));
+
+        // Act - Remove by stable Id through the immutable filter pattern.
+        var filtered = reopened.Vault.Records.Where(r => r.ProfileId != profile.Id);
+        reopened.Replace(new GoogleAccountVault(filtered));
+        await _googleVaultStore.SaveAsync(reopened, CancellationToken.None);
+
+        // Assert
+        Assert.Empty(reopened.Vault.Records);
+
+        await reopened.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task VaultSession_LegacyNameKeyedRecord_IsPairedByResolverWhenNameIsUnique()
+    {
+        var root = Path.Combine(_tempDir, "profiles-legacy");
+        var profileDir = Path.Combine(root, "Default");
+        Directory.CreateDirectory(profileDir);
+        var profile = new ChromeProfile(
+            ChromeProfile.CreateId(root, "Default"),
+            "Unique Name",
+            "Default",
+            root,
+            true);
+
+        // Arrange - A legacy vault record keyed by the display name.
+        var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "test-password",
+            CancellationToken.None);
+        var legacy = new GoogleLoginCredential("Unique Name", "legacy@example.com", "pass", "NONE");
+        session.Replace(new GoogleAccountVault(new[] { legacy }));
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Act - Resolve same way the Credentials Manager load path does: stable
+        // Id first, then unambiguous display-name fallback.
+        var byId = session.Vault.Find(profile.Id);
+        var byUniqueName = session.Vault.Find(profile.Name);
+
+        // Assert - The record is found by display name (the legacy key) and NOT
+        // by the stable Id yet (still name-keyed on disk, no load migration).
+        Assert.Null(byId);
+        Assert.NotNull(byUniqueName);
+        Assert.Equal("legacy@example.com", byUniqueName.Email);
+
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task VaultSession_AmbiguousNameKeyedRecord_IsNotAdopted()
+    {
+        var root = Path.Combine(_tempDir, "profiles-ambiguous");
+        var firstDir = Path.Combine(root, "First");
+        var secondDir = Path.Combine(root, "Second");
+        Directory.CreateDirectory(firstDir);
+        Directory.CreateDirectory(secondDir);
+        var first = new ChromeProfile(ChromeProfile.CreateId(root, "First"), "Shared Name", "First", root, true);
+        var second = new ChromeProfile(ChromeProfile.CreateId(root, "Second"), "Shared Name", "Second", root, true);
+
+        // Ensure the sibling profile Ids differ while the display names collide.
+        Assert.Equal("Shared Name", first.Name);
+        Assert.Equal("Shared Name", second.Name);
+        Assert.NotEqual(first.Id, second.Id);
+
+        // Arrange - A single legacy record keyed by the shared display name.
+        var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "test-password",
+            CancellationToken.None);
+        var legacy = new GoogleLoginCredential("Shared Name", "ambiguous@example.com", "pass", "NONE");
+        session.Replace(new GoogleAccountVault(new[] { legacy }));
+        await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+
+        // Act - Resolve for each profile the same way the load path does.
+        var discovered = Enumerable.Empty<ChromeProfile>().Append(first).Append(second);
+        var uniqueNameMatches = discovered
+            .Where(p => discovered.Count(other => other.Name == p.Name) == 1);
+        var firstCredential = uniqueNameMatches.Contains(first) ? session.Vault.Find(first.Name) : null;
+        var secondCredential = uniqueNameMatches.Contains(second) ? session.Vault.Find(second.Name) : null;
+
+        // Assert - Neither profile may adopt the shared-name record: there is no
+        // silent merge of ambiguous names. The record stays on disk, orphaned.
+        Assert.Empty(uniqueNameMatches);
+        Assert.Null(firstCredential);
+        Assert.Null(secondCredential);
+        Assert.Single(session.Vault.Records);
+        Assert.Equal("Shared Name", session.Vault.Records.Single().ProfileId);
 
         await session.DisposeAsync();
     }

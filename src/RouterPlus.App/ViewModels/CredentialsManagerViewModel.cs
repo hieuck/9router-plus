@@ -228,11 +228,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         // Create row for each profile
         foreach (var profile in _mainViewModel.FilteredProfiles)
         {
-            var credential = session?.Vault.Records.FirstOrDefault(r => r.ProfileId == profile.Name);
+            var credential = ResolveCredentialForProfile(session?.Vault, profile);
 
             var row = new GoogleAccountRowViewModel
             {
                 ProfileName = profile.Name,
+                ProfileId = profile.Id,
                 Email = credential?.Email ?? string.Empty,
                 Password = credential?.Password ?? string.Empty,
                 TotpSecret = credential?.TotpSecret ?? string.Empty,
@@ -254,6 +255,54 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
             GoogleAccounts.Add(row);
         }
+    }
+
+    /// <summary>
+    /// Resolves the credential for a profile using the stable profile Id first,
+    /// then falls back to the legacy display-name key ONLY when the name maps
+    /// unambiguously to a single current profile (no silent merge of shared names).
+    /// A load never writes to the vault: legacy name-keyed records stay on disk
+    /// until an explicit save migrates them to the stable Id.
+    /// </summary>
+    private GoogleLoginCredential? ResolveCredentialForProfile(GoogleAccountVault? vault, ChromeProfile profile)
+    {
+        if (vault is null)
+        {
+            return null;
+        }
+
+        var byId = vault.Find(profile.Id);
+        if (byId is not null)
+        {
+            return byId;
+        }
+
+        // Legacy compatibility: adopt a name-keyed record only when exactly one
+        // current profile carries that display name.
+        return HasUniqueProfileName(profile.Name) ? vault.Find(profile.Name) : null;
+    }
+
+    private bool HasUniqueProfileName(string profileName)
+    {
+        return _mainViewModel.FilteredProfiles.Count(p => p.Name == profileName) == 1;
+    }
+
+    /// <summary>
+    /// Resolves the ChromeProfile backing a row by stable Id first, falling
+    /// back to the display name for legacy rows created before Id resolution.
+    /// </summary>
+    private ChromeProfile? ResolveRowProfile(GoogleAccountRowViewModel row)
+    {
+        if (!string.IsNullOrEmpty(row.ProfileId))
+        {
+            var byId = _mainViewModel.FilteredProfiles.FirstOrDefault(p => p.Id == row.ProfileId);
+            if (byId is not null)
+            {
+                return byId;
+            }
+        }
+
+        return _mainViewModel.FilteredProfiles.FirstOrDefault(p => p.Name == row.ProfileName);
     }
 
     private async Task LoadProviderConnectionsAsync()
@@ -403,16 +452,33 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         try
         {
-            // Create credential (TOTP required - use placeholder if empty)
+            // Resolve the underlying profile: by stable Id first, then by display
+            // name so legacy rows created before Id resolution still work. Write
+            // the resolved Id back onto the row for future operations.
+            var profile = ResolveRowProfile(row);
+            if (profile is null)
+            {
+                SetStatus($"Profile not found for {row.ProfileName}");
+                return;
+            }
+
+            row.ProfileId = profile.Id;
+
+            // Create credential keyed by the stable profile Id (TOTP required - use placeholder if empty).
             var credential = new GoogleLoginCredential(
-                row.ProfileName,
+                row.ProfileId,
                 row.Email.Trim(),
                 row.Password,
                 string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
 
-            // Upsert into vault (immutable pattern)
+            // Upsert into vault (immutable pattern). Remove any prior record keyed
+            // by the stable Id AND any legacy record keyed by the display name,
+            // but only remove the name-keyed record when the name maps
+            // unambiguously to this profile (never merge shared names).
             var currentVault = _vaultSession.Vault;
-            var filtered = currentVault.Records.Where(r => r.ProfileId != row.ProfileName);
+            var filtered = currentVault.Records
+                .Where(r => r.ProfileId != row.ProfileId)
+                .Where(r => !HasUniqueProfileName(row.ProfileName) || r.ProfileId != row.ProfileName);
             var updated = filtered.Append(credential);
             var newVault = new GoogleAccountVault(updated);
             _vaultSession.Replace(newVault);
@@ -450,17 +516,20 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             return;
         }
 
-        // Find matching profile
-        var profile = _mainViewModel.FilteredProfiles.FirstOrDefault(p => p.Name == row.ProfileName);
+        // Find matching profile: by stable Id first, then by display name for
+        // legacy rows that predate Id resolution.
+        var profile = ResolveRowProfile(row);
         if (profile == null)
         {
             SetStatus($"❌ {row.ProfileName}: Profile not found");
             return;
         }
 
-        // Create credential from row
+        row.ProfileId = profile.Id;
+
+        // Create credential from row, keyed by the stable profile Id
         var credential = new GoogleLoginCredential(
-            row.ProfileName,
+            row.ProfileId,
             row.Email,
             row.Password,
             string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
@@ -515,8 +584,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
             foreach (var row in selectedRows)
             {
-                // Find matching profile
-                var profile = _mainViewModel.FilteredProfiles.FirstOrDefault(p => p.Name == row.ProfileName);
+                // Find matching profile: by stable Id first, then by display name
+                // for legacy rows that predate Id resolution.
+                var profile = ResolveRowProfile(row);
                 if (profile == null)
                 {
                     SetStatus($"❌ {row.ProfileName}: Profile not found");
@@ -525,9 +595,11 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                     continue;
                 }
 
-                // Create credential from row
+                row.ProfileId = profile.Id;
+
+                // Create credential from row, keyed by the stable profile Id
                 var credential = new GoogleLoginCredential(
-                    row.ProfileName,
+                    row.ProfileId,
                     row.Email,
                     row.Password,
                     string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
@@ -584,9 +656,14 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         try
         {
-            // Remove from vault (immutable - filter and replace)
+            // Remove from vault (immutable - filter and replace). Key by the
+            // stable profile Id, and ALSO drop a legacy name-keyed record only
+            // when the display name maps unambiguously to this profile.
+            var row = SelectedGoogleAccount;
             var currentVault = _vaultSession.Vault;
-            var filteredRecords = currentVault.Records.Where(r => r.ProfileId != profileName);
+            var filteredRecords = currentVault.Records
+                .Where(r => r.ProfileId != row.ProfileId)
+                .Where(r => !HasUniqueProfileName(row.ProfileName) || r.ProfileId != row.ProfileName);
             var newVault = new GoogleAccountVault(filteredRecords);
             _vaultSession.Replace(newVault);
             await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
@@ -622,15 +699,21 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         try
         {
-            // Remove from vault by profile ID, which is the stable credential key.
+            // Resolve the row for this display name so we can key removal by the
+            // stable profile Id, falling back to the legacy name-keyed record
+            // only when the display name maps unambiguously to this profile.
+            var row = GoogleAccounts.FirstOrDefault(account => account.ProfileName == profileName);
+
+            // Remove from vault (immutable - filter and replace).
             var currentVault = _vaultSession.Vault;
-            var filteredRecords = currentVault.Records.Where(r => r.ProfileId != profileName);
+            var filteredRecords = currentVault.Records
+                .Where(r => r.ProfileId != row?.ProfileId)
+                .Where(r => row is null || !HasUniqueProfileName(row.ProfileName) || r.ProfileId != row.ProfileName);
             var newVault = new GoogleAccountVault(filteredRecords);
             _vaultSession.Replace(newVault);
             await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
 
             // Update the existing row without reloading from the remembered-key path.
-            var row = GoogleAccounts.FirstOrDefault(account => account.ProfileName == profileName);
             if (row is not null)
             {
                 row.Email = string.Empty;
@@ -673,6 +756,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 /// </summary>
 public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
 {
+    private string _profileId = string.Empty;
     private string _profileName = string.Empty;
     private string _email = string.Empty;
     private string _password = string.Empty;
@@ -685,6 +769,20 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
     private bool _isVaultUnlocked;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>
+    /// Stable ChromeProfile.Id that keys Google vault records.
+    /// </summary>
+    public string ProfileId
+    {
+        get => _profileId;
+        set
+        {
+            if (_profileId == value) return;
+            _profileId = value;
+            OnPropertyChanged();
+        }
+    }
 
     public string ProfileName
     {

@@ -107,4 +107,49 @@ public sealed class GoogleAccountVaultTests
         Assert.Empty(vault.Records);
         Assert.Single(updated.Records);
     }
+
+    [Fact]
+    public void Vault_keeps_records_with_distinct_profile_ids_even_when_display_names_collide()
+    {
+        // Two current profiles may share a display name; the vault keys strictly
+        // by the stable profile Id so both records survive independently.
+        const string firstId = "AAAAAAAAAAAAAAAA";
+        const string secondId = "BBBBBBBBBBBBBBBB";
+        var vault = new GoogleAccountVault();
+        var first = new GoogleLoginCredential(firstId, "first@example.com", "p1", "s1");
+        var second = new GoogleLoginCredential(secondId, "second@example.com", "p2", "s2");
+
+        var updated = vault.Upsert(first).Upsert(second);
+
+        Assert.Equal(2, updated.Records.Count);
+        var firstRecord = updated.Find(firstId);
+        var secondRecord = updated.Find(secondId);
+        Assert.NotNull(firstRecord);
+        Assert.NotNull(secondRecord);
+        Assert.NotEqual(firstRecord, secondRecord);
+        Assert.Equal("first@example.com", firstRecord!.Email);
+        Assert.Equal("second@example.com", secondRecord!.Email);
+        Assert.Null(updated.Find("Display Name")); // display names are not vault keys
+    }
+
+    [Fact]
+    public void Vault_record_survives_display_name_rename_under_unchanged_profile_id()
+    {
+        // A profile rename changes only the display name, never the stable Id.
+        // Re-saving under the unchanged Id replaces the prior record rather than
+        // orphaning or duplicating it.
+        var vault = new GoogleAccountVault();
+        var original = new GoogleLoginCredential("stable-id", "user@example.com", "p", "s");
+
+        var updated = vault.Upsert(original);
+
+        // Re-save with new values under the unchanged stable Id.
+        var reSaved = updated.Upsert(new GoogleLoginCredential("stable-id", "user@example.com", "newpass", "s2"));
+
+        var record = Assert.Single(reSaved.Records);
+        Assert.Equal("stable-id", record.ProfileId);
+        Assert.Equal("stable-id", reSaved.Find("stable-id")!.ProfileId);
+        Assert.Equal("newpass", record.Password);
+        Assert.Equal("s2", record.TotpSecret);
+    }
 }
