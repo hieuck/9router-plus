@@ -214,6 +214,34 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task BatchLoginCommand_uses_the_shared_google_authentication_runner_for_each_selected_row()
+    {
+        var receivedProfiles = new List<ChromeProfile>();
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "user@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel((profile, _, _) =>
+        {
+            receivedProfiles.Add(profile);
+            return Task.FromResult(GoogleLoginResult.Success());
+        });
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        row.IsSelected = true;
+
+        viewModel.BatchLoginCommand.Execute(null);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Batch login completed", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(new[] { _profile }, receivedProfiles);
+        Assert.False(viewModel.IsBatchLoginRunning);
+        Assert.Contains("1 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task LoginRowCommand_reports_automation_failure_without_throwing()
     {
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(

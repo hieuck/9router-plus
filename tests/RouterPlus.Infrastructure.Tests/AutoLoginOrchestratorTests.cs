@@ -1,4 +1,5 @@
 using Moq;
+using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Security;
@@ -127,6 +128,69 @@ public sealed class AutoLoginOrchestratorTests
         finally
         {
             if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task LoginAsync_DirectLogin_does_not_invoke_google_authentication_service()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var vaultPaths = new GoogleAccountVaultPaths(tempDir);
+            var googleVault = new GoogleAccountVaultStore(vaultPaths);
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new RouterPlus.Core.Models.ProviderAuthConnection
+            {
+                ProfileName = "TestProfile",
+                Provider = ProviderKind.GitHub,
+                PreferredMethod = AuthMethod.Direct,
+                DirectCredential = new RouterPlus.Core.Models.ProviderCredential
+                {
+                    Email = "direct@example.test",
+                    Password = "synthetic-password",
+                    TotpSecret = "NONE"
+                }
+            });
+
+            var googleService = new Mock<IGoogleAuthenticationService>();
+            var launcher = new Mock<IChromeLauncher>();
+            launcher.Setup(item => item.LaunchAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Uri>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((CdpSession?)null);
+
+            var orchestrator = new AutoLoginOrchestrator(
+                googleVault,
+                providerVault,
+                launcher.Object,
+                googleAuthenticationService: googleService.Object);
+
+            var result = await orchestrator.LoginAsync(
+                "TestProfile",
+                ProviderKind.GitHub,
+                new Uri("https://github.com/login"),
+                TimeSpan.FromMinutes(1),
+                CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(AuthMethod.Direct, result.Method);
+            Assert.Contains("launch browser", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+            googleService.Verify(
+                service => service.AuthenticateAsync(
+                    It.IsAny<GoogleAuthenticationRequest>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
         }
     }
 

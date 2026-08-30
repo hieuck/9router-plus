@@ -23,7 +23,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     private readonly IGoogleAccountVaultStore _googleAccountVaultStore;
     private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
     private readonly GoogleAccountVaultPaths _vaultPaths;
-    private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
+    // Compatibility seam: MainViewModel composes this runner from the shared
+    // IGoogleAuthenticationService and owns the Chrome/browser lifetime.
+    private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _runGoogleAuthentication;
 
     private int _selectedTabIndex;
     private string _statusMessage = string.Empty;
@@ -43,13 +45,13 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         IGoogleAccountVaultStore googleAccountVaultStore,
         ProviderConnectionVaultStore providerConnectionVaultStore,
         GoogleAccountVaultPaths vaultPaths,
-        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleLoginAutomation)
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleAuthenticationRunner)
     {
         _mainViewModel = mainViewModel ?? throw new ArgumentNullException(nameof(mainViewModel));
         _googleAccountVaultStore = googleAccountVaultStore ?? throw new ArgumentNullException(nameof(googleAccountVaultStore));
         _providerConnectionVaultStore = providerConnectionVaultStore ?? throw new ArgumentNullException(nameof(providerConnectionVaultStore));
         _vaultPaths = vaultPaths ?? throw new ArgumentNullException(nameof(vaultPaths));
-        _googleLoginAutomation = googleLoginAutomation ?? throw new ArgumentNullException(nameof(googleLoginAutomation));
+        _runGoogleAuthentication = googleAuthenticationRunner ?? throw new ArgumentNullException(nameof(googleAuthenticationRunner));
 
         // Initialize commands
         SaveRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(SaveRowAsync);
@@ -538,7 +540,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         try
         {
-            var result = await _googleLoginAutomation(profile, credential, CancellationToken.None);
+            var result = await _runGoogleAuthentication(profile, credential, CancellationToken.None);
 
             if (result.Category == GoogleLoginResultCategory.Success)
             {
@@ -608,7 +610,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
                 try
                 {
-                    var result = await _googleLoginAutomation(profile, credential, CancellationToken.None);
+                    var result = await _runGoogleAuthentication(profile, credential, CancellationToken.None);
 
                     if (result.Category == GoogleLoginResultCategory.Success)
                     {
