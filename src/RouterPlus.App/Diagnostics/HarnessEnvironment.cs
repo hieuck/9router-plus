@@ -48,6 +48,10 @@ internal static class HarnessEnvironment
     public static GoogleAccountVaultPaths CreateGoogleAccountVaultPaths() =>
         new(Path.Combine(GetRequiredRootPath(), "Vault"));
 
+    public static Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>
+        CreateGoogleLoginAutomation() =>
+        (_, _, _) => Task.FromResult(GoogleLoginResult.Success());
+
     public static void Trace(string message)
     {
         if (!IsEnabled || string.IsNullOrWhiteSpace(RootPath))

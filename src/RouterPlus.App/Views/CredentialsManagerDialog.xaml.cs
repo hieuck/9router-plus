@@ -62,14 +62,18 @@ public partial class CredentialsManagerDialog : Window
 
         var passwordBox = new System.Windows.Controls.PasswordBox
         {
+            Name = "VaultPasswordBox",
             Margin = new Thickness(0, 0, 0, 12)
         };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(passwordBox, "VaultPasswordBox");
 
         var rememberCheckBox = new System.Windows.Controls.CheckBox
         {
+            Name = "RememberVaultCheckBox",
             Content = "Remember on this device (encrypted with Windows DPAPI)",
             Margin = new Thickness(0, 0, 0, 16)
         };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(rememberCheckBox, "RememberVaultCheckBox");
 
         var buttonPanel = new System.Windows.Controls.StackPanel
         {
@@ -111,10 +115,18 @@ public partial class CredentialsManagerDialog : Window
 
         if (result != true || string.IsNullOrWhiteSpace(passwordBox.Password))
         {
+            passwordBox.Clear();
             return;
         }
 
-        await _viewModel.UnlockVaultAsync(passwordBox.Password, rememberCheckBox.IsChecked == true);
+        try
+        {
+            await _viewModel.UnlockVaultAsync(passwordBox.Password, rememberCheckBox.IsChecked == true);
+        }
+        finally
+        {
+            passwordBox.Clear();
+        }
     }
 
     // Google Account Management
@@ -154,9 +166,9 @@ public partial class CredentialsManagerDialog : Window
         if (_viewModel.SelectedGoogleAccount == null)
             return;
 
-        var email = _viewModel.SelectedGoogleAccount.Email;
+        var profileName = _viewModel.SelectedGoogleAccount.ProfileName;
         var result = MessageBox.Show(
-            $"Remove Google account '{email}' from vault?\n\nThis will delete stored credentials for this account.",
+            $"Remove Google account for profile '{profileName}' from vault?\n\nThis will delete stored credentials for this profile.",
             "Remove Google Account",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
@@ -164,7 +176,7 @@ public partial class CredentialsManagerDialog : Window
         if (result != MessageBoxResult.Yes)
             return;
 
-        await _viewModel.RemoveGoogleAccountAsync(email);
+        await _viewModel.RemoveGoogleAccountAsync(profileName);
     }
 
     // Codex Configuration

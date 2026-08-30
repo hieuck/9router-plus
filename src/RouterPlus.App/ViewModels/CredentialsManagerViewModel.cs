@@ -605,7 +605,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         }
     }
 
-    public async Task RemoveGoogleAccountAsync(string email)
+    public async Task RemoveGoogleAccountAsync(string profileName)
     {
         if (_vaultSession == null)
         {
@@ -613,19 +613,33 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(profileName))
+        {
+            SetStatus("Profile is required");
+            return;
+        }
+
         try
         {
-            // Remove from vault (immutable - filter by email)
+            // Remove from vault by profile ID, which is the stable credential key.
             var currentVault = _vaultSession.Vault;
-            var filteredRecords = currentVault.Records.Where(r => r.Email != email);
+            var filteredRecords = currentVault.Records.Where(r => r.ProfileId != profileName);
             var newVault = new GoogleAccountVault(filteredRecords);
             _vaultSession.Replace(newVault);
             await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
 
-            // Refresh UI
-            await LoadDataAsync();
+            // Update the existing row without reloading from the remembered-key path.
+            var row = GoogleAccounts.FirstOrDefault(account => account.ProfileName == profileName);
+            if (row is not null)
+            {
+                row.Email = string.Empty;
+                row.Password = string.Empty;
+                row.TotpSecret = string.Empty;
+                row.HasCredentials = false;
+                row.IsEditing = false;
+            }
 
-            SetStatus($"Removed Google account: {email}");
+            SetStatus($"Removed Google account for {profileName}");
         }
         catch (Exception ex)
         {

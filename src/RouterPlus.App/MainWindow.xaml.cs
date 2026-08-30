@@ -25,6 +25,7 @@ public partial class MainWindow : Window
                 settingsStore: HarnessEnvironment.CreateSettingsStore(),
                 runStartupUpdateCheck: false,
                 googleLoginVaultPaths: HarnessEnvironment.CreateGoogleAccountVaultPaths(),
+                googleLoginAutomation: HarnessEnvironment.CreateGoogleLoginAutomation(),
                 harnessProfiles: HarnessEnvironment.CreateProfiles())
             : new MainViewModel(runStartupUpdateCheck: true);
         ViewModel.LoadWindowPlacementSync();

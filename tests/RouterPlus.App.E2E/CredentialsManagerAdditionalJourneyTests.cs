@@ -158,9 +158,9 @@ public sealed class CredentialsManagerAdditionalJourneyTests
                 throwOnTimeout: false).Result;
             Assert.NotNull(status);
 
-            var saveButton = googleList.FindFirstDescendant(cf =>
-                cf.ByControlType(ControlType.Button).And(cf.ByName("Save")));
-            Assert.NotNull(saveButton);
+            var editButton = googleList.FindFirstDescendant(cf =>
+                cf.ByControlType(ControlType.Button).And(cf.ByName("Edit")));
+            Assert.NotNull(editButton);
 
             await CloseCredentialsManagerAsync(app, dialog);
         }

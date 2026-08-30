@@ -11,18 +11,47 @@ namespace RouterPlus.App.E2E;
 public sealed class AppProcess : IAsyncDisposable
 {
     private readonly Process _process;
+    private readonly int _processId;
     private readonly Application _application;
     private readonly UIA3Automation _automation;
 
-    private AppProcess(Process process, Application application, UIA3Automation automation, Window mainWindow)
+    internal E2EInstrumentation Instrumentation { get; private set; } = null!;
+
+    private AppProcess(Process process, Application application, UIA3Automation automation, Window mainWindow, int processId)
     {
         _process = process;
+        _processId = processId;
         _application = application;
         _automation = automation;
         MainWindow = mainWindow;
     }
 
     public Window MainWindow { get; }
+
+    public int ProcessId => _processId;
+
+    public bool HasExited
+    {
+        get
+        {
+            try
+            {
+                return _process.HasExited;
+            }
+            catch (InvalidOperationException)
+            {
+                try
+                {
+                    using var currentProcess = Process.GetProcessById(_processId);
+                    return currentProcess.HasExited;
+                }
+                catch (ArgumentException)
+                {
+                    return true;
+                }
+            }
+        }
+    }
 
     public AutomationElement Desktop => _automation.GetDesktop();
 
@@ -46,6 +75,7 @@ public sealed class AppProcess : IAsyncDisposable
 
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start RouterPlus.exe");
+        var processId = process.Id;
 
         var application = Application.Attach(process);
         application.WaitWhileMainHandleIsMissing(TimeSpan.FromSeconds(10));
@@ -58,7 +88,12 @@ public sealed class AppProcess : IAsyncDisposable
 
             await WaitForWindowTitleAsync(mainWindow, "9Router Profile Tool", TimeSpan.FromSeconds(10));
 
-            return new AppProcess(process, application, automation, mainWindow);
+            var app = new AppProcess(process, application, automation, mainWindow, processId)
+            {
+                Instrumentation = new E2EInstrumentation(environment.RootPath)
+            };
+            app.Instrumentation.Record("APP_STARTED", $"pid={processId}");
+            return app;
         }
         catch
         {

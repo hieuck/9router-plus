@@ -25,18 +25,7 @@ public sealed class CredentialsManagerDialogTests
             credentialsButton!.Click();
 
             var dialog = Retry.WhileNull(
-                () => app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
-                    .FirstOrDefault(window =>
-                    {
-                        try
-                        {
-                            return window.Name.Contains("Credentials Manager", StringComparison.OrdinalIgnoreCase);
-                        }
-                        catch
-                        {
-                            return false;
-                        }
-                    }),
+                () => FindCredentialsManagerWindow(app),
                 TimeSpan.FromSeconds(5),
                 throwOnTimeout: false).Result;
 
@@ -44,8 +33,10 @@ public sealed class CredentialsManagerDialogTests
             Assert.Equal("🔐 Credentials Manager", dialog!.Name);
 
             // User action 2: inspect the Google tab and its profiles.
-            var googleList = dialog.FindFirstDescendant(cf =>
-                cf.ByAutomationId("GoogleAccountsList"));
+            var googleList = Retry.WhileNull(
+                () => dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleAccountsList")),
+                TimeSpan.FromSeconds(5),
+                throwOnTimeout: false).Result;
             Assert.NotNull(googleList);
 
             Assert.NotNull(dialog.FindFirstDescendant(cf => cf.ByName("Harness Alpha")));
@@ -116,9 +107,10 @@ public sealed class CredentialsManagerDialogTests
             });
             FlaUI.Core.Input.Keyboard.Type("alpha-edited-password");
 
-            var totpEditor = dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpEditor"))!.AsTextBox();
-            Assert.False(totpEditor.IsReadOnly);
-            totpEditor.Text = "JBSWY3DPEHPK3PXP";
+            var totpEditor = dialog.FindFirstDescendant(cf => cf.ByAutomationId("GoogleTotpEditor"));
+            Assert.NotNull(totpEditor);
+            Assert.True(totpEditor!.IsEnabled);
+            SetPassword(totpEditor, "JBSWY3DPEHPK3PXP");
 
             saveButton!.Click();
 
@@ -214,22 +206,28 @@ public sealed class CredentialsManagerDialogTests
         button!.Click();
 
         var dialog = Retry.WhileNull(
-            () => app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
-                .FirstOrDefault(window =>
-                {
-                    try
-                    {
-                        return window.Name.Contains("Credentials Manager", StringComparison.OrdinalIgnoreCase);
-                    }
-                    catch
-                    {
-                        return false;
-                    }
-                }),
+            () => FindCredentialsManagerWindow(app),
             TimeSpan.FromSeconds(5),
             throwOnTimeout: false).Result;
         Assert.NotNull(dialog);
         return Task.FromResult(dialog!);
+    }
+
+    private static AutomationElement? FindCredentialsManagerWindow(AppProcess app)
+    {
+        return app.Desktop.FindAllChildren(cf => cf.ByControlType(ControlType.Window))
+            .Concat(app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window)))
+            .FirstOrDefault(window =>
+            {
+                try
+                {
+                    return window.Name.Contains("Credentials Manager", StringComparison.OrdinalIgnoreCase);
+                }
+                catch
+                {
+                    return false;
+                }
+            });
     }
 
     private static async Task<bool> IsCredentialsDialogOpenAsync(AppProcess app, TimeSpan timeout)
@@ -237,18 +235,7 @@ public sealed class CredentialsManagerDialogTests
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
-            var isOpen = app.Desktop.FindAllDescendants(cf => cf.ByControlType(ControlType.Window))
-                .Any(window =>
-                {
-                    try
-                    {
-                        return window.Name.Contains("Credentials Manager", StringComparison.OrdinalIgnoreCase);
-                    }
-                    catch
-                    {
-                        return false;
-                    }
-                });
+            var isOpen = FindCredentialsManagerWindow(app) is not null;
             if (!isOpen)
             {
                 return false;
@@ -258,6 +245,24 @@ public sealed class CredentialsManagerDialogTests
         }
 
         return true;
+    }
+
+    private static void SetPassword(AutomationElement passwordBox, string password)
+    {
+        var valuePattern = passwordBox.Patterns.Value.Pattern;
+        if (valuePattern is not null && !valuePattern.IsReadOnly)
+        {
+            valuePattern.SetValue(password);
+            return;
+        }
+
+        passwordBox.Focus();
+        FlaUI.Core.Input.Keyboard.TypeSimultaneously(new[]
+        {
+            FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL,
+            FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_A
+        });
+        FlaUI.Core.Input.Keyboard.Type(password);
     }
 
     private static async Task CaptureFailureAsync(TestEnvironment environment, AppProcess app)

@@ -20,7 +20,7 @@ public sealed class TestEnvironment : IAsyncDisposable
     public string SettingsPath { get; }
     public string ManifestPath { get; }
 
-    public static async Task<TestEnvironment> CreateAsync()
+    public static async Task<TestEnvironment> CreateAsync(bool rememberVault = true)
     {
         var rootPath = Path.Combine(Path.GetTempPath(), "RouterPlusE2E", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(rootPath);
@@ -41,11 +41,11 @@ public sealed class TestEnvironment : IAsyncDisposable
             env.ManifestPath,
             JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
 
-        await SeedGoogleVaultAsync(env);
+        await SeedGoogleVaultAsync(env, rememberVault);
         return env;
     }
 
-    private static async Task SeedGoogleVaultAsync(TestEnvironment environment)
+    private static async Task SeedGoogleVaultAsync(TestEnvironment environment, bool rememberVault)
     {
         var paths = new GoogleAccountVaultPaths(Path.Combine(environment.RootPath, "Vault"));
         using var store = new GoogleAccountVaultStore(paths);
@@ -61,7 +61,10 @@ public sealed class TestEnvironment : IAsyncDisposable
         });
         session.Replace(vault);
         await store.SaveAsync(session, CancellationToken.None);
-        await session.RememberAsync(CancellationToken.None);
+        if (rememberVault)
+        {
+            await session.RememberAsync(CancellationToken.None);
+        }
     }
 
     public async ValueTask DisposeAsync()

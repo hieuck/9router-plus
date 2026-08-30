@@ -710,7 +710,8 @@
                                 <ColumnDefinition Width="6" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button Content="☑  Chọn nhiều"
+                            <Button AutomationProperties.AutomationId="ToggleMultiSelectButton"
+                                    Content="☑  Chọn nhiều"
                                     Command="{Binding ToggleMultiSelectModeCommand}"
                                     ToolTip="Bật/tắt chế độ chọn nhiều profiles (Ctrl+A)"
                                     Padding="8,5"
@@ -731,6 +732,7 @@
                                 </Button.Style>
                             </Button>
                             <Button Grid.Column="2"
+                                    AutomationProperties.AutomationId="SelectAllButton"
                                     Padding="8,5"
                                     HorizontalContentAlignment="Left"
                                     ToolTip="Chọn tất cả / Bỏ chọn tất cả profiles"
@@ -802,6 +804,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="⌕" FontSize="16" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
                             <TextBox Grid.Column="1"
+                                     AutomationProperties.AutomationId="ProfileSearchTextBox"
                                      Text="{Binding ProfileSearchText, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="Tìm profile theo tên hoặc thư mục"
                                      BorderThickness="0"
@@ -1135,7 +1138,8 @@
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>
-                <ToggleButton Content="⚙  Cài đặt" IsChecked="{Binding IsSettingsExpanded, Mode=TwoWay}" />
+                <ToggleButton AutomationProperties.AutomationId="SettingsToggleButton"
+                              Content="⚙  Cài đặt" IsChecked="{Binding IsSettingsExpanded, Mode=TwoWay}" />
             </StackPanel>
         </Grid>
 
@@ -1167,7 +1171,8 @@
                         </Border>
                         <StackPanel Grid.Column="1" Margin="15,0,20,0">
                             <TextBlock Text="SELECTED CHROME PROFILE" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" FontWeight="Bold" />
-                            <TextBlock Text="{Binding SelectedProfile.Name, TargetNullValue=Chưa chọn profile}" FontSize="30" FontWeight="SemiBold" Margin="0,7,0,0" />
+                            <TextBlock AutomationProperties.AutomationId="SelectedProfileName"
+                                       Text="{Binding SelectedProfile.Name, TargetNullValue=Chưa chọn profile}" FontSize="30" FontWeight="SemiBold" Margin="0,7,0,0" />
                             <TextBlock Text="{Binding SelectedProfile.ProfilePath, TargetNullValue=Chọn profile để xem đường dẫn}" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
                             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                 <Border Style="{StaticResource SuccessPillStyle}">
@@ -1695,7 +1700,8 @@
                               Padding="12,8"
                               Margin="0,0,8,0"
                               ToolTip="Đặt lại tất cả cài đặt về giá trị mặc định" />
-                      <Button Content="Lưu cài đặt"
+                      <Button AutomationProperties.AutomationId="SaveSettingsButton"
+                              Content="Lưu cài đặt"
                               Command="{Binding SaveSettingsCommand}"
                               Style="{StaticResource ProviderPrimaryActionButtonStyle}"
                               Margin="0" />
@@ -1723,7 +1729,8 @@
                             </ToggleButton>
                         </Grid>
                         <Border Style="{StaticResource SettingsStatusStyle}">
-                            <TextBlock Text="{Binding SettingsStatusText}"
+                            <TextBlock AutomationProperties.AutomationId="SettingsStatusText"
+                                       Text="{Binding SettingsStatusText}"
                                        Style="{StaticResource SettingsStatusTextStyle}"
                                        TextWrapping="Wrap" />
                         </Border>
@@ -1991,7 +1998,8 @@
                                                Text="URL dashboard" 
                                                Style="{StaticResource SettingsFieldLabelStyle}" />
                                     
-                                    <TextBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                    <TextBox AutomationProperties.AutomationId="DashboardUrlTextBox"
+                                             Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
                                              Text="{Binding DashboardBaseUrl, UpdateSourceTrigger=PropertyChanged}"
                                              Margin="0" />
                                     
