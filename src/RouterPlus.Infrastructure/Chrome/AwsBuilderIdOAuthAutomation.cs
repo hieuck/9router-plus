@@ -5,7 +5,7 @@ namespace RouterPlus.Infrastructure.Chrome;
 
 /// <summary>
 /// Automation for AWS Builder ID OAuth consent flow (used by Kiro).
-/// Extends GoogleOAuthFlowAutomation with AWS-specific logic.
+/// Delegates Google-specific detection to GoogleOAuthPageDetector.
 /// </summary>
 public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
 {
@@ -21,7 +21,7 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
 
     // ========== Override abstract methods ==========
 
-    protected override async Task<GoogleOAuthPageState> ReadPageStateAsync(CancellationToken cancellationToken)
+    protected override async Task<ProviderOAuthPageState?> ReadProviderPageStateAsync(CancellationToken cancellationToken)
     {
         const string script = @"
 (function() {
@@ -36,9 +36,6 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
                                 host.includes('us-east-1.signin.aws') ||
                                 currentUrl.includes('aws.amazon.com/authorization');
 
-    // Check if on Google OAuth/account page
-    const isGoogleOAuthPage = host === 'accounts.google.com';
-
     // Check for completion page (device code activated message)
     const bodyText = document.body?.innerText?.toLowerCase() || '';
     const isCompletionPage = bodyText.includes('device is now connected') ||
@@ -46,41 +43,21 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
                              bodyText.includes('you may close') ||
                              bodyText.includes('success');
 
+    // Detect 'Continue with Google' button on AWS page
     const isVisible = el => {
         if (!el) return false;
         const rect = el.getBoundingClientRect();
         return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
     };
-
-    // Detect 'Continue with Google' button on AWS page
-    const continueWithGoogleButtons = Array.from(document.querySelectorAll('button, [role=""button""], a')).filter(btn => {
+    const continueWithGoogleButtons = Array.from(document.queryselectorAll('button, [role=""button""], a')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('continue with google') || text.includes('sign in with google') || text.includes('google');
     });
     const hasContinueWithGoogleButton = continueWithGoogleButtons.length > 0;
 
-    // Detect account picker
-    const accountButtons = Array.from(document.querySelectorAll(
-        '[data-email], [data-identifier], ul[role=""listbox""] li, button[data-email], a[data-email]'
-    ));
-    const hasAccountPicker = accountButtons.length > 0;
-
-    // Detect Google TOTP input
-    const totpInputs = Array.from(document.querySelectorAll('input[type=""tel""], input[name*=""otp""], input[id*=""otp""], input[name*=""totpPin""]'));
-    const hasGoogleTotpInput = totpInputs.some(isVisible);
-
-    // Detect Google consent buttons
-    const googleConsentButtons = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
-        if (!isVisible(btn)) return false;
-        const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
-        return text.includes('continue') || text.includes('tiếp tục') ||
-               text.includes('allow') || text.includes('cho phép');
-    });
-    const hasGoogleConsentButton = googleConsentButtons.length > 0;
-
     // Detect AWS Builder ID consent buttons
-    const awsConsentButtons = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
+    const awsConsentButtons = Array.from(document.queryselectorAll('button, [role=""button""]')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('confirm and continue') || text.includes('confirmer et continuer') ||
@@ -92,12 +69,8 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
     return {
         currentUrl: currentUrl,
         isAwsBuilderIdPage: isAwsBuilderIdPage,
-        isGoogleOAuthPage: isGoogleOAuthPage,
         isCompletionPage: isCompletionPage,
         hasContinueWithGoogleButton: hasContinueWithGoogleButton,
-        hasAccountPicker: hasAccountPicker,
-        hasGoogleTotpInput: hasGoogleTotpInput,
-        hasGoogleConsentButton: hasGoogleConsentButton,
         hasAwsConsentButton: hasAwsConsentButton
     };
 })()
@@ -116,10 +89,6 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
             return new AwsBuilderIdOAuthPageState
             {
                 CurrentUrl = value.GetProperty("currentUrl").GetString()!,
-                IsGoogleOAuthPage = value.GetProperty("isGoogleOAuthPage").GetBoolean(),
-                HasAccountPicker = value.GetProperty("hasAccountPicker").GetBoolean(),
-                HasGoogleTotpInput = value.GetProperty("hasGoogleTotpInput").GetBoolean(),
-                HasGoogleConsentButton = value.GetProperty("hasGoogleConsentButton").GetBoolean(),
                 IsAwsBuilderIdPage = value.GetProperty("isAwsBuilderIdPage").GetBoolean(),
                 IsCompletionPage = value.GetProperty("isCompletionPage").GetBoolean(),
                 HasContinueWithGoogleButton = value.GetProperty("hasContinueWithGoogleButton").GetBoolean(),
@@ -132,12 +101,13 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         }
     }
 
-    protected override CompletionCheckResult CheckCompletion(GoogleOAuthPageState state)
+    protected override CompletionCheckResult CheckCompletion(CombinedOAuthPageState state)
     {
-        if (state is not AwsBuilderIdOAuthPageState awsState)
+        var providerState = state.ProviderState as AwsBuilderIdOAuthPageState;
+        if (providerState == null)
             return new CompletionCheckResult(IsComplete: false);
 
-        if (awsState.IsCompletionPage)
+        if (providerState.IsCompletionPage)
         {
             return new CompletionCheckResult(
                 IsComplete: true,
@@ -150,33 +120,35 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         return new CompletionCheckResult(IsComplete: false);
     }
 
-    protected override void LogPageState(GoogleOAuthPageState state)
+    protected override void LogPageState(CombinedOAuthPageState state)
     {
-        if (state is not AwsBuilderIdOAuthPageState awsState)
+        var providerState = state.ProviderState as AwsBuilderIdOAuthPageState;
+        if (providerState == null)
             return;
 
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] URL: {awsState.CurrentUrl}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsAwsBuilderIdPage: {awsState.IsAwsBuilderIdPage}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsGoogleOAuthPage: {awsState.IsGoogleOAuthPage}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasContinueWithGoogle: {awsState.HasContinueWithGoogleButton}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasAccountPicker: {awsState.HasAccountPicker}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasGoogleTotpInput: {awsState.HasGoogleTotpInput}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasGoogleConsent: {awsState.HasGoogleConsentButton}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasAwsConsent: {awsState.HasAwsConsentButton}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsCompletionPage: {awsState.IsCompletionPage}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] URL: {state.CurrentUrl}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsAwsBuilderIdPage: {providerState.IsAwsBuilderIdPage}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsGoogleOAuthPage: {state.IsGoogleOAuthPage}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasContinueWithGoogle: {providerState.HasContinueWithGoogleButton}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOauth] HasAccountPicker: {state.HasAccountPicker}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasGoogleTotpInput: {state.HasGoogleTotpInput}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasGoogleConsent: {state.HasGoogleConsentButton}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasAwsConsent: {providerState.HasAwsConsentButton}");
+        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsCompletionPage: {providerState.IsCompletionPage}");
     }
 
     // ========== Override virtual methods for AWS-specific behavior ==========
 
-    protected override bool ShouldClickProviderInitialButton(GoogleOAuthPageState state)
+    protected override bool ShouldClickProviderInitialButton(CombinedOAuthPageState state)
     {
-        if (state is not AwsBuilderIdOAuthPageState awsState)
+        var providerState = state.ProviderState as AwsBuilderIdOAuthPageState;
+        if (providerState == null)
             return false;
 
-        return awsState.IsAwsBuilderIdPage && awsState.HasContinueWithGoogleButton;
+        return providerState.IsAwsBuilderIdPage && providerState.HasContinueWithGoogleButton;
     }
 
-    protected override async Task<bool> TryClickProviderInitialButtonAsync(GoogleOAuthPageState state, CancellationToken cancellationToken)
+    protected override async Task<bool> TryClickProviderInitialButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
     {
         DebugConsole.WriteLine("[AwsBuilderIdOAuth] Clicking 'Continue with Google'...");
 
@@ -187,7 +159,7 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     };
-    const buttons = Array.from(document.querySelectorAll('button, [role=""button""], a')).filter(btn => {
+    const buttons = Array.from(document.queryselectorAll('button, [role=""button""], a')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('continue with google') || text.includes('sign in with google') || text.includes('google');
@@ -224,15 +196,16 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         }
     }
 
-    protected override bool ShouldClickProviderConsent(GoogleOAuthPageState state)
+    protected override bool ShouldClickProviderConsent(CombinedOAuthPageState state)
     {
-        if (state is not AwsBuilderIdOAuthPageState awsState)
+        var providerState = state.ProviderState as AwsBuilderIdOAuthPageState;
+        if (providerState == null)
             return false;
 
-        return awsState.IsAwsBuilderIdPage && awsState.HasAwsConsentButton;
+        return providerState.IsAwsBuilderIdPage && providerState.HasAwsConsentButton;
     }
 
-    protected override async Task<bool> TryClickProviderConsentButtonAsync(GoogleOAuthPageState state, CancellationToken cancellationToken)
+    protected override async Task<bool> TryClickProviderConsentButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
     {
         DebugConsole.WriteLine("[AwsBuilderIdOAuth] Clicking AWS Builder ID consent button...");
 
@@ -243,7 +216,7 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     };
-    const buttons = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
+    const buttons = Array.from(document.queryselectorAll('button, [role=""button""]')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('confirm and continue') || text.includes('confirmer et continuer') ||
@@ -284,9 +257,9 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
 }
 
 /// <summary>
-/// AWS Builder ID specific page state.
+/// AWS Builder ID specific page state (provider-specific, non-Google).
 /// </summary>
-public sealed record AwsBuilderIdOAuthPageState : GoogleOAuthPageState
+public sealed record AwsBuilderIdOAuthPageState : ProviderOAuthPageState
 {
     public required bool IsAwsBuilderIdPage { get; init; }
     public required bool IsCompletionPage { get; init; }

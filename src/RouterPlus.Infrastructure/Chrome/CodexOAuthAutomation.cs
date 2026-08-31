@@ -5,7 +5,7 @@ namespace RouterPlus.Infrastructure.Chrome;
 
 /// <summary>
 /// Automation for Codex OAuth consent flow.
-/// Extends GoogleOAuthFlowAutomation with Codex/OpenAI-specific logic.
+/// Delegates Google-specific detection to GoogleOAuthPageDetector.
 /// </summary>
 public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
 {
@@ -20,22 +20,13 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
 
     // ========== Override abstract methods ==========
 
-    protected override async Task<GoogleOAuthPageState> ReadPageStateAsync(CancellationToken cancellationToken)
+    protected override async Task<ProviderOAuthPageState?> ReadProviderPageStateAsync(CancellationToken cancellationToken)
     {
         const string script = @"
 (function() {
     const currentUrl = window.location.href;
     const host = window.location.host;
     const path = window.location.pathname;
-
-    // Check if on Google OAuth/account page
-    const isGoogleOAuthPage = host === 'accounts.google.com' && (
-        path.includes('/signin/oauth') ||
-        path.includes('/o/oauth2') ||
-        path.includes('/ServiceLogin') ||
-        path.includes('/AccountChooser') ||
-        path.includes('/signin/v2')
-    );
 
     // Check if on OpenAI OAuth page (Codex uses auth.openai.com)
     const isOpenAIOAuthPage = host === 'auth.openai.com' && (
@@ -47,54 +38,15 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         path.includes('/consent')
     );
 
-    // Treat any known OAuth provider page as an OAuth screen that may need interaction
-    const isAnyOAuthPage = isGoogleOAuthPage || isOpenAIOAuthPage;
-
     // Check if on target service (Codex post-auth landing page)
     // Must NOT be auth.openai.com - that's still the OAuth flow, not the target
     const isTargetService = (host.includes('chatgpt.com') || host.includes('openai.com')) && host !== 'auth.openai.com'
         || (host.startsWith('localhost') && path.includes('/auth/callback') && currentUrl.includes('code='));
 
-    const isVisible = el => {
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
-    };
-
-    // Detect account picker (Google uses data-*, OpenAI uses choose-an-account page)
-    const isChooseAccountPage = path.includes('/choose-an-account') || path.includes('/account-chooser');
-    const accountButtons = Array.from(document.querySelectorAll(
-        '[data-email], [data-identifier], ul[role=""listbox""] li, button[data-email], a[data-email], ' +
-        'button[aria-label*=""Continue with""], button[aria-label*=""Tiếp tục với""]'
-    ));
-    const hasAccountPicker = isChooseAccountPage || accountButtons.length > 0;
-
-    // Detect Google TOTP input
-    const totpInputs = Array.from(document.querySelectorAll('input[type=""tel""], input[name*=""otp""], input[id*=""otp""], input[name*=""totpPin""]'));
-    const hasGoogleTotpInput = totpInputs.some(isVisible);
-
-    // Detect consent buttons (Continue with Google / Continue / Allow)
-    const consentButtonCandidates = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
-        if (!isVisible(btn)) return false;
-        const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
-        return text.includes('continue with google') ||
-               text.includes('continue') ||
-               text.includes('tiếp tục') ||
-               text.includes('allow') ||
-               text.includes('cho phép') ||
-               text.includes('accept') ||
-               text.includes('chấp nhận');
-    });
-    const hasConsentButton = consentButtonCandidates.length > 0;
-
     return {
         currentUrl: currentUrl,
-        isGoogleOAuthPage: isGoogleOAuthPage,
-        isAnyOAuthPage: isAnyOAuthPage,
-        isTargetService: isTargetService,
-        hasAccountPicker: hasAccountPicker,
-        hasGoogleTotpInput: hasGoogleTotpInput,
-        hasGoogleConsentButton: hasConsentButton
+        isOpenAIOAuthPage: isOpenAIOAuthPage,
+        isTargetService: isTargetService
     };
 })()
 ";
@@ -112,11 +64,7 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
             return new CodexOAuthPageState
             {
                 CurrentUrl = value.GetProperty("currentUrl").GetString()!,
-                IsGoogleOAuthPage = value.GetProperty("isGoogleOAuthPage").GetBoolean(),
-                HasAccountPicker = value.GetProperty("hasAccountPicker").GetBoolean(),
-                HasGoogleTotpInput = value.GetProperty("hasGoogleTotpInput").GetBoolean(),
-                HasGoogleConsentButton = value.GetProperty("hasGoogleConsentButton").GetBoolean(),
-                IsAnyOAuthPage = value.GetProperty("isAnyOAuthPage").GetBoolean(),
+                IsOpenAIOAuthPage = value.GetProperty("isOpenAIOAuthPage").GetBoolean(),
                 IsTargetService = value.GetProperty("isTargetService").GetBoolean()
             };
         }
@@ -126,13 +74,14 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         }
     }
 
-    protected override CompletionCheckResult CheckCompletion(GoogleOAuthPageState state)
+    protected override CompletionCheckResult CheckCompletion(CombinedOAuthPageState state)
     {
-        if (state is not CodexOAuthPageState codexState)
+        var providerState = state.ProviderState as CodexOAuthPageState;
+        if (providerState == null)
             return new CompletionCheckResult(IsComplete: false);
 
         // Check if already on target service (OAuth completed)
-        if (codexState.IsTargetService)
+        if (providerState.IsTargetService)
         {
             return new CompletionCheckResult(
                 IsComplete: true,
@@ -145,49 +94,96 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         return new CompletionCheckResult(IsComplete: false);
     }
 
-    protected override void LogPageState(GoogleOAuthPageState state)
+    protected override void LogPageState(CombinedOAuthPageState state)
     {
-        if (state is not CodexOAuthPageState codexState)
+        var providerState = state.ProviderState as CodexOAuthPageState;
+        if (providerState == null)
             return;
 
-        DebugConsole.WriteLine($"[CodexOAuth] URL: {codexState.CurrentUrl}");
-        DebugConsole.WriteLine($"[CodexOAuth] IsGoogleOAuth: {codexState.IsGoogleOAuthPage}");
-        DebugConsole.WriteLine($"[CodexOAuth] IsAnyOAuthPage: {codexState.IsAnyOAuthPage}");
-        DebugConsole.WriteLine($"[CodexOAuth] HasConsentButton: {codexState.HasGoogleConsentButton}");
-        DebugConsole.WriteLine($"[CodexOAuth] IsTargetService: {codexState.IsTargetService}");
-        DebugConsole.WriteLine($"[CodexOAuth] HasAccountPicker: {codexState.HasAccountPicker}");
-        DebugConsole.WriteLine($"[CodexOAuth] ShouldClickAccountPicker: {ShouldClickAccountPicker(state)}");
+        DebugConsole.WriteLine($"[CodexOAuth] URL: {state.CurrentUrl}");
+        DebugConsole.WriteLine($"[CodexOAuth] IsGoogleOAuth: {state.IsGoogleOAuthPage}");
+        DebugConsole.WriteLine($"[CodexOAuth] IsOpenAIOAuth: {providerState.IsOpenAIOAuthPage}");
+        DebugConsole.WriteLine($"[CodexOAuth] IsTargetService: {providerState.IsTargetService}");
+        DebugConsole.WriteLine($"[CodexOAuth] HasAccountPicker: {state.HasAccountPicker}");
+        DebugConsole.WriteLine($"[CodexOAuth] HasGoogleTotpInput: {state.HasGoogleTotpInput}");
+        DebugConsole.WriteLine($"[CodexOAuth] HasGoogleConsentButton: {state.HasGoogleConsentButton}");
     }
 
     // ========== Override virtual methods for Codex-specific behavior ==========
 
-    protected override bool ShouldClickAccountPicker(GoogleOAuthPageState state)
+    protected override bool ShouldClickProviderInitialButton(CombinedOAuthPageState state)
     {
-        if (state is not CodexOAuthPageState codexState)
+        var providerState = state.ProviderState as CodexOAuthPageState;
+        if (providerState == null)
             return false;
 
-        // Not on Google OAuth page - might be loading or redirecting
-        if (!codexState.IsGoogleOAuthPage && !codexState.IsAnyOAuthPage)
-            return false;
-
-        // Click account picker if present and no consent button yet
-        return codexState.HasAccountPicker && !codexState.HasGoogleConsentButton;
+        // On OpenAI OAuth page - click "Continue with Google" if present
+        // (The base flow handles Google account picker and consent)
+        return providerState.IsOpenAIOAuthPage;
     }
 
-    protected override bool ShouldClickGoogleConsent(GoogleOAuthPageState state)
+    protected override async Task<bool> TryClickProviderInitialButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
     {
-        if (state is not CodexOAuthPageState codexState)
+        var providerState = state.ProviderState as CodexOAuthPageState;
+        if (providerState == null || !providerState.IsOpenAIOAuthPage)
             return false;
 
-        return codexState.IsAnyOAuthPage && codexState.HasGoogleConsentButton;
+        const string script = @"
+(function() {
+    const isVisible = el => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    };
+    const candidates = Array.from(document.queryselectorAll('button, a, [role=""button""]')).filter(btn => {
+        if (!isVisible(btn)) return false;
+        const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '') + ' ' + (btn.getAttribute('href') || '')).toLowerCase();
+        return text.includes('continue with google') ||
+               text.includes('sign in with google') ||
+               text.includes('log in with google') ||
+               text.includes('tiếp tục với google') ||
+               text.includes('đăng nhập bằng google');
+    });
+    if (candidates.length === 0) return false;
+    candidates[0].click();
+    return true;
+})()
+";
+
+        try
+        {
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = script,
+                returnByValue = true
+            }, cancellationToken, _sessionId);
+
+            if (result.TryGetProperty("result", out var resultProp) &&
+                resultProp.TryGetProperty("value", out var valueProp))
+            {
+                var clicked = valueProp.ValueKind == JsonValueKind.True;
+                if (clicked)
+                {
+                    DebugConsole.WriteLine("[CodexOAuth] Clicked 'Continue with Google' button on OpenAI page");
+                }
+                return clicked;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            DebugConsole.WriteLine($"[CodexOAuth] Click Google login button error: {ex.Message}");
+            return false;
+        }
     }
 }
 
 /// <summary>
-/// Codex/OpenAI specific page state.
+/// Codex/OpenAI specific page state (provider-specific, non-Google).
 /// </summary>
-public sealed record CodexOAuthPageState : GoogleOAuthPageState
+public sealed record CodexOAuthPageState : ProviderOAuthPageState
 {
-    public required bool IsAnyOAuthPage { get; init; }
+    public required bool IsOpenAIOAuthPage { get; init; }
     public required bool IsTargetService { get; init; }
 }

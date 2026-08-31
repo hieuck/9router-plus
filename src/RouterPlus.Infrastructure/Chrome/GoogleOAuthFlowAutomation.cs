@@ -1,12 +1,11 @@
-using System.Text.Json;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
 /// <summary>
 /// Base class for Google OAuth consent flow automation.
-/// Provides shared logic for account picker, TOTP, and Google consent.
-/// Subclasses implement provider-specific hooks.
+/// Delegates Google-specific page detection to GoogleOAuthPageDetector.
+/// Subclasses implement provider-specific hooks for non-Google pages.
 /// </summary>
 public abstract class GoogleOAuthFlowAutomation
 {
@@ -48,28 +47,39 @@ public abstract class GoogleOAuthFlowAutomation
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var state = await ReadPageStateAsync(cancellationToken);
+            // Check provider-specific state first
+            var providerState = await ReadProviderPageStateAsync(cancellationToken);
 
-            LogPageState(state);
+            // Then check for Google OAuth page state (shared logic)
+            var googleState = await GoogleOAuthPageDetector.TryDetectAsync(_client, _sessionId, cancellationToken);
+
+            // Combine states
+            var combinedState = new CombinedOAuthPageState
+            {
+                ProviderState = providerState,
+                GoogleState = googleState
+            };
+
+            LogPageState(combinedState);
 
             // Check completion (provider-specific)
-            var completionCheck = CheckCompletion(state);
+            var completionCheck = CheckCompletion(combinedState);
             if (completionCheck.IsComplete)
             {
                 return completionCheck.Result!;
             }
 
             // Handle provider-specific initial button (e.g., "Continue with Google" on AWS)
-            if (ShouldClickProviderInitialButton(state))
+            if (ShouldClickProviderInitialButton(combinedState))
             {
-                var screenKey = $"provider-initial:{state.CurrentUrl}";
+                var screenKey = $"provider-initial:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
                     await Task.Delay(500, cancellationToken);
                     continue;
                 }
 
-                var clicked = await TryClickProviderInitialButtonAsync(state, cancellationToken);
+                var clicked = await TryClickProviderInitialButtonAsync(combinedState, cancellationToken);
                 if (clicked)
                 {
                     await Task.Delay(1500, cancellationToken);
@@ -84,9 +94,9 @@ public abstract class GoogleOAuthFlowAutomation
             }
 
             // Handle Google account picker
-            if (ShouldClickAccountPicker(state))
+            if (ShouldClickAccountPicker(combinedState))
             {
-                var screenKey = $"picker:{state.CurrentUrl}";
+                var screenKey = $"picker:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
                     await Task.Delay(500, cancellationToken);
@@ -94,7 +104,8 @@ public abstract class GoogleOAuthFlowAutomation
                 }
 
                 DebugConsole.WriteLine($"[GoogleOAuth] Clicking account matching '{_profileEmail}'...");
-                var accountClicked = await TryClickAccountAsync(state, cancellationToken);
+                var accountClicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+                    _client, _sessionId, _profileEmail, cancellationToken);
                 if (accountClicked)
                 {
                     await Task.Delay(1500, cancellationToken);
@@ -109,7 +120,7 @@ public abstract class GoogleOAuthFlowAutomation
             }
 
             // Handle Google TOTP
-            if (ShouldFillTotp(state) && !totpAttempted)
+            if (ShouldFillTotp(combinedState) && !totpAttempted)
             {
                 totpAttempted = true;
 
@@ -119,7 +130,8 @@ public abstract class GoogleOAuthFlowAutomation
                     if (!string.IsNullOrWhiteSpace(totpCode))
                     {
                         DebugConsole.WriteLine("[GoogleOAuth] Auto-filling TOTP code...");
-                        var filled = await TryFillTotpAsync(totpCode, cancellationToken);
+                        var filled = await GoogleOAuthPageDetector.TryFillTotpAsync(
+                            _client, _sessionId, totpCode, cancellationToken);
                         if (filled)
                         {
                             await Task.Delay(2000, cancellationToken);
@@ -134,9 +146,9 @@ public abstract class GoogleOAuthFlowAutomation
             }
 
             // Handle Google consent button
-            if (ShouldClickGoogleConsent(state))
+            if (ShouldClickGoogleConsent(combinedState))
             {
-                var screenKey = $"google-consent:{state.CurrentUrl}";
+                var screenKey = $"google-consent:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
                     await Task.Delay(500, cancellationToken);
@@ -144,7 +156,8 @@ public abstract class GoogleOAuthFlowAutomation
                 }
 
                 DebugConsole.WriteLine("[GoogleOAuth] Clicking Google consent button...");
-                var clicked = await TryClickGoogleConsentButtonAsync(cancellationToken);
+                var clicked = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
+                    _client, _sessionId, cancellationToken);
                 if (clicked)
                 {
                     await Task.Delay(1500, cancellationToken);
@@ -159,16 +172,16 @@ public abstract class GoogleOAuthFlowAutomation
             }
 
             // Handle provider-specific consent (e.g., AWS Builder ID consent)
-            if (ShouldClickProviderConsent(state))
+            if (ShouldClickProviderConsent(combinedState))
             {
-                var screenKey = $"provider-consent:{state.CurrentUrl}";
+                var screenKey = $"provider-consent:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
                     await Task.Delay(500, cancellationToken);
                     continue;
                 }
 
-                var clicked = await TryClickProviderConsentButtonAsync(state, cancellationToken);
+                var clicked = await TryClickProviderConsentButtonAsync(combinedState, cancellationToken);
                 if (clicked)
                 {
                     await Task.Delay(1500, cancellationToken);
@@ -194,303 +207,84 @@ public abstract class GoogleOAuthFlowAutomation
     // ========== Abstract methods (must override) ==========
 
     /// <summary>
-    /// Read current page state (provider-specific detection).
+    /// Read provider-specific page state (non-Google pages).
     /// </summary>
-    protected abstract Task<GoogleOAuthPageState> ReadPageStateAsync(CancellationToken cancellationToken);
+    protected abstract Task<ProviderOAuthPageState?> ReadProviderPageStateAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Check if OAuth flow completed.
     /// </summary>
-    protected abstract CompletionCheckResult CheckCompletion(GoogleOAuthPageState state);
+    protected abstract CompletionCheckResult CheckCompletion(CombinedOAuthPageState state);
 
     /// <summary>
     /// Log page state for debugging.
     /// </summary>
-    protected abstract void LogPageState(GoogleOAuthPageState state);
+    protected abstract void LogPageState(CombinedOAuthPageState state);
 
     // ========== Virtual methods (can override) ==========
 
     /// <summary>
     /// Should click provider-specific initial button (e.g., "Continue with Google" on AWS)?
     /// </summary>
-    protected virtual bool ShouldClickProviderInitialButton(GoogleOAuthPageState state) => false;
+    protected virtual bool ShouldClickProviderInitialButton(CombinedOAuthPageState state) => false;
 
     /// <summary>
     /// Click provider-specific initial button.
     /// </summary>
-    protected virtual Task<bool> TryClickProviderInitialButtonAsync(GoogleOAuthPageState state, CancellationToken cancellationToken)
+    protected virtual Task<bool> TryClickProviderInitialButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
         => Task.FromResult(false);
 
     /// <summary>
     /// Should click account picker?
     /// </summary>
-    protected virtual bool ShouldClickAccountPicker(GoogleOAuthPageState state)
-        => state.IsGoogleOAuthPage && state.HasAccountPicker && !state.HasGoogleConsentButton;
+    protected virtual bool ShouldClickAccountPicker(CombinedOAuthPageState state)
+        => state.GoogleState?.HasAccountPicker == true && state.GoogleState?.HasGoogleConsentButton != true;
 
     /// <summary>
     /// Should fill TOTP?
     /// </summary>
-    protected virtual bool ShouldFillTotp(GoogleOAuthPageState state)
-        => state.IsGoogleOAuthPage && state.HasGoogleTotpInput;
+    protected virtual bool ShouldFillTotp(CombinedOAuthPageState state)
+        => state.GoogleState?.HasGoogleTotpInput == true;
 
     /// <summary>
     /// Should click Google consent button?
     /// </summary>
-    protected virtual bool ShouldClickGoogleConsent(GoogleOAuthPageState state)
-        => state.IsGoogleOAuthPage && state.HasGoogleConsentButton;
+    protected virtual bool ShouldClickGoogleConsent(CombinedOAuthPageState state)
+        => state.GoogleState?.HasGoogleConsentButton == true;
 
     /// <summary>
     /// Should click provider-specific consent?
     /// </summary>
-    protected virtual bool ShouldClickProviderConsent(GoogleOAuthPageState state) => false;
+    protected virtual bool ShouldClickProviderConsent(CombinedOAuthPageState state) => false;
 
     /// <summary>
     /// Click provider-specific consent button.
     /// </summary>
-    protected virtual Task<bool> TryClickProviderConsentButtonAsync(GoogleOAuthPageState state, CancellationToken cancellationToken)
+    protected virtual Task<bool> TryClickProviderConsentButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
         => Task.FromResult(false);
 
-    // ========== Shared implementations ==========
+    // ========== Combined state ==========
 
     /// <summary>
-    /// Click Google account matching profileEmail.
-    /// Subclasses can override for custom account picker logic.
+    /// Combined state from provider-specific and Google page detection.
     /// </summary>
-    protected virtual async Task<bool> TryClickAccountAsync(GoogleOAuthPageState state, CancellationToken cancellationToken)
+    public sealed record CombinedOAuthPageState
     {
-        var emailJson = JsonSerializer.Serialize(_profileEmail);
-        var script = @"
-(function() {
-    const targetEmail = " + emailJson + @";
-    const emailLower = targetEmail.toLowerCase();
-    const isVisible = el => {
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    };
-    // Search broader - include div/li items
-    const buttons = Array.from(document.querySelectorAll('button, [role=""button""], li[data-email], li[data-identifier], div[data-email], div[data-identifier], [data-email], [data-identifier]'));
-    let matchedButton = null;
-    let allButtons = [];
+        public ProviderOAuthPageState? ProviderState { get; init; }
+        public GoogleOAuthPageState? GoogleState { get; init; }
 
-    for (const el of buttons) {
-        const visible = isVisible(el);
-        const text = ((el.innerText || el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
-        const dataEmail = (el.getAttribute('data-email') || '').toLowerCase();
-        const dataIdentifier = (el.getAttribute('data-identifier') || '').toLowerCase();
-        allButtons.push({text: text.substring(0, 100), visible, dataEmail, dataIdentifier, tag: el.tagName});
+        public string CurrentUrl => ProviderState?.CurrentUrl ?? GoogleState?.CurrentUrl ?? string.Empty;
 
-        if (!visible) continue;
-        if (text.includes('xóa') || text.includes('remove') || text.includes('delete') || text.includes('sign out') || text.includes('cuộn xuống') || text.includes('use another')) continue;
-        if (text.includes(emailLower) || dataEmail === emailLower || dataIdentifier === emailLower) {
-            matchedButton = el;
-            break;
-        }
-    }
-
-    // Fallback: If no email match, look for actual Google account (not AWS SSO identity)
-    let scrollButton = null;
-    if (!matchedButton) {
-        for (const el of buttons) {
-            if (!isVisible(el)) continue;
-            const text = ((el.innerText || el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
-
-            // Track 'scroll down' / 'use another' button
-            if (text.includes('cuộn xuống') || text.includes('use another') || text.includes('add account')) {
-                if (!scrollButton) scrollButton = el;
-                continue;
-            }
-            if (text.includes('remove') || text.includes('xóa')) continue;
-            // Skip AWS SSO identity provider button (provider-agnostic fallback)
-            if (text.includes('amazon web services') || text.includes('aws sso')) continue;
-            // Found a real account button
-            matchedButton = el;
-            break;
-        }
-    }
-
-    // If no real account button found, click 'scroll down' to reveal more accounts
-    if (!matchedButton && scrollButton) {
-        matchedButton = scrollButton;
-    }
-
-    if (matchedButton) {
-        matchedButton.click();
-        return {clicked: true, found: true, totalButtons: allButtons.length, allButtons};
-    }
-    return {clicked: false, found: false, totalButtons: allButtons.length, allButtons};
-})()
-";
-
-        try
-        {
-            var result = await _client.CallAsync("Runtime.evaluate", new
-            {
-                expression = script,
-                returnByValue = true
-            }, cancellationToken, _sessionId);
-
-            if (result.TryGetProperty("result", out var resultProp) &&
-                resultProp.TryGetProperty("value", out var valueProp))
-            {
-                var clicked = valueProp.GetProperty("clicked").GetBoolean();
-                if (clicked)
-                {
-                    DebugConsole.WriteLine($"[GoogleOAuth] Account '{_profileEmail}' clicked successfully");
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        catch (Exception ex)
-        {
-            DebugConsole.WriteLine($"[GoogleOAuth] Click account error: {ex.Message}");
-            return false;
-        }
+        public bool IsGoogleOAuthPage => GoogleState != null;
+        public bool HasAccountPicker => GoogleState?.HasAccountPicker == true;
+        public bool HasGoogleTotpInput => GoogleState?.HasGoogleTotpInput == true;
+        public bool HasGoogleConsentButton => GoogleState?.HasGoogleConsentButton == true;
     }
 
     /// <summary>
-    /// Fill TOTP code into Google 2FA input.
+    /// Result of completion check.
     /// </summary>
-    protected virtual async Task<bool> TryFillTotpAsync(string totpCode, CancellationToken cancellationToken)
-    {
-        var codeJson = JsonSerializer.Serialize(totpCode);
-        var script = @"
-(function() {
-    const code = " + codeJson + @";
-    const isVisible = el => {
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    };
-    const inputs = Array.from(document.querySelectorAll('input[type=""tel""], input[name*=""otp""], input[id*=""otp""], input[name*=""totpPin""]'));
-    for (const input of inputs) {
-        if (isVisible(input)) {
-            input.value = code;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-
-            // Find and click submit button
-            const form = input.closest('form');
-            if (form) {
-                const submitBtn = form.querySelector('button[type=""submit""]') ||
-                                  Array.from(form.querySelectorAll('button')).find(b =>
-                                      (b.innerText || '').toLowerCase().includes('next') ||
-                                      (b.innerText || '').toLowerCase().includes('tiếp') ||
-                                      (b.innerText || '').toLowerCase().includes('verify')
-                                  );
-                if (submitBtn) {
-                    submitBtn.click();
-                    return true;
-                }
-            }
-            return true;
-        }
-    }
-    return false;
-})()
-";
-
-        try
-        {
-            var result = await _client.CallAsync("Runtime.evaluate", new
-            {
-                expression = script,
-                returnByValue = true
-            }, cancellationToken, _sessionId);
-
-            if (result.TryGetProperty("result", out var resultProp) &&
-                resultProp.TryGetProperty("value", out var filledProp) &&
-                filledProp.GetBoolean())
-            {
-                DebugConsole.WriteLine("[GoogleOAuth] TOTP filled and submitted");
-                return true;
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Click Google consent button (Continue/Allow).
-    /// </summary>
-    protected virtual async Task<bool> TryClickGoogleConsentButtonAsync(CancellationToken cancellationToken)
-    {
-        const string script = @"
-(function() {
-    const isVisible = el => {
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    };
-    const buttons = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
-        if (!isVisible(btn)) return false;
-        const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
-        return text.includes('continue') || text.includes('tiếp tục') ||
-               text.includes('allow') || text.includes('cho phép');
-    });
-    if (buttons.length > 0) {
-        buttons[0].click();
-        return true;
-    }
-    return false;
-})()
-";
-
-        try
-        {
-            var result = await _client.CallAsync("Runtime.evaluate", new
-            {
-                expression = script,
-                returnByValue = true
-            }, cancellationToken, _sessionId);
-
-            if (result.TryGetProperty("result", out var resultProp) &&
-                resultProp.TryGetProperty("value", out var clickedProp) &&
-                clickedProp.GetBoolean())
-            {
-                DebugConsole.WriteLine("[GoogleOAuth] Google consent button clicked");
-                return true;
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public record CompletionCheckResult(
+        bool IsComplete,
+        OAuthConsentResult? Result = null);
 }
-
-/// <summary>
-/// Base state for Google OAuth page detection.
-/// Subclasses extend with provider-specific fields.
-/// </summary>
-public abstract record GoogleOAuthPageState
-{
-    public required string CurrentUrl { get; init; }
-    public required bool IsGoogleOAuthPage { get; init; }
-    public required bool HasAccountPicker { get; init; }
-    public required bool HasGoogleTotpInput { get; init; }
-    public required bool HasGoogleConsentButton { get; init; }
-}
-
-/// <summary>
-/// Result of completion check.
-/// </summary>
-public record CompletionCheckResult(
-    bool IsComplete,
-    OAuthConsentResult? Result = null);
-
-/// <summary>
-/// Result of OAuth consent flow.
-/// </summary>
-public sealed record OAuthConsentResult(
-    bool Success,
-    bool AlreadyAuthorized,
-    string Message);
