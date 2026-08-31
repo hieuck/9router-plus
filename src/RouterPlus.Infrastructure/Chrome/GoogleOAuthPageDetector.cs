@@ -9,6 +9,10 @@ namespace RouterPlus.Infrastructure.Chrome;
 /// </summary>
 public static class GoogleOAuthPageDetector
 {
+    internal static bool IsGoogleOAuthHost(string host) =>
+        string.Equals(host, "accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(host, "accounts.google.com.", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Detects Google-specific page state from the current page.
     /// Returns null if not on a Google OAuth page.
@@ -25,14 +29,8 @@ public static class GoogleOAuthPageDetector
     const path = window.location.pathname;
 
     // Check if on Google OAuth/account page
-    const isGoogleOAuthPage = host === 'accounts.google.com' && (
-        path.includes('/signin/oauth') ||
-        path.includes('/v3/signin') ||
-        path.includes('/o/oauth2') ||
-        path.includes('/ServiceLogin') ||
-        path.includes('/AccountChooser') ||
-        path.includes('/signin/v2')
-    );
+    const isGoogleOAuthPage = host === 'accounts.google.com' ||
+                               host === 'accounts.google.com.';
 
     if (!isGoogleOAuthPage) {
         return { isGoogleOAuthPage: false };

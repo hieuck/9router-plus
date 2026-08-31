@@ -47,11 +47,12 @@ public abstract class GoogleOAuthFlowAutomation
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Check provider-specific state first
-            var providerState = await ReadProviderPageStateAsync(cancellationToken);
-
-            // Then check for Google OAuth page state (shared logic)
+            // Detect Google first so provider automation never owns a Google page.
             var googleState = await GoogleOAuthPageDetector.TryDetectAsync(_client, _sessionId, cancellationToken);
+            var providerState = googleState is null
+                ? await ReadProviderPageStateAsync(cancellationToken)
+                : null;
+
 
             // Combine states
             var combinedState = new CombinedOAuthPageState
@@ -60,17 +61,20 @@ public abstract class GoogleOAuthFlowAutomation
                 GoogleState = googleState
             };
 
-            LogPageState(combinedState);
-
-            // Check completion (provider-specific)
-            var completionCheck = CheckCompletion(combinedState);
-            if (completionCheck.IsComplete)
+            if (!combinedState.IsGoogleOAuthPage)
             {
-                return completionCheck.Result!;
+                LogPageState(combinedState);
+
+                // Check completion (provider-specific)
+                var completionCheck = CheckCompletion(combinedState);
+                if (completionCheck.IsComplete)
+                {
+                    return completionCheck.Result!;
+                }
             }
 
-            // Handle provider-specific initial button (e.g., "Continue with Google" on AWS)
-            if (ShouldClickProviderInitialButton(combinedState))
+            // Handle provider-specific initial button only on provider-owned pages.
+            if (!combinedState.IsGoogleOAuthPage && ShouldClickProviderInitialButton(combinedState))
             {
                 var screenKey = $"provider-initial:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
@@ -93,7 +97,7 @@ public abstract class GoogleOAuthFlowAutomation
                     Message: "Could not click provider initial button");
             }
 
-            // Handle Google account picker
+            // Handle account pickers through the owning automation.
             if (ShouldClickAccountPicker(combinedState))
             {
                 var screenKey = $"picker:{combinedState.CurrentUrl}";
@@ -103,9 +107,8 @@ public abstract class GoogleOAuthFlowAutomation
                     continue;
                 }
 
-                DebugConsole.WriteLine($"[GoogleOAuth] Clicking account matching '{_profileEmail}'...");
-                var accountClicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
-                    _client, _sessionId, _profileEmail, cancellationToken);
+                var accountClicked = await TryClickAccountPickerAsync(
+                    combinedState, cancellationToken);
                 if (accountClicked)
                 {
                     await Task.Delay(1500, cancellationToken);
@@ -117,6 +120,30 @@ public abstract class GoogleOAuthFlowAutomation
                     Success: false,
                     AlreadyAuthorized: false,
                     Message: $"Could not select account '{_profileEmail}' from picker");
+            }
+
+            // Handle provider-specific account picker only on provider-owned pages.
+            if (IsProviderOwnedPage(combinedState) && ShouldClickProviderAccountPicker(combinedState))
+            {
+                var screenKey = $"provider-picker:{combinedState.CurrentUrl}";
+                if (!clickedScreenUrls.Add(screenKey))
+                {
+                    await Task.Delay(500, cancellationToken);
+                    continue;
+                }
+
+                var accountClicked = await TryClickProviderAccountPickerAsync(combinedState, cancellationToken);
+                if (accountClicked)
+                {
+                    await Task.Delay(1500, cancellationToken);
+                    continue;
+                }
+
+                clickedScreenUrls.Remove(screenKey);
+                return new OAuthConsentResult(
+                    Success: false,
+                    AlreadyAuthorized: false,
+                    Message: $"Could not select provider account from picker");
             }
 
             // Handle Google TOTP
@@ -171,8 +198,8 @@ public abstract class GoogleOAuthFlowAutomation
                     Message: "Could not click Google consent button");
             }
 
-            // Handle provider-specific consent (e.g., AWS Builder ID consent)
-            if (ShouldClickProviderConsent(combinedState))
+            // Handle provider-specific consent only on provider-owned pages.
+            if (!combinedState.IsGoogleOAuthPage && ShouldClickProviderConsent(combinedState))
             {
                 var screenKey = $"provider-consent:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
@@ -235,10 +262,35 @@ public abstract class GoogleOAuthFlowAutomation
         => Task.FromResult(false);
 
     /// <summary>
-    /// Should click account picker?
+    /// Should click the shared Google account picker?
     /// </summary>
     protected virtual bool ShouldClickAccountPicker(CombinedOAuthPageState state)
-        => state.GoogleState?.HasAccountPicker == true && state.GoogleState?.HasGoogleConsentButton != true;
+        => state.GoogleState?.HasAccountPicker == true;
+
+    /// <summary>
+    /// Click the account picker owned by the current automation.
+    /// </summary>
+    protected virtual Task<bool> TryClickAccountPickerAsync(
+        CombinedOAuthPageState state,
+        CancellationToken cancellationToken) =>
+        GoogleOAuthPageDetector.TryClickAccountAsync(
+            _client, _sessionId, _profileEmail, cancellationToken);
+
+    /// <summary>
+    /// Should click a provider-specific account picker on a provider-owned page?
+    /// </summary>
+    protected virtual bool ShouldClickProviderAccountPicker(CombinedOAuthPageState state) => false;
+
+    /// <summary>
+    /// Click a provider-specific account picker.
+    /// </summary>
+    protected virtual Task<bool> TryClickProviderAccountPickerAsync(
+        CombinedOAuthPageState state,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(false);
+
+    internal static bool IsProviderOwnedPage(CombinedOAuthPageState state) =>
+        !state.IsGoogleOAuthPage;
 
     /// <summary>
     /// Should fill TOTP?
