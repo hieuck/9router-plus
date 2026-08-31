@@ -13,6 +13,7 @@ public sealed class ChromeManagedSession : IAsyncDisposable
     private readonly Process _process;
     private readonly Uri _devToolsBaseUri;
     private readonly string _sessionMarker;
+    private readonly ManagedChromeTargetConnector _targetConnector;
     private string? _tempUserDataDirectory;
     private bool _disposed;
 
@@ -21,6 +22,7 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         _process = process;
         _devToolsBaseUri = devToolsBaseUri;
         _sessionMarker = sessionMarker;
+        _targetConnector = new ManagedChromeTargetConnector(devToolsBaseUri);
     }
 
     internal void SetTempUserDataDirectory(string directory)
@@ -39,56 +41,32 @@ public sealed class ChromeManagedSession : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var client = new ChromeCdpClient(_devToolsBaseUri);
-        await client.ConnectAsync(cancellationToken);
+        return await _targetConnector.ConnectAsync(
+            ManagedChromeTargetConnector.SelectFirstPage,
+            "No page target found in the managed session.",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Connects to the single accounts.google.com target created by the managed run.
+    /// </summary>
+    public async Task<IGoogleLoginBrowser> ConnectGoogleLoginAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var session = await _targetConnector.ConnectAsync(
+            targets => ManagedChromeTargetConnector.SelectMarkedGooglePage(targets, _sessionMarker),
+            "No accounts.google.com target with session marker found in the managed session.",
+            cancellationToken);
 
         try
         {
-            var endTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-            string? targetId = null;
-
-            while (DateTimeOffset.UtcNow < endTime && targetId == null)
-            {
-                var response = await client.CallAsync("Target.getTargets", null, cancellationToken);
-                var targetInfos = response.GetProperty("targetInfos");
-
-                foreach (var target in targetInfos.EnumerateArray())
-                {
-                    var targetType = target.GetProperty("type").GetString();
-                    if (targetType != "page")
-                    {
-                        continue;
-                    }
-
-                    var candidateTargetId = target.GetProperty("targetId").GetString();
-                    if (!string.IsNullOrWhiteSpace(candidateTargetId))
-                    {
-                        targetId = candidateTargetId;
-                        break;
-                    }
-                }
-
-                if (targetId == null)
-                {
-                    await Task.Delay(100, cancellationToken);
-                }
-            }
-
-            if (targetId == null)
-            {
-                throw new InvalidOperationException("No page target found in the managed session.");
-            }
-
-            var attachResponse = await client.CallAsync("Target.attachToTarget", new { targetId, flatten = true }, cancellationToken);
-            var sessionId = attachResponse.GetProperty("sessionId").GetString()!;
-
-            await client.CallAsync("Page.bringToFront", null, cancellationToken, sessionId);
-
-            return new CdpSession(client, sessionId, targetId);
+            await WaitForGoogleDocumentAsync(session.Client, session.SessionId, cancellationToken);
+            return new GoogleLoginCdpBrowser(session.Client, session.SessionId, session.TargetId);
         }
         catch
         {
-            await client.DisposeAsync();
+            await session.DisposeAsync();
             throw;
         }
     }
@@ -114,91 +92,19 @@ public sealed class ChromeManagedSession : IAsyncDisposable
 
 
     /// <summary>
-    /// Connects to the single accounts.google.com target created by the managed run.
+    /// Connects to the managed OpenRouter keys page and returns a pair of adapters
+    /// sharing the same CDP session: one drives the OpenRouter page (Clerk sign-in,
+    /// wizard, New Key), the other drives Google sign-in once OAuth redirects there.
+    /// Public threads only the interfaces, so no internal CDP type leaks out.
     /// </summary>
-    public async Task<IGoogleLoginBrowser> ConnectGoogleLoginAsync(CancellationToken cancellationToken)
+    public async Task<(OpenRouterOnboardingCdpBrowser Onboarding, IGoogleLoginBrowser GoogleLogin)> ConnectOpenRouterFlowAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var client = new ChromeCdpClient(_devToolsBaseUri);
-        await client.ConnectAsync(cancellationToken);
-
-        try
-        {
-            // Poll for the managed target, identified by session marker in URL
-            var endTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-            string? targetId = null;
-
-            while (DateTimeOffset.UtcNow < endTime && targetId == null)
-            {
-                var response = await client.CallAsync("Target.getTargets", null, cancellationToken);
-                var targetInfos = response.GetProperty("targetInfos");
-                var markedTargets = new List<string>();
-                var googleTargets = new List<string>();
-
-                foreach (var target in targetInfos.EnumerateArray())
-                {
-                    var targetType = target.GetProperty("type").GetString();
-                    var url = target.GetProperty("url").GetString();
-
-                    if (targetType != "page")
-                    {
-                        continue;
-                    }
-
-                    if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IsAllowedGoogleHost(uri.Host))
-                    {
-                        continue;
-                    }
-
-                    var currentTargetId = target.GetProperty("targetId").GetString();
-                    if (string.IsNullOrWhiteSpace(currentTargetId))
-                    {
-                        continue;
-                    }
-
-                    googleTargets.Add(currentTargetId);
-                    if (url.Contains(_sessionMarker, StringComparison.Ordinal))
-                    {
-                        markedTargets.Add(currentTargetId);
-                    }
-                }
-
-                if (markedTargets.Count > 1)
-                {
-                    throw new InvalidOperationException("Multiple Google targets with session marker found; exactly one is required.");
-                }
-
-                // Chrome may remove the URL fragment during its first navigation.
-                // A random loopback CDP port belongs only to this managed process,
-                // so a single allowed Google page is the safe fallback association.
-                targetId = markedTargets.SingleOrDefault()
-                    ?? (googleTargets.Count == 1 ? googleTargets[0] : null);
-
-                if (targetId == null)
-                {
-                    await Task.Delay(100, cancellationToken);
-                }
-            }
-
-            if (targetId == null)
-            {
-                throw new InvalidOperationException("No accounts.google.com target with session marker found in the managed session.");
-            }
-
-            var attachResponse = await client.CallAsync("Target.attachToTarget", new { targetId, flatten = true }, cancellationToken);
-            var sessionId = attachResponse.GetProperty("sessionId").GetString()!;
-
-            await client.CallAsync("Page.bringToFront", null, cancellationToken, sessionId);
-            await WaitForGoogleDocumentAsync(client, sessionId, cancellationToken);
-
-            return new GoogleLoginCdpBrowser(client, sessionId, targetId);
-        }
-        catch
-        {
-            await client.DisposeAsync();
-            throw;
-        }
+        var session = await ConnectAnyTargetAsync(cancellationToken);
+        var onboarding = new OpenRouterOnboardingCdpBrowser(session.Client, session.SessionId, session.TargetId);
+        var googleLogin = new GoogleLoginCdpBrowser(session.Client, session.SessionId, session.TargetId);
+        return (onboarding, googleLogin);
     }
 
     public async ValueTask DisposeAsync()
