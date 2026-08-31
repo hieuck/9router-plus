@@ -1520,6 +1520,25 @@
                                                         </Style>
                                                     </Button.Style>
                                                 </Button>
+                                                <Button Content="{DynamicResource ProviderAutoGetKeyText}"
+                                                        Command="{Binding DataContext.AutoGetKeyCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                        ToolTip="Tự động mở Chrome, đăng nhập Google và lưu API key vào 9Router">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Workflow}" Value="{x:Static core:WorkflowKind.ApiKey}">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                                <Button Content="{DynamicResource ProviderOpenRouterOAuthText}"
+                                                        Command="{Binding DataContext.ConnectOpenRouterOAuthCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                        ToolTip="{DynamicResource ProviderOpenRouterOAuthToolTip}"
+                                                        Style="{StaticResource ProviderActionButtonStyle}"
+                                                        Visibility="{Binding IsOpenRouter, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                             <Button Content="{DynamicResource ProviderAddText}"
                                                         Command="{Binding DataContext.OpenProviderCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"

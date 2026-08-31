@@ -37,11 +37,6 @@ public static class OpenRouterKeyFlowOrchestrator
         ArgumentNullException.ThrowIfNull(googleLogin);
         ArgumentNullException.ThrowIfNull(credential);
 
-        // The managed Chrome window points at the keys page, so it must first be
-        // navigated to the OpenRouter sign-in (this also happens against an open
-        // target whose execution context is gone). Fail fast with a clear message.
-        await onboarding.NavigateToOpenRouterSignInAsync(cancellationToken);
-
         // Phase 1: if the keys page already exposes a key, return it directly.
         var state = await onboarding.ReadStateAsync(cancellationToken);
         if (!string.IsNullOrEmpty(state.ApiKey))
@@ -49,7 +44,7 @@ public static class OpenRouterKeyFlowOrchestrator
             return new OpenRouterKeyFlowResult(true, state.ApiKey, null);
         }
 
-        // Phase 2: click the Clerk "Sign in with Google" button to start Google OAuth.
+        // Phase 2: click the Clerk "Sign in with Google" button on the keys page to start Google OAuth.
         var clicked = await onboarding.TryClickSignInWithGoogleAsync(cancellationToken);
         if (!clicked)
         {

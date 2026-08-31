@@ -71,6 +71,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     // OpenRouter key flow for a profile + vault credential. Testable standalone.
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult>> _openRouterKeyFlow = null!;
     private Func<ChromeProfile, CancellationToken, Task<GoogleLoginCredential?>> _autoGetKeyCredentials = null!;
+    private Func<CancellationToken, Task<OpenRouterPkceResult>> _openRouterPkceFlow = null!;
     private string _quickLaunchFilterText = string.Empty;
     private bool _isQuickLaunchOpen;
     private ChromeProfile? _selectedQuickLaunchProfile;
@@ -144,6 +145,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
         _autoGetKeyCredentials = CreateDefaultAutoGetKeyCredentials();
+        _openRouterPkceFlow = CreateDefaultOpenRouterPkceFlow();
         _quotaPollingService = new QuotaPollingService(
             RefreshForQuotaPollingAsync,
             QuotaPollingOptions.Default);
@@ -189,6 +191,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DeleteConnectionCommand = new AsyncRelayCommand<ProviderKind>(DeleteConnectionAsync, _ => SelectedProfile is not null);
         OpenQuickLinkCommand = new AsyncRelayCommand<ProviderKind>(OpenQuickLinkAsync);
         AutoGetKeyCommand = new AsyncRelayCommand(() => AutoGetKeyAsync(), () => SelectedProfile is not null);
+        ConnectOpenRouterOAuthCommand = new AsyncRelayCommand(
+            () => ConnectOpenRouterOAuthAsync(),
+            () => SelectedProfile is not null && !_workflowInProgress);
         CancelWorkflowCommand = new AsyncRelayCommand(CancelWorkflowAsync, () => IsWorkflowInProgress);
         WaitForConnectionCommand = new AsyncRelayCommand(WaitForConnectionAsync, () => !_workflowInProgress && _currentWorkflowProvider is not null && SelectedProfile is not null);
         OpenHelpCommand = new AsyncRelayCommand(OpenHelpAsync);
@@ -310,6 +315,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             DeleteConnectionCommand.RaiseCanExecuteChanged();
             WaitForConnectionCommand.RaiseCanExecuteChanged();
             AutoGetKeyCommand.RaiseCanExecuteChanged();
+            ConnectOpenRouterOAuthCommand.RaiseCanExecuteChanged();
             _ = LoadSelectedProfileApiKeysAsync();
         }
     }
@@ -1293,6 +1299,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public RelayCommand ToggleSelectAllCommand { get; }
     public AsyncRelayCommand SelectProfilesWithVaultCommand { get; }
     public AsyncRelayCommand AutoGetKeyCommand { get; }
+    public AsyncRelayCommand ConnectOpenRouterOAuthCommand { get; }
     public AsyncRelayCommand StartBatchAutoLoginCommand { get; }
     public RelayCommand StopBatchLoginCommand { get; }
     public RelayCommand CloseBatchProgressCommand { get; }
@@ -2454,6 +2461,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => _autoGetKeyCredentials = value ?? throw new ArgumentNullException(nameof(value));
     }
 
+    public Func<CancellationToken, Task<OpenRouterPkceResult>> OpenRouterPkceFlow
+    {
+        get => _openRouterPkceFlow;
+        set => _openRouterPkceFlow = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
     /// <summary>
     /// Auto-get an OpenRouter API key: run the key flow (opening Chrome, Google
     /// sign-in from the vault, onboarding), then automatically save the returned
@@ -2487,6 +2500,81 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         SelectedApiKeyProvider = ProviderKind.OpenRouter;
         return await AddApiKeyAsync(SelectedApiKeyProvider, flowResult.ApiKey!);
+    }
+
+    public async Task<bool> ConnectOpenRouterOAuthAsync(CancellationToken cancellationToken = default)
+    {
+        if (SelectedProfile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            ShowToast(StatusText, ToastType.Warning);
+            return false;
+        }
+
+        if (_workflowInProgress)
+        {
+            return false;
+        }
+
+        using var workflowCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _workflowCancellation = workflowCancellation;
+        _workflowInProgress = true;
+        var card = GetProviderCard(ProviderKind.OpenRouter);
+        card.SetWorkflowInProgress(true);
+        OnPropertyChanged(nameof(IsWorkflowInProgress));
+        CancelWorkflowCommand.RaiseCanExecuteChanged();
+        ConnectOpenRouterOAuthCommand.RaiseCanExecuteChanged();
+
+        try
+        {
+            StatusText = "Đang mở OpenRouter OAuth…";
+            OpenRouterPkceResult flowResult;
+            try
+            {
+                flowResult = await _openRouterPkceFlow(workflowCancellation.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText = "Đã hủy OpenRouter OAuth.";
+                ShowToast(StatusText, ToastType.Warning);
+                return false;
+            }
+            catch (TimeoutException)
+            {
+                StatusText = "Hết thời gian chờ OpenRouter OAuth. Thử lại.";
+                ShowToast(StatusText, ToastType.Error);
+                return false;
+            }
+            catch (Exception exception)
+            {
+                StatusText = $"OpenRouter OAuth thất bại: {exception.Message}";
+                ShowToast(StatusText, ToastType.Error);
+                return false;
+            }
+
+            if (!flowResult.Success)
+            {
+                StatusText = $"OpenRouter OAuth thất bại: {flowResult.ErrorMessage}";
+                ShowToast(StatusText, ToastType.Error);
+                return false;
+            }
+
+            SelectedApiKeyProvider = ProviderKind.OpenRouter;
+            return await AddApiKeyAsync(ProviderKind.OpenRouter, flowResult.ApiKey!);
+        }
+        finally
+        {
+            if (ReferenceEquals(_workflowCancellation, workflowCancellation))
+            {
+                _workflowCancellation = null;
+            }
+
+            _workflowInProgress = false;
+            card.SetWorkflowInProgress(false);
+            OnPropertyChanged(nameof(IsWorkflowInProgress));
+            CancelWorkflowCommand.RaiseCanExecuteChanged();
+            ConnectOpenRouterOAuthCommand.RaiseCanExecuteChanged();
+        }
     }
 
     public Task<bool> AddApiKeyAsync(string apiKey) =>
@@ -3324,6 +3412,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return vaultSession.Vault.Records.FirstOrDefault(c =>
                 string.Equals(c.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase));
         }
+    }
+
+    private Func<CancellationToken, Task<OpenRouterPkceResult>> CreateDefaultOpenRouterPkceFlow()
+    {
+        return async cancellationToken =>
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            await using var listener = await OAuthCallbackListener.StartAsync();
+            var pkce = OpenRouterPkce.CreateS256Pair();
+            var authUrl = OpenRouterPkce.BuildAuthorizationUrl(listener.RedirectUri, pkce.Challenge);
+            await LaunchUrlAsync(authUrl.AbsoluteUri);
+            var callback = await listener.WaitForCallbackAsync(TimeSpan.FromMinutes(10), cancellationToken);
+            if (!OpenRouterPkce.TryGetAuthorizationCode(callback, out var code, out var errorMessage))
+            {
+                return OpenRouterPkceResult.Failed(errorMessage!);
+            }
+
+            return await OpenRouterPkce.ExchangeCodeForApiKeyAsync(
+                http,
+                code!,
+                pkce.Verifier,
+                cancellationToken);
+        };
     }
 
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult>> CreateDefaultOpenRouterKeyFlow()

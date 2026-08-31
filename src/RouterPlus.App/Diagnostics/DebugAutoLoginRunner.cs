@@ -7,6 +7,7 @@ using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Security;
+using RouterPlus.Infrastructure.Services;
 using RouterPlus.Infrastructure.Storage;
 using WpfApplication = System.Windows.Application;
 
@@ -164,10 +165,9 @@ internal static class DebugAutoLoginRunner
 
                 Console.WriteLine("Session cookies did not authenticate. Starting automation flow...");
 
-                var result = await GoogleLoginStateMachine.RunAsync(
-                    browser,
-                    credential,
-                    CancellationToken.None);
+                var authService = new GoogleAuthenticationService();
+                var request = new GoogleAuthenticationRequest(credential, browser);
+                var result = await authService.AuthenticateAsync(request, CancellationToken.None);
 
                 Console.WriteLine($"Result: {result.Category}");
                 Console.WriteLine($"Message: {result.Message}");

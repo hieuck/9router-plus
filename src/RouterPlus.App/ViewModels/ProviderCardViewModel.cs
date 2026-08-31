@@ -39,6 +39,8 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
 
     public WorkflowKind Workflow => Definition.Workflow;
 
+    public bool IsOpenRouter => Kind == ProviderKind.OpenRouter;
+
     public bool IsWorkflowInProgress => _isWorkflowInProgress;
 
     public string ApiKeyValue

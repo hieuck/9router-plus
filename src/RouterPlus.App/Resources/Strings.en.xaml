@@ -7,6 +7,9 @@
     <sys:String x:Key="ProviderQuickOpenText">Quick open</sys:String>
     <sys:String x:Key="ProviderSaveKeyText">Save key</sys:String>
     <sys:String x:Key="ProviderGetKeyText">Get key</sys:String>
+    <sys:String x:Key="ProviderAutoGetKeyText">Auto get key</sys:String>
+    <sys:String x:Key="ProviderOpenRouterOAuthText">Connect OAuth</sys:String>
+    <sys:String x:Key="ProviderOpenRouterOAuthToolTip">Authorize OpenRouter with OAuth PKCE and save the API key to 9Router</sys:String>
     <sys:String x:Key="ProviderCancelText">Cancel</sys:String>
 
     <!-- Chrome Selection Dialog -->
