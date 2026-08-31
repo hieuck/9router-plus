@@ -3913,7 +3913,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 new Uri(authUrl),
                 targetServiceUri,
                 SelectedProfile.Name, // Profile email to match exactly
-                TimeSpan.FromMinutes(2),
+                provider == ProviderKind.Codex ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(2),
                 cancellationToken);
 
             switch (result.Outcome)

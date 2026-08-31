@@ -49,7 +49,7 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         const rect = el.getBoundingClientRect();
         return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
     };
-    const continueWithGoogleButtons = Array.from(document.queryselectorAll('button, [role=""button""], a')).filter(btn => {
+    const continueWithGoogleButtons = Array.from(document.querySelectorAll('button, [role=""button""], a')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('continue with google') || text.includes('sign in with google') || text.includes('google');
@@ -57,7 +57,7 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
     const hasContinueWithGoogleButton = continueWithGoogleButtons.length > 0;
 
     // Detect AWS Builder ID consent buttons
-    const awsConsentButtons = Array.from(document.queryselectorAll('button, [role=""button""]')).filter(btn => {
+    const awsConsentButtons = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('confirm and continue') || text.includes('confirmer et continuer') ||
@@ -159,7 +159,7 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     };
-    const buttons = Array.from(document.queryselectorAll('button, [role=""button""], a')).filter(btn => {
+    const buttons = Array.from(document.querySelectorAll('button, [role=""button""], a')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('continue with google') || text.includes('sign in with google') || text.includes('google');
@@ -216,7 +216,7 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     };
-    const buttons = Array.from(document.queryselectorAll('button, [role=""button""]')).filter(btn => {
+    const buttons = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('confirm and continue') || text.includes('confirmer et continuer') ||

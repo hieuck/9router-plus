@@ -27,6 +27,7 @@ public static class GoogleOAuthPageDetector
     // Check if on Google OAuth/account page
     const isGoogleOAuthPage = host === 'accounts.google.com' && (
         path.includes('/signin/oauth') ||
+        path.includes('/v3/signin') ||
         path.includes('/o/oauth2') ||
         path.includes('/ServiceLogin') ||
         path.includes('/AccountChooser') ||
@@ -44,7 +45,9 @@ public static class GoogleOAuthPageDetector
     };
 
     // Detect account picker (Google uses data-*)
-    const isChooseAccountPage = path.includes('/choose-an-account') || path.includes('/account-chooser');
+    const isChooseAccountPage = path.includes('/choose-an-account') ||
+                                 path.includes('/account-chooser') ||
+                                 path.includes('/accountchooser');
     const accountButtons = Array.from(document.querySelectorAll(
         '[data-email], [data-identifier], ul[role=""listbox""] li, button[data-email], a[data-email], ' +
         'button[aria-label*=""Continue with""], button[aria-label*=""Tiếp tục với""]'

@@ -256,7 +256,7 @@ public sealed class OpenRouterOAuthAutomation : GoogleOAuthFlowAutomation
         const rect = el.getBoundingClientRect();
         return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
     };
-    const candidates = Array.from(document.queryselectorAll('button, [role=""button""]')).filter(btn => {
+    const candidates = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('agree & continue') ||
