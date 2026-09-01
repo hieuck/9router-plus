@@ -50,11 +50,16 @@ public static class GoogleLoginStateMachine
                     $"Wrong origin: {state.PageUri.Host}. Expected accounts.google.com.");
             }
 
-            // Check for manual challenge immediately
+            // Check for manual challenge and wait for the user to complete it
             if (state.HasManualChallenge)
             {
-                return GoogleLoginResult.ManualInterventionRequired(
-                    "Manual challenge detected (CAPTCHA, passkey, or security verification).");
+                var resolvedState = await WaitForManualChallengeResolutionAsync(browser, totalCts.Token);
+                if (resolvedState is null)
+                {
+                    return GoogleLoginResult.ManualInterventionRequired(
+                        "Manual challenge detected. Please complete it manually.");
+                }
+                state = resolvedState;
             }
 
             // Check for completion signal (already logged in)
@@ -95,11 +100,16 @@ public static class GoogleLoginStateMachine
                         $"Navigation to unexpected origin: {state.PageUri.Host}.");
                 }
 
-                // Check for manual challenge
+                // Check for manual challenge - wait for user to complete it
                 if (state.HasManualChallenge)
                 {
-                    return GoogleLoginResult.ManualInterventionRequired(
-                        "Manual challenge detected after email submission.");
+                    var resolvedState = await WaitForManualChallengeResolutionAsync(browser, totalCts.Token);
+                    if (resolvedState is null)
+                    {
+                        return GoogleLoginResult.ManualInterventionRequired(
+                            "Manual challenge detected after email submission. Please complete it manually.");
+                    }
+                    state = resolvedState;
                 }
 
                 // Check for completion
@@ -125,11 +135,16 @@ public static class GoogleLoginStateMachine
                         $"Navigation to unexpected origin: {state.PageUri.Host}.");
                 }
 
-                // Check for manual challenge
+                // Check for manual challenge - wait for user to complete it
                 if (state.HasManualChallenge)
                 {
-                    return GoogleLoginResult.ManualInterventionRequired(
-                        "Manual challenge detected after password submission.");
+                    var resolvedState = await WaitForManualChallengeResolutionAsync(browser, totalCts.Token);
+                    if (resolvedState is null)
+                    {
+                        return GoogleLoginResult.ManualInterventionRequired(
+                            "Manual challenge detected after password submission. Please complete it manually.");
+                    }
+                    state = resolvedState;
                 }
 
                 // Check for completion
@@ -196,11 +211,16 @@ public static class GoogleLoginStateMachine
                         $"Navigation to unexpected origin: {state.PageUri.Host}.");
                 }
 
-                // Check for manual challenge
+                // Check for manual challenge - wait for user to complete it
                 if (state.HasManualChallenge)
                 {
-                    return GoogleLoginResult.ManualInterventionRequired(
-                        "Manual challenge detected after TOTP submission.");
+                    var resolvedState = await WaitForManualChallengeResolutionAsync(browser, totalCts.Token);
+                    if (resolvedState is null)
+                    {
+                        return GoogleLoginResult.ManualInterventionRequired(
+                            "Manual challenge detected after TOTP submission. Please complete it manually.");
+                    }
+                    state = resolvedState;
                 }
 
                 // Check for completion
@@ -357,6 +377,35 @@ public static class GoogleLoginStateMachine
         stepCts.CancelAfter(StepTimeout);
 
         await browser.SubmitAsync(field, stepCts.Token);
+    }
+
+    /// <summary>
+    /// Waits for manual challenge (CAPTCHA, passkey, etc.) to be resolved by the user.
+    /// Polls the page state every 2 seconds until the challenge flag clears or timeout.
+    /// </summary>
+    /// <returns>The new page state after resolution, or null if timeout/cancellation.</returns>
+    private static async Task<GoogleLoginPageState?> WaitForManualChallengeResolutionAsync(
+        IGoogleLoginBrowser browser,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5);
+
+        DebugConsole.WriteLine("[GoogleLogin] Manual challenge detected, waiting for user to complete...");
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(2000, cancellationToken);
+            var state = await ReadStateWithTimeoutAsync(browser, cancellationToken);
+
+            if (!state.HasManualChallenge)
+            {
+                DebugConsole.WriteLine("[GoogleLogin] Manual challenge resolved, resuming automation");
+                return state;
+            }
+        }
+
+        DebugConsole.WriteLine("[GoogleLogin] Manual challenge resolution timeout");
+        return null;
     }
 
     private static bool IsBrowserDisconnectException(Exception ex)

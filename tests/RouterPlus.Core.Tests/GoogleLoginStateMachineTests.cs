@@ -116,7 +116,7 @@ public class GoogleLoginStateMachineTests
     }
 
     [Fact]
-    public async Task RunAsync_stops_immediately_on_manual_challenge()
+    public async Task RunAsync_waits_for_manual_challenge_resolution_at_entry()
     {
         var credential = new GoogleLoginCredential(
             "profile-1",
@@ -132,17 +132,32 @@ public class GoogleLoginStateMachineTests
                 HasTotpField: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
-                HasManualChallenge: true));
+                HasManualChallenge: true))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin"),
+                HasEmailField: true,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://myaccount.google.com/"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: true,
+                HasManualChallenge: false));
 
         var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
 
-        Assert.Equal(GoogleLoginResultCategory.ManualInterventionRequired, result.Category);
-        Assert.Contains("Manual challenge", result.Message);
-        Assert.Empty(browser.FilledFields);
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
+        Assert.Equal(new[] { "Email" }, browser.FilledFields);
     }
 
     [Fact]
-    public async Task RunAsync_stops_on_manual_challenge_after_email()
+    public async Task RunAsync_waits_for_manual_challenge_resolution_after_email()
     {
         var credential = new GoogleLoginCredential(
             "profile-1",
@@ -166,17 +181,32 @@ public class GoogleLoginStateMachineTests
                 HasTotpField: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
-                HasManualChallenge: true));
+                HasManualChallenge: true))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/password"),
+                HasEmailField: false,
+                HasPasswordField: true,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://myaccount.google.com/"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: true,
+                HasManualChallenge: false));
 
         var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
 
-        Assert.Equal(GoogleLoginResultCategory.ManualInterventionRequired, result.Category);
-        Assert.Contains("after email", result.Message);
-        Assert.Equal(new[] { "Email" }, browser.FilledFields);
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
+        Assert.Equal(new[] { "Email", "Password" }, browser.FilledFields);
     }
 
     [Fact]
-    public async Task RunAsync_stops_on_manual_challenge_after_password()
+    public async Task RunAsync_waits_for_manual_challenge_resolution_after_password()
     {
         var credential = new GoogleLoginCredential(
             "profile-1",
@@ -208,17 +238,32 @@ public class GoogleLoginStateMachineTests
                 HasTotpField: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
-                HasManualChallenge: true));
+                HasManualChallenge: true))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/challenge/totp"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: true,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://myaccount.google.com/"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: true,
+                HasManualChallenge: false));
 
         var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
 
-        Assert.Equal(GoogleLoginResultCategory.ManualInterventionRequired, result.Category);
-        Assert.Contains("after password", result.Message);
-        Assert.Equal(new[] { "Email", "Password" }, browser.FilledFields);
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
+        Assert.Equal(new[] { "Email", "Password", "Totp" }, browser.FilledFields);
     }
 
     [Fact]
-    public async Task RunAsync_stops_on_manual_challenge_after_totp()
+    public async Task RunAsync_waits_for_manual_challenge_resolution_after_totp()
     {
         var credential = new GoogleLoginCredential(
             "profile-1",
@@ -258,13 +303,70 @@ public class GoogleLoginStateMachineTests
                 HasTotpField: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
-                HasManualChallenge: true));
+                HasManualChallenge: true))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://myaccount.google.com/"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: true,
+                HasManualChallenge: false));
 
         var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
 
-        Assert.Equal(GoogleLoginResultCategory.ManualInterventionRequired, result.Category);
-        Assert.Contains("after TOTP", result.Message);
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
         Assert.Equal(new[] { "Email", "Password", "Totp" }, browser.FilledFields);
+    }
+
+    [Fact]
+    public async Task RunAsync_resumes_password_step_after_manual_challenge_resolution()
+    {
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        var browser = new FakeBrowser()
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin"),
+                HasEmailField: true,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/v3/signin/challenge/recaptcha"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: true))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/v3/signin/challenge/pwd"),
+                HasEmailField: false,
+                HasPasswordField: true,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://myaccount.google.com/"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: true,
+                HasManualChallenge: false));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
+        Assert.Equal(new[] { "Email", "Password" }, browser.FilledFields);
+        Assert.Equal(new[] { "Email", "Password" }, browser.SubmittedFields);
     }
 
     [Fact]
