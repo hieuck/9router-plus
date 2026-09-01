@@ -19,19 +19,57 @@ public partial class CredentialsManagerDialog : Window
         Closing += OnClosing;
     }
 
-    private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private bool _isDisposed;
+    private bool _isClosing;
+
+    private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         UIEventLogger.LogDialogClose("CredentialsManager");
 
-        // Dispose vault session asynchronously
-        _ = _viewModel.DisposeAsync();
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        if (_isClosing)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        e.Cancel = true;
+        _isClosing = true;
+        try
+        {
+            await _viewModel.DisposeAsync();
+            _isDisposed = true;
+            Close();
+        }
+        finally
+        {
+            _isClosing = false;
+        }
     }
 
     private async void Close_Click(object sender, RoutedEventArgs e)
     {
-        await _viewModel.DisposeAsync();
-        DialogResult = true;
-        Close();
+        if (_isClosing)
+        {
+            return;
+        }
+
+        _isClosing = true;
+        try
+        {
+            await _viewModel.DisposeAsync();
+            _isDisposed = true;
+            DialogResult = true;
+            Close();
+        }
+        finally
+        {
+            _isClosing = false;
+        }
     }
 
     private async void UnlockVault_Click(object sender, RoutedEventArgs e)
@@ -231,10 +269,11 @@ public partial class CredentialsManagerDialog : Window
     private async void RemoveGoogleAccount_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("CredentialsManager.RemoveGoogleAccount");
-        if (_viewModel.SelectedGoogleAccount == null)
+        if (!_viewModel.CanRemoveGoogleAccount || _viewModel.SelectedGoogleAccount == null)
             return;
 
-        var profileName = _viewModel.SelectedGoogleAccount.ProfileName;
+        var row = _viewModel.SelectedGoogleAccount;
+        var profileName = row.ProfileName;
         var result = MessageBox.Show(
             $"Remove Google account for profile '{profileName}' from vault?\n\nThis will delete stored credentials for this profile.",
             "Remove Google Account",
@@ -244,7 +283,7 @@ public partial class CredentialsManagerDialog : Window
         if (result != MessageBoxResult.Yes)
             return;
 
-        await _viewModel.RemoveGoogleAccountAsync(profileName);
+        await _viewModel.RemoveGoogleAccountAsync(row);
     }
 
     // Codex Configuration

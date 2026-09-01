@@ -229,14 +229,16 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     public async Task BatchLoginCommand_uses_the_shared_google_authentication_runner_for_each_selected_row()
     {
         var receivedProfiles = new List<ChromeProfile>();
+        GoogleLoginCredential? receivedCredential = null;
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
             "Test Profile",
             "user@example.test",
             "synthetic-login-password",
             "NONE"));
-        var viewModel = CreateViewModel((profile, _, _) =>
+        var viewModel = CreateViewModel((profile, credential, _) =>
         {
             receivedProfiles.Add(profile);
+            receivedCredential = credential;
             return Task.FromResult(GoogleLoginResult.Success());
         });
 
@@ -249,8 +251,276 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         await WaitForAsync(() => viewModel.StatusMessage.Contains("Batch login completed", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(new[] { _profile }, receivedProfiles);
+        Assert.NotNull(receivedCredential);
+        Assert.Equal(_profile.Id, receivedCredential!.ProfileId);
+        Assert.Equal("user@example.test", receivedCredential.Email);
+        Assert.Equal("synthetic-login-password", receivedCredential.Password);
+        Assert.Equal("NONE", receivedCredential.TotpSecret);
         Assert.False(viewModel.IsBatchLoginRunning);
         Assert.Contains("1 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BatchLoginCommand_runs_selected_rows_sequentially_and_continues_after_failure()
+    {
+        var secondProfile = new ChromeProfile(
+            ChromeProfile.CreateId(_rootDirectory, "Profile 2"),
+            "Test Profile 2",
+            "Profile 2",
+            _rootDirectory,
+            true);
+        _mainViewModel.Profiles.Add(secondProfile);
+        _mainViewModel.FilteredProfiles.Add(secondProfile);
+
+        var receivedProfiles = new List<ChromeProfile>();
+        var receivedEmails = new List<string>();
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            _profile.Id,
+            "first@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel((profile, credential, _) =>
+        {
+            receivedProfiles.Add(profile);
+            receivedEmails.Add(credential.Email);
+            return Task.FromResult(
+                credential.Email.StartsWith("first", StringComparison.Ordinal)
+                    ? GoogleLoginResult.InvalidCredentials()
+                    : GoogleLoginResult.Success());
+        });
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 2);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var firstRow = viewModel.GoogleAccounts.Single(row => row.ProfileId == _profile.Id);
+        firstRow.IsSelected = true;
+        var secondRow = viewModel.GoogleAccounts.Single(row => row.ProfileId == secondProfile.Id);
+        secondRow.Email = "second@example.test";
+        secondRow.Password = "synthetic-login-password";
+        secondRow.TotpSecret = "NONE";
+        secondRow.HasCredentials = true;
+        secondRow.IsSelected = true;
+
+        viewModel.BatchLoginCommand.Execute(null);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains(
+            "Batch login completed", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(new[] { _profile, secondProfile }, receivedProfiles);
+        Assert.Equal(
+            new[] { "first@example.test", "second@example.test" },
+            receivedEmails);
+        Assert.Contains("1 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LoginRowCommand_does_not_rebind_a_stale_profile_id_by_display_name()
+    {
+        var invoked = false;
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            _profile.Id,
+            "user@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel((_, _, _) =>
+        {
+            invoked = true;
+            return Task.FromResult(GoogleLoginResult.Success());
+        });
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        row.ProfileId = "stale-profile-id";
+
+        viewModel.LoginRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains(
+            "Profile not found", StringComparison.OrdinalIgnoreCase));
+
+        Assert.False(invoked);
+    }
+
+    [Fact]
+    public async Task BatchLoginCommand_continues_when_a_selected_row_has_invalid_credentials()
+    {
+        var receivedEmails = new List<string>();
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "first@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel((_, credential, _) =>
+        {
+            receivedEmails.Add(credential.Email);
+            return Task.FromResult(GoogleLoginResult.Success());
+        });
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var firstRow = Assert.Single(viewModel.GoogleAccounts);
+        firstRow.IsSelected = true;
+        firstRow.Email = "not-an-email";
+        firstRow.Password = "synthetic-login-password";
+
+        viewModel.GoogleAccounts.Add(new GoogleAccountRowViewModel
+        {
+            ProfileId = _profile.Id,
+            ProfileName = _profile.Name,
+            Email = "second@example.test",
+            Password = "synthetic-login-password",
+            TotpSecret = "NONE",
+            HasCredentials = true,
+            IsSelected = true,
+            IsVaultUnlocked = true
+        });
+
+        viewModel.BatchLoginCommand.Execute(null);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains(
+            "Batch login completed", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(new[] { "second@example.test" }, receivedEmails);
+        Assert.Contains("1 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StopBatchLoginCommand_wins_when_runner_returns_after_cancellation()
+    {
+        var runnerStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var runnerRelease = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "first@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel(async (_, _, _) =>
+        {
+            runnerStarted.TrySetResult(true);
+            await runnerRelease.Task;
+            return GoogleLoginResult.Success();
+        });
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        row.IsSelected = true;
+
+        viewModel.BatchLoginCommand.Execute(null);
+        await runnerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        viewModel.StopBatchLoginCommand.Execute(null);
+        runnerRelease.SetResult(true);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains(
+            "Batch login cancelled", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Contains("0 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(viewModel.IsBatchLoginRunning);
+    }
+
+    [Fact]
+    public async Task StopBatchLoginCommand_cancels_active_runner_and_does_not_start_next_row()
+    {
+        var runnerStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var runnerCancelled = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var receivedEmails = new List<string>();
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "first@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel((_, credential, cancellationToken) =>
+        {
+            receivedEmails.Add(credential.Email);
+            runnerStarted.TrySetResult(true);
+            return WaitForCancellationAsync(cancellationToken, runnerCancelled);
+        });
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var firstRow = Assert.Single(viewModel.GoogleAccounts);
+        firstRow.IsSelected = true;
+
+        viewModel.GoogleAccounts.Add(new GoogleAccountRowViewModel
+        {
+            ProfileId = _profile.Id,
+            ProfileName = _profile.Name,
+            Email = "second@example.test",
+            Password = "synthetic-login-password",
+            TotpSecret = "NONE",
+            HasCredentials = true,
+            IsSelected = true,
+            IsVaultUnlocked = true
+        });
+
+        viewModel.BatchLoginCommand.Execute(null);
+        await runnerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        viewModel.StopBatchLoginCommand.Execute(null);
+        await runnerCancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForAsync(() => !viewModel.IsBatchLoginRunning);
+
+        Assert.Equal(new[] { "first@example.test" }, receivedEmails);
+        Assert.Contains("cancelled", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BatchLoginCommand_waits_for_current_runner_before_starting_next_row()
+    {
+        var firstRunnerCompleted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondRunnerStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var receivedEmails = new List<string>();
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "first@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel((_, credential, _) =>
+        {
+            receivedEmails.Add(credential.Email);
+            if (credential.Email.StartsWith("first", StringComparison.Ordinal))
+            {
+                return firstRunnerCompleted.Task.ContinueWith(
+                    _ => GoogleLoginResult.Success(),
+                    TaskScheduler.Default);
+            }
+
+            secondRunnerStarted.TrySetResult(true);
+            return Task.FromResult(GoogleLoginResult.Success());
+        });
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var firstRow = Assert.Single(viewModel.GoogleAccounts);
+        firstRow.IsSelected = true;
+        viewModel.GoogleAccounts.Add(new GoogleAccountRowViewModel
+        {
+            ProfileId = _profile.Id,
+            ProfileName = _profile.Name,
+            Email = "second@example.test",
+            Password = "synthetic-login-password",
+            TotpSecret = "NONE",
+            HasCredentials = true,
+            IsSelected = true,
+            IsVaultUnlocked = true
+        });
+
+        viewModel.BatchLoginCommand.Execute(null);
+        await WaitForAsync(() => receivedEmails.Count == 1);
+        Assert.False(secondRunnerStarted.Task.IsCompleted);
+
+        firstRunnerCompleted.SetResult(true);
+        await secondRunnerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForAsync(() => viewModel.StatusMessage.Contains(
+            "Batch login completed", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(
+            new[] { "first@example.test", "second@example.test" },
+            receivedEmails);
     }
 
     [Fact]
@@ -338,7 +608,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
 
         Assert.False(viewModel.IsVaultLocked);
         Assert.False(Assert.Single(viewModel.GoogleAccounts).HasCredentials);
-        Assert.Contains("Removed Google account", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Removed credentials", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -556,6 +826,113 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RemoveGoogleAccountAsync_targets_the_selected_stable_profile_id()
+    {
+        var siblingRoot = Path.GetTempPath() + $"RouterPlus-Removal-{Guid.NewGuid():N}";
+        Directory.CreateDirectory(siblingRoot);
+        var first = new ChromeProfile(
+            ChromeProfile.CreateId(siblingRoot, "Alpha"),
+            "Shared Display",
+            "Alpha",
+            siblingRoot,
+            true);
+        var second = new ChromeProfile(
+            ChromeProfile.CreateId(siblingRoot, "Beta"),
+            "Shared Display",
+            "Beta",
+            siblingRoot,
+            true);
+        var mainViewModel = new MainViewModel(
+            googleLoginVaultPaths: _vaultPaths,
+            harnessProfiles: new[] { first, second });
+        await mainViewModel.InitializeAsync();
+
+        await using (var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "synthetic-password",
+            CancellationToken.None))
+        {
+            session.Replace(new GoogleAccountVault(new[]
+            {
+                new GoogleLoginCredential(first.Id, "first@example.test", "first-password", "NONE"),
+                new GoogleLoginCredential(second.Id, "second@example.test", "second-password", "NONE")
+            }));
+            await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+        }
+
+        var viewModel = new CredentialsManagerViewModel(
+            mainViewModel,
+            _googleVaultStore,
+            _providerVaultStore,
+            _vaultPaths,
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()));
+        _viewModels.Add(viewModel);
+
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var selectedRow = viewModel.GoogleAccounts.Single(row => row.ProfileId == second.Id);
+
+        await viewModel.RemoveGoogleAccountAsync(selectedRow);
+
+        await using var reopened = await _googleVaultStore.OpenAsync(
+            _vaultPaths.VaultPath,
+            "synthetic-password",
+            CancellationToken.None);
+        var remaining = Assert.Single(reopened.Vault.Records);
+        Assert.Equal(first.Id, remaining.ProfileId);
+        Assert.Equal("first@example.test", remaining.Email);
+        Assert.False(selectedRow.HasCredentials);
+    }
+
+    [Fact]
+    public async Task Legacy_name_keyed_record_is_not_adopted_when_duplicate_is_hidden_by_filter()
+    {
+        var siblingRoot = Path.GetTempPath() + $"RouterPlus-Filtered-{Guid.NewGuid():N}";
+        Directory.CreateDirectory(siblingRoot);
+        var first = new ChromeProfile(
+            ChromeProfile.CreateId(siblingRoot, "Alpha"),
+            "Shared Display",
+            "Alpha",
+            siblingRoot,
+            true);
+        var second = new ChromeProfile(
+            ChromeProfile.CreateId(siblingRoot, "Beta"),
+            "Shared Display",
+            "Beta",
+            siblingRoot,
+            true);
+        var mainViewModel = new MainViewModel(
+            googleLoginVaultPaths: _vaultPaths,
+            harnessProfiles: new[] { first, second });
+        await mainViewModel.InitializeAsync();
+        mainViewModel.FilteredProfiles.Remove(second);
+
+        await using (var session = await _googleVaultStore.CreateAsync(
+            _vaultPaths.VaultPath,
+            "synthetic-password",
+            CancellationToken.None))
+        {
+            session.Replace(new GoogleAccountVault(new[]
+            {
+                new GoogleLoginCredential("Shared Display", "shared@example.test", "shared-password", "NONE")
+            }));
+            await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+        }
+
+        var viewModel = new CredentialsManagerViewModel(
+            mainViewModel,
+            _googleVaultStore,
+            _providerVaultStore,
+            _vaultPaths,
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()));
+        _viewModels.Add(viewModel);
+
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        Assert.False(row.HasCredentials);
+    }
+
+    [Fact]
     public async Task RemoveGoogleAccountAsync_removes_only_the_requested_profile_when_emails_match()
     {
         await CreateVaultAsync("synthetic-password");
@@ -611,6 +988,23 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         }
 
         await _googleVaultStore.SaveAsync(session, CancellationToken.None);
+    }
+
+    private static async Task<GoogleLoginResult> WaitForCancellationAsync(
+        CancellationToken cancellationToken,
+        TaskCompletionSource<bool> cancelled)
+    {
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            cancelled.TrySetResult(true);
+            return GoogleLoginResult.Cancelled();
+        }
+
+        return GoogleLoginResult.Success();
     }
 
     private static async Task WaitForAsync(Func<bool> predicate)

@@ -37,6 +37,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     private GoogleAccountVaultSession? _vaultSession;
     private bool _isBatchLoginRunning;
     private bool _isVaultLocked = true;
+    private CancellationTokenSource? _batchLoginCts;
+    private Task? _batchLoginTask;
     private readonly object _initializationLock = new();
     private Task? _initializationTask;
 
@@ -56,11 +58,19 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         _runGoogleAuthentication = googleAuthenticationRunner ?? throw new ArgumentNullException(nameof(googleAuthenticationRunner));
 
         // Initialize commands
-        SaveRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(SaveRowAsync);
-        LoginRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(LoginRowAsync);
-        RemoveGoogleAccountCommand = new AsyncRelayCommand(RemoveGoogleAccountAsync, () => SelectedGoogleAccount != null);
-        BatchLoginCommand = new AsyncRelayCommand(BatchLoginAsync, () => GoogleAccounts.Any(a => a.IsSelected && a.HasCredentials) && !IsBatchLoginRunning);
-        RefreshCommand = new AsyncRelayCommand(RefreshDataAsync);
+        SaveRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(
+            SaveRowAsync,
+            _ => !IsBatchLoginRunning);
+        LoginRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(
+            LoginRowAsync,
+            row => !IsBatchLoginRunning && row.HasCredentials);
+        RemoveGoogleAccountCommand = new AsyncRelayCommand(
+            RemoveGoogleAccountAsync,
+            () => CanRemoveGoogleAccount);
+        BatchLoginCommand = new AsyncRelayCommand(StartBatchLoginAsync, () => GoogleAccounts.Any(a => a.IsSelected && a.HasCredentials) && !IsBatchLoginRunning);
+
+        StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
+        RefreshCommand = new AsyncRelayCommand(RefreshDataAsync, () => !IsBatchLoginRunning);
 
         _ = InitializeAsync();
     }
@@ -113,9 +123,18 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             if (_isBatchLoginRunning == value) return;
             _isBatchLoginRunning = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanModifyCredentials));
+            OnPropertyChanged(nameof(CanRemoveGoogleAccount));
             BatchLoginCommand.RaiseCanExecuteChanged();
+            StopBatchLoginCommand.RaiseCanExecuteChanged();
+            RefreshCommand.RaiseCanExecuteChanged();
+            SaveRowCommand.RaiseCanExecuteChanged();
+            LoginRowCommand.RaiseCanExecuteChanged();
+            RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
         }
     }
+
+    public bool CanModifyCredentials => !IsBatchLoginRunning;
 
     public bool IsVaultLocked
     {
@@ -136,9 +155,13 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             if (_selectedGoogleAccount == value) return;
             _selectedGoogleAccount = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanRemoveGoogleAccount));
             RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
         }
     }
+
+    public bool CanRemoveGoogleAccount =>
+        CanModifyCredentials && SelectedGoogleAccount?.HasCredentials == true;
 
     // Provider connections per provider
     public ObservableCollection<ProviderConnectionRowViewModel> CodexConnections { get; } = new();
@@ -195,7 +218,10 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     public AsyncRelayCommand<GoogleAccountRowViewModel> LoginRowCommand { get; }
     public AsyncRelayCommand RemoveGoogleAccountCommand { get; }
     public AsyncRelayCommand BatchLoginCommand { get; }
+    public RelayCommand StopBatchLoginCommand { get; }
     public AsyncRelayCommand RefreshCommand { get; }
+
+    public Task? BatchLoginTask => _batchLoginTask;
 
     private async Task LoadDataAsync()
     {
@@ -263,7 +289,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             // Subscribe to property changes to update SelectedCount
             row.PropertyChanged += (s, e) =>
             {
-                if (e.PropertyName == nameof(GoogleAccountRowViewModel.IsSelected))
+                if (e.PropertyName is nameof(GoogleAccountRowViewModel.IsSelected)
+                    or nameof(GoogleAccountRowViewModel.HasCredentials))
                 {
                     OnPropertyChanged(nameof(SelectedCount));
                     BatchLoginCommand.RaiseCanExecuteChanged();
@@ -301,7 +328,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
     private bool HasUniqueProfileName(string profileName)
     {
-        return _mainViewModel.FilteredProfiles.Count(p => p.Name == profileName) == 1;
+        return _mainViewModel.Profiles.Count(p => p.Name == profileName) == 1;
     }
 
     /// <summary>
@@ -312,14 +339,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     {
         if (!string.IsNullOrEmpty(row.ProfileId))
         {
-            var byId = _mainViewModel.FilteredProfiles.FirstOrDefault(p => p.Id == row.ProfileId);
-            if (byId is not null)
-            {
-                return byId;
-            }
+            return _mainViewModel.Profiles.FirstOrDefault(p => p.Id == row.ProfileId);
         }
 
-        return _mainViewModel.FilteredProfiles.FirstOrDefault(p => p.Name == row.ProfileName);
+        return HasUniqueProfileName(row.ProfileName)
+            ? _mainViewModel.Profiles.FirstOrDefault(p => p.Name == row.ProfileName)
+            : null;
     }
 
     private async Task LoadProviderConnectionsAsync()
@@ -441,6 +466,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     {
         if (row == null) return;
 
+        if (IsBatchLoginRunning)
+        {
+            SetStatus("Batch login is already running");
+            return;
+        }
+
         // Existing rows enter edit mode before the command saves changes.
         if (row.HasCredentials && !row.IsEditing)
         {
@@ -515,6 +546,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
     private async Task LoginRowAsync(GoogleAccountRowViewModel? row)
     {
+        if (IsBatchLoginRunning)
+        {
+            SetStatus("Batch login is already running");
+            return;
+        }
+
         if (row == null || !row.HasCredentials)
         {
             SetStatus("No credentials to login with");
@@ -576,61 +613,98 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         }
     }
 
-    private async Task BatchLoginAsync()
+    private Task StartBatchLoginAsync()
     {
-        var selectedRows = GoogleAccounts.Where(a => a.IsSelected && a.HasCredentials).ToList();
-        if (!selectedRows.Any())
-        {
-            SetStatus("No profiles selected");
-            return;
-        }
-
-        if (_vaultSession == null)
-        {
-            SetStatus("Vault not unlocked. Please unlock the vault first.");
-            return;
-        }
-
+        var selectedRows = GoogleAccounts
+            .Where(a => a.IsSelected && a.HasCredentials)
+            .ToList();
+        var batchCts = new CancellationTokenSource();
+        _batchLoginCts = batchCts;
         IsBatchLoginRunning = true;
+        _batchLoginTask = BatchLoginAsync(batchCts, selectedRows);
+        OnPropertyChanged(nameof(BatchLoginTask));
+        return _batchLoginTask;
+    }
+
+    private void StopBatchLogin()
+    {
+        _batchLoginCts?.Cancel();
+    }
+
+    private async Task BatchLoginAsync(
+        CancellationTokenSource batchCts,
+        IReadOnlyList<GoogleAccountRowViewModel> selectedRows)
+    {
+        // Yield so StartBatchLoginAsync can publish the task before preflight
+        // exits through the cleanup path.
+        await Task.Yield();
+
         var successCount = 0;
         var failCount = 0;
+        var cancelled = false;
 
         try
         {
+            if (!selectedRows.Any())
+            {
+                SetStatus("No profiles selected");
+                return;
+            }
+
+            if (_vaultSession == null)
+            {
+                SetStatus("Vault not unlocked. Please unlock the vault first.");
+                return;
+            }
+
             SetStatus($"Starting batch login for {selectedRows.Count} profile(s)...");
 
             foreach (var row in selectedRows)
             {
                 // Find matching profile: by stable Id first, then by display name
                 // for legacy rows that predate Id resolution.
+                batchCts.Token.ThrowIfCancellationRequested();
+
                 var profile = ResolveRowProfile(row);
                 if (profile == null)
                 {
                     SetStatus($"❌ {row.ProfileName}: Profile not found");
                     failCount++;
-                    await Task.Delay(1000);
                     continue;
                 }
 
                 row.ProfileId = profile.Id;
 
-                // Create credential from row, keyed by the stable profile Id
-                var credential = new GoogleLoginCredential(
-                    row.ProfileId,
-                    row.Email,
-                    row.Password,
-                    string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
-
-                SetStatus($"🚀 Logging in {row.ProfileName}...");
-
                 try
                 {
-                    var result = await _runGoogleAuthentication(profile, credential, CancellationToken.None);
+                    // Create credential from row, keyed by the stable profile Id.
+                    // Invalid row data must fail only this profile, not the batch.
+                    var credential = new GoogleLoginCredential(
+                        row.ProfileId,
+                        row.Email,
+                        row.Password,
+                        string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
+
+                    SetStatus($"🚀 Logging in {row.ProfileName}...");
+
+                    var result = await _runGoogleAuthentication(profile, credential, batchCts.Token);
+
+                    if (batchCts.IsCancellationRequested)
+                    {
+                        cancelled = true;
+                        break;
+                    }
 
                     if (result.Category == GoogleLoginResultCategory.Success)
                     {
                         SetStatus($"✓ {row.ProfileName}: Login successful");
                         successCount++;
+                    }
+                    else if (result.Category == GoogleLoginResultCategory.Cancelled)
+                    {
+                        SetStatus($"⏹ {row.ProfileName}: Login cancelled");
+                        cancelled = true;
+                        break;
                     }
                     else if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
                     {
@@ -639,44 +713,68 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                     }
                     else
                     {
-                        SetStatus($"❌ {row.ProfileName}: {result.Message ?? result.Category.ToString()}");
+                        SetStatus($"❌ {row.ProfileName}: {result.Message}");
                         failCount++;
                     }
+                }
+                catch (OperationCanceledException) when (batchCts.IsCancellationRequested)
+                {
+                    cancelled = true;
+                    break;
                 }
                 catch (Exception ex)
                 {
                     SetStatus($"❌ {row.ProfileName}: {ex.Message}");
                     failCount++;
                 }
-
-                await Task.Delay(1500);
             }
 
-            SetStatus($"Batch login completed: {successCount} succeeded, {failCount} failed");
+            SetStatus(cancelled
+                ? $"Batch login cancelled: {successCount} succeeded, {failCount} failed"
+                : $"Batch login completed: {successCount} succeeded, {failCount} failed");
+        }
+        catch (OperationCanceledException) when (batchCts.IsCancellationRequested)
+        {
+            SetStatus($"Batch login cancelled: {successCount} succeeded, {failCount} failed");
         }
         finally
         {
+            if (ReferenceEquals(_batchLoginCts, batchCts))
+            {
+                _batchLoginCts = null;
+            }
+
+            batchCts.Dispose();
             IsBatchLoginRunning = false;
+            _batchLoginTask = null;
+            OnPropertyChanged(nameof(BatchLoginTask));
         }
     }
 
-    private async Task RemoveGoogleAccountAsync()
+    private Task RemoveGoogleAccountAsync()
     {
-        if (SelectedGoogleAccount == null) return;
+        return SelectedGoogleAccount is { } row
+            ? RemoveGoogleAccountAsync(row)
+            : Task.CompletedTask;
+    }
+
+    public async Task RemoveGoogleAccountAsync(GoogleAccountRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
         if (_vaultSession == null)
         {
             SetStatus("Vault not unlocked");
             return;
         }
 
-        var profileName = SelectedGoogleAccount.ProfileName;
+        var profileName = row.ProfileName;
 
         try
         {
             // Remove from vault (immutable - filter and replace). Key by the
             // stable profile Id, and ALSO drop a legacy name-keyed record only
             // when the display name maps unambiguously to this profile.
-            var row = SelectedGoogleAccount;
             var currentVault = _vaultSession.Vault;
             var filteredRecords = currentVault.Records
                 .Where(r => r.ProfileId != row.ProfileId)
@@ -685,12 +783,14 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             _vaultSession.Replace(newVault);
             await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
 
-            // Update UI - clear credentials but keep row
-            SelectedGoogleAccount.Email = string.Empty;
-            SelectedGoogleAccount.Password = string.Empty;
-            SelectedGoogleAccount.TotpSecret = string.Empty;
-            SelectedGoogleAccount.HasCredentials = false;
-            SelectedGoogleAccount.IsEditing = false;
+            // Update UI - clear credentials but keep row.
+            row.Email = string.Empty;
+            row.Password = string.Empty;
+            row.TotpSecret = string.Empty;
+            row.HasCredentials = false;
+            row.IsEditing = false;
+            OnPropertyChanged(nameof(CanRemoveGoogleAccount));
+            RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
 
             SetStatus($"Removed credentials for {profileName}");
         }
@@ -702,50 +802,24 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
     public async Task RemoveGoogleAccountAsync(string profileName)
     {
-        if (_vaultSession == null)
-        {
-            SetStatus("Vault not unlocked");
-            return;
-        }
-
         if (string.IsNullOrWhiteSpace(profileName))
         {
             SetStatus("Profile is required");
             return;
         }
 
-        try
+        var matchingRows = GoogleAccounts
+            .Where(account => account.ProfileName == profileName)
+            .ToList();
+        if (matchingRows.Count != 1)
         {
-            // Resolve the row for this display name so we can key removal by the
-            // stable profile Id, falling back to the legacy name-keyed record
-            // only when the display name maps unambiguously to this profile.
-            var row = GoogleAccounts.FirstOrDefault(account => account.ProfileName == profileName);
-
-            // Remove from vault (immutable - filter and replace).
-            var currentVault = _vaultSession.Vault;
-            var filteredRecords = currentVault.Records
-                .Where(r => r.ProfileId != row?.ProfileId)
-                .Where(r => row is null || !HasUniqueProfileName(row.ProfileName) || r.ProfileId != row.ProfileName);
-            var newVault = new GoogleAccountVault(filteredRecords);
-            _vaultSession.Replace(newVault);
-            await _googleAccountVaultStore.SaveAsync(_vaultSession, CancellationToken.None);
-
-            // Update the existing row without reloading from the remembered-key path.
-            if (row is not null)
-            {
-                row.Email = string.Empty;
-                row.Password = string.Empty;
-                row.TotpSecret = string.Empty;
-                row.HasCredentials = false;
-                row.IsEditing = false;
-            }
-
-            SetStatus($"Removed Google account for {profileName}");
+            SetStatus(matchingRows.Count == 0
+                ? $"Profile not found for {profileName}"
+                : $"Profile name is ambiguous: {profileName}");
+            return;
         }
-        catch (Exception ex)
-        {
-            SetStatus($"Error removing account: {ex.Message}");
-        }
+
+        await RemoveGoogleAccountAsync(matchingRows[0]);
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -758,8 +832,20 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         StatusMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
     }
 
+    public async Task CancelBatchLoginAsync()
+    {
+        _batchLoginCts?.Cancel();
+        var batchTask = _batchLoginTask;
+        if (batchTask != null)
+        {
+            await batchTask;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
+        await CancelBatchLoginAsync();
+
         if (_vaultSession != null)
         {
             await _vaultSession.DisposeAsync();

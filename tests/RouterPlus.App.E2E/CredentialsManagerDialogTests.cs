@@ -194,7 +194,7 @@ public sealed class CredentialsManagerDialogTests
             Assert.NotNull(batchLoginButton);
             batchLoginButton!.Click();
 
-            var completedStatus = Retry.WhileNull(
+            var terminalStatus = Retry.WhileNull(
                 () =>
                 {
                     var status = dialog.FindFirstDescendant(cf =>
@@ -202,7 +202,7 @@ public sealed class CredentialsManagerDialogTests
                     try
                     {
                         return status?.Name.Contains("Batch login completed", StringComparison.OrdinalIgnoreCase) == true ||
-                               status?.Name.Contains("Vault not unlocked", StringComparison.OrdinalIgnoreCase) == true
+                            status?.Name.Contains("Vault not unlocked", StringComparison.OrdinalIgnoreCase) == true
                             ? status
                             : null;
                     }
@@ -213,11 +213,11 @@ public sealed class CredentialsManagerDialogTests
                 },
                 TimeSpan.FromSeconds(5),
                 throwOnTimeout: false).Result;
-            Assert.NotNull(completedStatus);
-            // Batch login should respond (either completes or shows vault error)
+            Assert.NotNull(terminalStatus);
+            // Batch login should respond (either completes or shows vault error).
             Assert.True(
-                completedStatus!.Name.Contains("Batch login completed", StringComparison.OrdinalIgnoreCase) ||
-                completedStatus.Name.Contains("Vault not unlocked", StringComparison.OrdinalIgnoreCase));
+                terminalStatus!.Name.Contains("Batch login completed", StringComparison.OrdinalIgnoreCase) ||
+                terminalStatus.Name.Contains("Vault not unlocked", StringComparison.OrdinalIgnoreCase));
 
             // User action 7: close the dialog.
             var closeButton = dialog.FindFirstDescendant(cf =>
