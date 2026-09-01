@@ -82,6 +82,18 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Loads_profile_rows_after_main_view_model_becomes_ready()
+    {
+        var viewModel = CreateViewModel();
+
+        await _mainViewModel.InitializeAsync();
+        await WaitForAsync(() => viewModel.InitializationTask.IsCompleted);
+
+        Assert.Single(viewModel.GoogleAccounts);
+        Assert.Equal(_profile.Name, Assert.Single(viewModel.GoogleAccounts).ProfileName);
+    }
+
+    [Fact]
     public async Task UnlockVaultAsync_creates_new_vault_and_loads_profile_rows()
     {
         var viewModel = CreateViewModel();

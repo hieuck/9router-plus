@@ -37,30 +37,20 @@
 
 ---
 
-### 🟡 Medium Priority: Personal Email Addresses in Documentation
+### 🟢 Sanitized Personal Identifiers
 
-**Location:** Documentation files  
-**Risk:** Low (publicly visible email → spam risk, no security compromise)  
-**Recommendation:** Replace with example.com addresses
+The personal identifiers previously found in documentation and test evidence have been replaced with synthetic values. The affected examples remain useful for explaining vault data, debug output, and provider error parsing without publishing account identifiers.
 
-#### Files containing real emails:
+**Sanitized locations:**
 
-1. **docs/auto-login-vault-refactor-plan.md** (lines 96-167)
-   - `demo.user1@example.com` (12 occurrences)
-   - `demo.user2@example.com` (2 occurrences)
-   - **Context:** Example data in documentation
+1. **docs/auto-login-vault-refactor-plan.md**
+   - Uses `demo.user1@example.com` and `demo.user2@example.com` in example vault data.
 
-2. **docs/debug-logging.md** (lines 91-97)
-   - `demo.profile@example.com` (3 occurrences)
-   - **Context:** Example debug output
+2. **docs/debug-logging.md** and **tests/RouterPlus.App.E2E/COVERAGE.md**
+   - Use `demo.profile@example.com` in example output.
 
-3. **tests/RouterPlus.App.E2E/COVERAGE.md** (lines 152-156)
-   - `demo.profile@example.com` (3 occurrences)
-   - **Context:** Test coverage logs
-
-4. **tests/RouterPlus.Core.Tests/UsageInferenceIntegrationTests.cs** (line 85)
-   - `synthetic-user-123` (username in error message example)
-   - **Context:** Real error message from production used as test data
+3. **tests/RouterPlus.Core.Tests/UsageInferenceIntegrationTests.cs**
+   - Uses `synthetic-user-123` as a synthetic provider username in an error fixture.
 
 ---
 
@@ -87,16 +77,16 @@
 Replace personal emails in documentation with example.com pattern:
 
 ```diff
-- "demo.user1@example.com": {
+- "real-user@example.invalid": {
 + "demo.user1@example.com": {
 
-- "demo.user2@example.com": {
+- "real-work@example.invalid": {
 + "demo.user2@example.com": {
 
-- demo.profile@example.com
+- real-profile@example.invalid
 + demo.profile@example.com
 
-- synthetic-user-123
+- real-provider-user
 + synthetic-user-123
 ```
 

@@ -37,6 +37,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     private GoogleAccountVaultSession? _vaultSession;
     private bool _isBatchLoginRunning;
     private bool _isVaultLocked = true;
+    private readonly object _initializationLock = new();
+    private Task? _initializationTask;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -60,7 +62,18 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         BatchLoginCommand = new AsyncRelayCommand(BatchLoginAsync, () => GoogleAccounts.Any(a => a.IsSelected && a.HasCredentials) && !IsBatchLoginRunning);
         RefreshCommand = new AsyncRelayCommand(RefreshDataAsync);
 
-        _ = LoadDataAsync();
+        _ = InitializeAsync();
+    }
+
+    public Task InitializationTask => _initializationTask ?? InitializeAsync();
+
+    public Task InitializeAsync()
+    {
+        lock (_initializationLock)
+        {
+            _initializationTask ??= LoadDataAsync();
+            return _initializationTask;
+        }
     }
 
     // Selected tab index
@@ -186,6 +199,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
     private async Task LoadDataAsync()
     {
+        await _mainViewModel.InitializationTask;
+
         try
         {
             SetStatus("Loading vault data...");

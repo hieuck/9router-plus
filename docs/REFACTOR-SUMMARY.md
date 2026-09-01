@@ -121,7 +121,7 @@
 
 ### 1. Google OAuth Auto-Login
 - **Codex:** Full automation working
-- **Kiro:** Full automation working (tested: demo.user1@example.com)
+- **Kiro:** Full automation working (tested with a synthetic profile)
 - **OpenRouter:** Base class ready
 - **GitHub:** Base class ready
 
@@ -345,7 +345,7 @@ else
 
 ## Acknowledgments
 
-**User Feedback:** demo.user1@example.com profile testing  
+**User Feedback:** Synthetic profile testing
 **Session Quality:** Detailed feedback on Kiro automation  
 **Code Standards:** Followed CLAUDE.md (simplicity, surgical changes, goal-driven)
 

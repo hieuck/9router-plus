@@ -32,6 +32,16 @@ public sealed class GoogleLoginCdpBrowserTests
     }
 
     [Fact]
+    public void Recaptcha_challenge_url_is_detected_as_manual_challenge()
+    {
+        var isManualChallenge = GoogleLoginCdpBrowser.IsManualChallenge(
+            new Uri("https://accounts.google.com/v3/signin/challenge/recaptcha?TL=synthetic"),
+            hasChallengeElement: false);
+
+        Assert.True(isManualChallenge);
+    }
+
+    [Fact]
     public async Task FillAsync_records_field_and_value()
     {
         var browser = new FakeGoogleLoginBrowser();

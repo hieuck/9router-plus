@@ -109,6 +109,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
     private bool _isMultiSelectMode;
     private CancellationTokenSource? _batchLoginCts;
+    private readonly object _initializationLock = new();
+    private Task? _initializationTask;
+    private bool _isInitialized;
+    private readonly TaskCompletionSource<bool> _initializationCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
 
     public MainViewModel(
         SettingsStore? settingsStore = null,
@@ -1375,7 +1381,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand OpenReleasePageCommand { get; }
 
+    internal Task InitializationTask => _initializationTask ?? _initializationCompletion.Task;
+
+    internal bool IsInitialized => _isInitialized;
+
     public async Task InitializeAsync()
+    {
+        Task initializationTask;
+        lock (_initializationLock)
+        {
+            initializationTask = _initializationTask = InitializeCoreAsync();
+        }
+
+        await initializationTask;
+    }
+
+    private async Task InitializeCoreAsync()
     {
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Startup, "MainViewModel.InitializeAsync");
         DebugLogger.Log(DiagnosticCategories.Startup, "Loading application settings and profiles");
@@ -1416,6 +1437,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 await RefreshConnectionStatusesAsync(showStatus: true);
             }
+            _isInitialized = true;
+            _initializationCompletion.TrySetResult(true);
             DebugLogger.Log(DiagnosticCategories.Startup, $"Initialization completed: {Profiles.Count} profiles");
             if (_runStartupUpdateCheck)
             {

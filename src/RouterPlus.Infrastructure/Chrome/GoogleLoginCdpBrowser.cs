@@ -145,7 +145,8 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     const isSignInPage = window.location.pathname.includes('/signin') ||
                          !!document.querySelector('input[type=""email""], input[type=""password""]');
     const hasCompletionSignal = hasSignedInMarker && !isSignInPage;
-    const hasManualChallenge = !!document.querySelector('[data-challenge-id], .captcha, #captcha');
+    const hasChallengeElement = !!document.querySelector('[data-challenge-id], .captcha, #captcha');
+    const hasManualChallenge = hasChallengeElement || window.location.pathname.includes('/challenge/recaptcha');
 
     return {
         pageUrl: pageUrl,
@@ -192,7 +193,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             var hasTotpField = value.GetProperty("hasTotpField").GetBoolean();
             var has2FAMethodPicker = value.GetProperty("has2FAMethodPicker").GetBoolean();
             var hasCompletionSignal = value.GetProperty("hasCompletionSignal").GetBoolean();
-            var hasManualChallenge = value.GetProperty("hasManualChallenge").GetBoolean();
+            var hasManualChallenge = IsManualChallenge(
+                pageUrl,
+                value.GetProperty("hasManualChallenge").GetBoolean());
 
             return new GoogleLoginPageState(
                 pageUrl,
@@ -207,6 +210,14 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         {
             throw new InvalidOperationException($"Failed to read page state: {ex.Message}", ex);
         }
+    }
+
+    internal static bool IsManualChallenge(Uri pageUri, bool hasChallengeElement)
+    {
+        ArgumentNullException.ThrowIfNull(pageUri);
+        return hasChallengeElement || pageUri.AbsolutePath.Contains(
+            "/challenge/recaptcha",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsDiagnosticCaptureEnabled()
