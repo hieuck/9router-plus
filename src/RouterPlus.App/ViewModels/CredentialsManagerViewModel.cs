@@ -30,7 +30,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     private int _selectedTabIndex;
     private string _statusMessage = string.Empty;
     private GoogleAccountRowViewModel? _selectedGoogleAccount;
-    private ProviderConnectionRowViewModel? _selectedCodexConnection;
+    private CodexConnectionRowViewModel? _selectedCodexConnection;
     private ProviderConnectionRowViewModel? _selectedKiroConnection;
     private ProviderConnectionRowViewModel? _selectedGitHubConnection;
     private ProviderConnectionRowViewModel? _selectedOpenRouterConnection;
@@ -71,6 +71,28 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
         RefreshCommand = new AsyncRelayCommand(RefreshDataAsync, () => !IsBatchLoginRunning);
+
+        // Codex commands
+        SaveCodexRowCommand = new AsyncRelayCommand<CodexConnectionRowViewModel>(
+            SaveCodexRowAsync,
+            _ => !IsBatchLoginRunning);
+        RemoveCodexConnectionCommand = new AsyncRelayCommand(
+            RemoveCodexConnectionAsync,
+            () => CanRemoveCodexConnection);
+
+        // Provider commands
+        SaveProviderRowCommand = new AsyncRelayCommand<ProviderConnectionRowViewModel>(
+            SaveProviderRowAsync,
+            _ => !IsBatchLoginRunning);
+        RemoveKiroConnectionCommand = new AsyncRelayCommand(
+            RemoveKiroConnectionAsync,
+            () => CanRemoveKiroConnection);
+        RemoveGitHubConnectionCommand = new AsyncRelayCommand(
+            RemoveGitHubConnectionAsync,
+            () => CanRemoveGitHubConnection);
+        RemoveOpenRouterConnectionCommand = new AsyncRelayCommand(
+            RemoveOpenRouterConnectionAsync,
+            () => CanRemoveOpenRouterConnection);
 
         _ = InitializeAsync();
     }
@@ -115,6 +137,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
     public int SelectedCount => GoogleAccounts.Count(a => a.IsSelected && a.HasCredentials);
 
+    public int CodexSelectedCount => CodexConnections.Count(c => c.IsSelected && c.HasCredentials);
+
     public bool IsBatchLoginRunning
     {
         get => _isBatchLoginRunning;
@@ -125,12 +149,22 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanModifyCredentials));
             OnPropertyChanged(nameof(CanRemoveGoogleAccount));
+            OnPropertyChanged(nameof(CanRemoveCodexConnection));
+            OnPropertyChanged(nameof(CanRemoveKiroConnection));
+            OnPropertyChanged(nameof(CanRemoveGitHubConnection));
+            OnPropertyChanged(nameof(CanRemoveOpenRouterConnection));
             BatchLoginCommand.RaiseCanExecuteChanged();
             StopBatchLoginCommand.RaiseCanExecuteChanged();
             RefreshCommand.RaiseCanExecuteChanged();
             SaveRowCommand.RaiseCanExecuteChanged();
             LoginRowCommand.RaiseCanExecuteChanged();
             RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
+            SaveCodexRowCommand.RaiseCanExecuteChanged();
+            RemoveCodexConnectionCommand.RaiseCanExecuteChanged();
+            SaveProviderRowCommand.RaiseCanExecuteChanged();
+            RemoveKiroConnectionCommand.RaiseCanExecuteChanged();
+            RemoveGitHubConnectionCommand.RaiseCanExecuteChanged();
+            RemoveOpenRouterConnectionCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -164,12 +198,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         CanModifyCredentials && SelectedGoogleAccount?.HasCredentials == true;
 
     // Provider connections per provider
-    public ObservableCollection<ProviderConnectionRowViewModel> CodexConnections { get; } = new();
+    public ObservableCollection<CodexConnectionRowViewModel> CodexConnections { get; } = new();
     public ObservableCollection<ProviderConnectionRowViewModel> KiroConnections { get; } = new();
     public ObservableCollection<ProviderConnectionRowViewModel> GitHubConnections { get; } = new();
     public ObservableCollection<ProviderConnectionRowViewModel> OpenRouterConnections { get; } = new();
 
-    public ProviderConnectionRowViewModel? SelectedCodexConnection
+    public CodexConnectionRowViewModel? SelectedCodexConnection
     {
         get => _selectedCodexConnection;
         set
@@ -177,6 +211,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             if (_selectedCodexConnection == value) return;
             _selectedCodexConnection = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanRemoveCodexConnection));
+            RemoveCodexConnectionCommand?.RaiseCanExecuteChanged();
         }
     }
 
@@ -188,6 +224,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             if (_selectedKiroConnection == value) return;
             _selectedKiroConnection = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanRemoveKiroConnection));
+            RemoveKiroConnectionCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -199,6 +237,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             if (_selectedGitHubConnection == value) return;
             _selectedGitHubConnection = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanRemoveGitHubConnection));
+            RemoveGitHubConnectionCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -210,6 +250,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             if (_selectedOpenRouterConnection == value) return;
             _selectedOpenRouterConnection = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanRemoveOpenRouterConnection));
+            RemoveOpenRouterConnectionCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -220,6 +262,28 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     public AsyncRelayCommand BatchLoginCommand { get; }
     public RelayCommand StopBatchLoginCommand { get; }
     public AsyncRelayCommand RefreshCommand { get; }
+
+    // Codex commands
+    public AsyncRelayCommand<CodexConnectionRowViewModel> SaveCodexRowCommand { get; }
+    public AsyncRelayCommand RemoveCodexConnectionCommand { get; }
+
+    // Provider commands (Kiro, GitHub, OpenRouter)
+    public AsyncRelayCommand<ProviderConnectionRowViewModel> SaveProviderRowCommand { get; }
+    public AsyncRelayCommand RemoveKiroConnectionCommand { get; }
+    public AsyncRelayCommand RemoveGitHubConnectionCommand { get; }
+    public AsyncRelayCommand RemoveOpenRouterConnectionCommand { get; }
+
+    public bool CanRemoveCodexConnection =>
+        CanModifyCredentials && SelectedCodexConnection?.HasCredentials == true;
+
+    public bool CanRemoveKiroConnection =>
+        CanModifyCredentials && SelectedKiroConnection?.HasCredentials == true;
+
+    public bool CanRemoveGitHubConnection =>
+        CanModifyCredentials && SelectedGitHubConnection?.HasCredentials == true;
+
+    public bool CanRemoveOpenRouterConnection =>
+        CanModifyCredentials && SelectedOpenRouterConnection?.HasCredentials == true;
 
     public Task? BatchLoginTask => _batchLoginTask;
 
@@ -356,10 +420,43 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         foreach (var profile in _mainViewModel.FilteredProfiles)
         {
-            // Load connections for each provider
+            // Load Codex with full inline editing support
+            var codexConnection = await _providerConnectionVaultStore.GetConnectionAsync(
+                profile.Name,
+                ProviderKind.Codex,
+                CancellationToken.None);
+
+            var codexRow = new CodexConnectionRowViewModel
+            {
+                ProfileId = profile.Id,
+                ProfileName = profile.Name,
+                AuthMethod = codexConnection?.PreferredMethod ?? AuthMethod.GoogleOAuth,
+                LinkedGoogleAccount = codexConnection?.LinkedGoogleAccount ?? string.Empty,
+                Email = codexConnection?.DirectCredential?.Email ?? string.Empty,
+                Password = codexConnection?.DirectCredential?.Password ?? string.Empty,
+                TotpSecret = codexConnection?.DirectCredential?.TotpSecret ?? string.Empty,
+                HasCredentials = codexConnection != null &&
+                    (!string.IsNullOrEmpty(codexConnection.LinkedGoogleAccount) ||
+                     codexConnection.DirectCredential != null),
+                IsEditing = false,
+                IsSelected = false
+            };
+
+            // Subscribe to property changes to update selection count
+            codexRow.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName is nameof(CodexConnectionRowViewModel.IsSelected)
+                    or nameof(CodexConnectionRowViewModel.HasCredentials))
+                {
+                    OnPropertyChanged(nameof(CodexSelectedCount));
+                }
+            };
+
+            CodexConnections.Add(codexRow);
+
+            // Load other providers with full inline editing support
             var providers = new[]
             {
-                (ProviderKind.Codex, CodexConnections),
                 (ProviderKind.Kiro, KiroConnections),
                 (ProviderKind.GitHub, GitHubConnections),
                 (ProviderKind.OpenRouter, OpenRouterConnections)
@@ -372,27 +469,23 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                     kind,
                     CancellationToken.None);
 
-                if (connection != null)
+                var row = new ProviderConnectionRowViewModel
                 {
-                    collection.Add(new ProviderConnectionRowViewModel
-                    {
-                        ProfileName = connection.ProfileName,
-                        PreferredMethod = connection.PreferredMethod,
-                        LinkedGoogleAccount = connection.LinkedGoogleAccount ?? "Not linked",
-                        HasDirectCredentials = connection.DirectCredential != null
-                    });
-                }
-                else
-                {
-                    // Show unconfigured row
-                    collection.Add(new ProviderConnectionRowViewModel
-                    {
-                        ProfileName = profile.Name,
-                        PreferredMethod = AuthMethod.GoogleOAuth,
-                        LinkedGoogleAccount = "Not configured",
-                        HasDirectCredentials = false
-                    });
-                }
+                    ProfileId = profile.Id,
+                    ProfileName = profile.Name,
+                    AuthMethod = connection?.PreferredMethod ?? AuthMethod.GoogleOAuth,
+                    LinkedGoogleAccount = connection?.LinkedGoogleAccount ?? string.Empty,
+                    Email = connection?.DirectCredential?.Email ?? string.Empty,
+                    Password = connection?.DirectCredential?.Password ?? string.Empty,
+                    TotpSecret = connection?.DirectCredential?.TotpSecret ?? string.Empty,
+                    HasCredentials = connection != null &&
+                        (!string.IsNullOrEmpty(connection.LinkedGoogleAccount) ||
+                         connection.DirectCredential != null),
+                    IsEditing = false,
+                    IsSelected = false
+                };
+
+                collection.Add(row);
             }
         }
     }
@@ -822,6 +915,292 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         await RemoveGoogleAccountAsync(matchingRows[0]);
     }
 
+    private async Task SaveCodexRowAsync(CodexConnectionRowViewModel? row)
+    {
+        if (row == null) return;
+
+        if (IsBatchLoginRunning)
+        {
+            SetStatus("Batch login is already running");
+            return;
+        }
+
+        // Existing rows enter edit mode before the command saves changes
+        if (row.HasCredentials && !row.IsEditing)
+        {
+            row.IsEditing = true;
+            SetStatus($"Editing Codex credentials for {row.ProfileName}");
+            return;
+        }
+
+        // Validate based on auth method
+        if (row.AuthMethod == AuthMethod.GoogleOAuth)
+        {
+            if (string.IsNullOrWhiteSpace(row.LinkedGoogleAccount))
+            {
+                SetStatus("Google account is required for OAuth method");
+                return;
+            }
+
+            // Verify the linked Google account exists
+            var googleAccount = GoogleAccounts.FirstOrDefault(a =>
+                a.Email.Equals(row.LinkedGoogleAccount, StringComparison.OrdinalIgnoreCase));
+            if (googleAccount == null)
+            {
+                SetStatus($"Google account '{row.LinkedGoogleAccount}' not found in vault");
+                return;
+            }
+        }
+        else // Direct
+        {
+            if (string.IsNullOrWhiteSpace(row.Email))
+            {
+                SetStatus("Email is required for Direct login");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(row.Password))
+            {
+                SetStatus("Password is required for Direct login");
+                return;
+            }
+        }
+
+        try
+        {
+            // Build connection
+            var connection = new ProviderAuthConnection
+            {
+                ProfileName = row.ProfileName,
+                Provider = ProviderKind.Codex,
+                PreferredMethod = row.AuthMethod,
+                LinkedGoogleAccount = row.AuthMethod == AuthMethod.GoogleOAuth
+                    ? row.LinkedGoogleAccount
+                    : null,
+                DirectCredential = row.AuthMethod == AuthMethod.Direct
+                    ? new ProviderCredential
+                    {
+                        Email = row.Email.Trim(),
+                        Password = row.Password,
+                        TotpSecret = string.IsNullOrWhiteSpace(row.TotpSecret)
+                            ? null
+                            : row.TotpSecret.Trim()
+                    }
+                    : null
+            };
+
+            await _providerConnectionVaultStore.SaveConnectionAsync(connection, CancellationToken.None);
+
+            // Update UI state
+            row.HasCredentials = true;
+            row.IsEditing = false;
+
+            SetStatus($"Saved Codex credentials for {row.ProfileName}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error saving Codex credentials: {ex.Message}");
+        }
+    }
+
+    private Task RemoveCodexConnectionAsync()
+    {
+        return SelectedCodexConnection is { } row
+            ? RemoveCodexConnectionAsync(row)
+            : Task.CompletedTask;
+    }
+
+    private async Task RemoveCodexConnectionAsync(CodexConnectionRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var profileName = row.ProfileName;
+
+        try
+        {
+            await _providerConnectionVaultStore.RemoveConnectionAsync(
+                profileName,
+                ProviderKind.Codex,
+                CancellationToken.None);
+
+            // Update UI - clear credentials but keep row
+            row.AuthMethod = AuthMethod.GoogleOAuth;
+            row.LinkedGoogleAccount = string.Empty;
+            row.Email = string.Empty;
+            row.Password = string.Empty;
+            row.TotpSecret = string.Empty;
+            row.HasCredentials = false;
+            row.IsEditing = false;
+            OnPropertyChanged(nameof(CanRemoveCodexConnection));
+            RemoveCodexConnectionCommand.RaiseCanExecuteChanged();
+
+            SetStatus($"Removed Codex credentials for {profileName}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error removing Codex credentials: {ex.Message}");
+        }
+    }
+
+    private async Task SaveProviderRowAsync(ProviderConnectionRowViewModel? row)
+    {
+        if (row == null) return;
+
+        if (IsBatchLoginRunning)
+        {
+            SetStatus("Batch login is already running");
+            return;
+        }
+
+        // Existing rows enter edit mode before the command saves changes
+        if (row.HasCredentials && !row.IsEditing)
+        {
+            row.IsEditing = true;
+            SetStatus($"Editing provider credentials for {row.ProfileName}");
+            return;
+        }
+
+        // Determine provider kind based on which collection contains this row
+        ProviderKind provider;
+        if (KiroConnections.Contains(row))
+            provider = ProviderKind.Kiro;
+        else if (GitHubConnections.Contains(row))
+            provider = ProviderKind.GitHub;
+        else if (OpenRouterConnections.Contains(row))
+            provider = ProviderKind.OpenRouter;
+        else
+        {
+            SetStatus("Cannot determine provider for this row");
+            return;
+        }
+
+        // Validate based on auth method
+        if (row.AuthMethod == AuthMethod.GoogleOAuth)
+        {
+            if (string.IsNullOrWhiteSpace(row.LinkedGoogleAccount))
+            {
+                SetStatus("Google account is required for OAuth method");
+                return;
+            }
+
+            // Verify the linked Google account exists
+            var googleAccount = GoogleAccounts.FirstOrDefault(a =>
+                a.Email.Equals(row.LinkedGoogleAccount, StringComparison.OrdinalIgnoreCase));
+            if (googleAccount == null)
+            {
+                SetStatus($"Google account '{row.LinkedGoogleAccount}' not found in vault");
+                return;
+            }
+        }
+        else // Direct
+        {
+            if (string.IsNullOrWhiteSpace(row.Email))
+            {
+                SetStatus("Email is required for Direct login");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(row.Password))
+            {
+                SetStatus("Password is required for Direct login");
+                return;
+            }
+        }
+
+        try
+        {
+            // Build connection
+            var connection = new ProviderAuthConnection
+            {
+                ProfileName = row.ProfileName,
+                Provider = provider,
+                PreferredMethod = row.AuthMethod,
+                LinkedGoogleAccount = row.AuthMethod == AuthMethod.GoogleOAuth
+                    ? row.LinkedGoogleAccount
+                    : null,
+                DirectCredential = row.AuthMethod == AuthMethod.Direct
+                    ? new ProviderCredential
+                    {
+                        Email = row.Email.Trim(),
+                        Password = row.Password,
+                        TotpSecret = string.IsNullOrWhiteSpace(row.TotpSecret)
+                            ? null
+                            : row.TotpSecret.Trim()
+                    }
+                    : null
+            };
+
+            await _providerConnectionVaultStore.SaveConnectionAsync(connection, CancellationToken.None);
+
+            // Update UI state
+            row.HasCredentials = true;
+            row.IsEditing = false;
+
+            SetStatus($"Saved {provider} credentials for {row.ProfileName}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error saving {provider} credentials: {ex.Message}");
+        }
+    }
+
+    private Task RemoveKiroConnectionAsync()
+    {
+        return SelectedKiroConnection is { } row
+            ? RemoveProviderConnectionAsync(row, ProviderKind.Kiro)
+            : Task.CompletedTask;
+    }
+
+    private Task RemoveGitHubConnectionAsync()
+    {
+        return SelectedGitHubConnection is { } row
+            ? RemoveProviderConnectionAsync(row, ProviderKind.GitHub)
+            : Task.CompletedTask;
+    }
+
+    private Task RemoveOpenRouterConnectionAsync()
+    {
+        return SelectedOpenRouterConnection is { } row
+            ? RemoveProviderConnectionAsync(row, ProviderKind.OpenRouter)
+            : Task.CompletedTask;
+    }
+
+    private async Task RemoveProviderConnectionAsync(ProviderConnectionRowViewModel row, ProviderKind provider)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var profileName = row.ProfileName;
+
+        try
+        {
+            await _providerConnectionVaultStore.RemoveConnectionAsync(
+                profileName,
+                provider,
+                CancellationToken.None);
+
+            // Update UI - clear credentials but keep row
+            row.AuthMethod = AuthMethod.GoogleOAuth;
+            row.LinkedGoogleAccount = string.Empty;
+            row.Email = string.Empty;
+            row.Password = string.Empty;
+            row.TotpSecret = string.Empty;
+            row.HasCredentials = false;
+            row.IsEditing = false;
+
+            // Update CanRemove properties
+            OnPropertyChanged(nameof(CanRemoveKiroConnection));
+            OnPropertyChanged(nameof(CanRemoveGitHubConnection));
+            OnPropertyChanged(nameof(CanRemoveOpenRouterConnection));
+            RemoveKiroConnectionCommand.RaiseCanExecuteChanged();
+            RemoveGitHubConnectionCommand.RaiseCanExecuteChanged();
+            RemoveOpenRouterConnectionCommand.RaiseCanExecuteChanged();
+
+            SetStatus($"Removed {provider} credentials for {profileName}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error removing {provider} credentials: {ex.Message}");
+        }
+    }
+
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
@@ -1060,15 +1439,35 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
 
 /// <summary>
 /// Row for provider connection (per profile).
+/// Used by Kiro/GitHub/OpenRouter tabs with inline editing support.
 /// </summary>
 public sealed class ProviderConnectionRowViewModel : INotifyPropertyChanged
 {
+    private string _profileId = string.Empty;
     private string _profileName = string.Empty;
-    private AuthMethod _preferredMethod = AuthMethod.GoogleOAuth;
-    private string? _linkedGoogleAccount;
-    private bool _hasDirectCredentials;
+    private AuthMethod _authMethod = AuthMethod.GoogleOAuth;
+    private string _linkedGoogleAccount = string.Empty;
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private string _totpSecret = string.Empty;
+    private bool _isSelected;
+    private bool _isEditing;
+    private bool _hasCredentials;
+    private bool _isPasswordVisible;
+    private bool _isTotpSecretVisible;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string ProfileId
+    {
+        get => _profileId;
+        set
+        {
+            if (_profileId == value) return;
+            _profileId = value;
+            OnPropertyChanged();
+        }
+    }
 
     public string ProfileName
     {
@@ -1081,19 +1480,21 @@ public sealed class ProviderConnectionRowViewModel : INotifyPropertyChanged
         }
     }
 
-    public AuthMethod PreferredMethod
+    public AuthMethod AuthMethod
     {
-        get => _preferredMethod;
+        get => _authMethod;
         set
         {
-            if (_preferredMethod == value) return;
-            _preferredMethod = value;
+            if (_authMethod == value) return;
+            _authMethod = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsGoogleOAuth));
+            OnPropertyChanged(nameof(IsDirect));
             OnPropertyChanged(nameof(PreferredMethodText));
         }
     }
 
-    public string? LinkedGoogleAccount
+    public string LinkedGoogleAccount
     {
         get => _linkedGoogleAccount;
         set
@@ -1105,25 +1506,313 @@ public sealed class ProviderConnectionRowViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool HasDirectCredentials
+    public string Email
     {
-        get => _hasDirectCredentials;
+        get => _email;
         set
         {
-            if (_hasDirectCredentials == value) return;
-            _hasDirectCredentials = value;
+            if (_email == value) return;
+            _email = value;
             OnPropertyChanged();
         }
     }
 
-    public bool HasGoogleOAuth => !string.IsNullOrEmpty(LinkedGoogleAccount);
+    public string Password
+    {
+        get => _password;
+        set
+        {
+            if (_password == value) return;
+            _password = value;
+            OnPropertyChanged();
+        }
+    }
 
-    public string PreferredMethodText => PreferredMethod switch
+    public string TotpSecret
+    {
+        get => _totpSecret;
+        set
+        {
+            if (_totpSecret == value) return;
+            _totpSecret = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsEditing
+    {
+        get => _isEditing;
+        set
+        {
+            if (_isEditing == value) return;
+            _isEditing = value;
+            if (!value)
+            {
+                ResetSensitiveVisibility();
+            }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ActionButtonText));
+            OnPropertyChanged(nameof(IsEditable));
+        }
+    }
+
+    public bool HasCredentials
+    {
+        get => _hasCredentials;
+        set
+        {
+            if (_hasCredentials == value) return;
+            _hasCredentials = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsPasswordVisible
+    {
+        get => _isPasswordVisible;
+        set
+        {
+            if (_isPasswordVisible == value) return;
+            _isPasswordVisible = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PasswordVisibilityButtonText));
+            OnPropertyChanged(nameof(PasswordVisibilityToolTip));
+        }
+    }
+
+    public bool IsTotpSecretVisible
+    {
+        get => _isTotpSecretVisible;
+        set
+        {
+            if (_isTotpSecretVisible == value) return;
+            _isTotpSecretVisible = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TotpVisibilityButtonText));
+            OnPropertyChanged(nameof(TotpVisibilityToolTip));
+        }
+    }
+
+    public bool IsGoogleOAuth => AuthMethod == AuthMethod.GoogleOAuth;
+    public bool IsDirect => AuthMethod == AuthMethod.Direct;
+    public bool IsEditable => !HasCredentials || IsEditing;
+    public bool HasGoogleOAuth => !string.IsNullOrEmpty(LinkedGoogleAccount);
+    public string ActionButtonText => IsEditing ? "💾 Save" : (HasCredentials ? "✏ Edit" : "💾 Save");
+    public string PasswordVisibilityButtonText => IsPasswordVisible ? "👁" : "👁";
+    public string PasswordVisibilityToolTip => IsPasswordVisible ? "Hide password" : "Show password";
+    public string TotpVisibilityButtonText => IsTotpSecretVisible ? "👁" : "👁";
+    public string TotpVisibilityToolTip => IsTotpSecretVisible ? "Hide TOTP" : "Show TOTP";
+
+    public string PreferredMethodText => AuthMethod switch
     {
         AuthMethod.GoogleOAuth => "Google OAuth",
         AuthMethod.Direct => "Direct Login",
         _ => "Unknown"
     };
+
+    private void ResetSensitiveVisibility()
+    {
+        IsPasswordVisible = false;
+        IsTotpSecretVisible = false;
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+
+/// <summary>
+/// Row ViewModel for Codex connection with inline editing support.
+/// Similar structure to GoogleAccountRowViewModel but for Codex provider.
+/// Supports both Google OAuth and Direct Login methods.
+/// </summary>
+public sealed class CodexConnectionRowViewModel : INotifyPropertyChanged
+{
+    private string _profileId = string.Empty;
+    private string _profileName = string.Empty;
+    private AuthMethod _authMethod = AuthMethod.GoogleOAuth;
+    private string _linkedGoogleAccount = string.Empty;
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private string _totpSecret = string.Empty;
+    private bool _isSelected;
+    private bool _isEditing;
+    private bool _hasCredentials;
+    private bool _isPasswordVisible;
+    private bool _isTotpSecretVisible;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string ProfileId
+    {
+        get => _profileId;
+        set
+        {
+            if (_profileId == value) return;
+            _profileId = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ProfileName
+    {
+        get => _profileName;
+        set
+        {
+            if (_profileName == value) return;
+            _profileName = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public AuthMethod AuthMethod
+    {
+        get => _authMethod;
+        set
+        {
+            if (_authMethod == value) return;
+            _authMethod = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsGoogleOAuth));
+            OnPropertyChanged(nameof(IsDirect));
+        }
+    }
+
+    public string LinkedGoogleAccount
+    {
+        get => _linkedGoogleAccount;
+        set
+        {
+            if (_linkedGoogleAccount == value) return;
+            _linkedGoogleAccount = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string Email
+    {
+        get => _email;
+        set
+        {
+            if (_email == value) return;
+            _email = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string Password
+    {
+        get => _password;
+        set
+        {
+            if (_password == value) return;
+            _password = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string TotpSecret
+    {
+        get => _totpSecret;
+        set
+        {
+            if (_totpSecret == value) return;
+            _totpSecret = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsEditing
+    {
+        get => _isEditing;
+        set
+        {
+            if (_isEditing == value) return;
+            _isEditing = value;
+            if (!value)
+            {
+                ResetSensitiveVisibility();
+            }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ActionButtonText));
+            OnPropertyChanged(nameof(IsEditable));
+        }
+    }
+
+    public bool HasCredentials
+    {
+        get => _hasCredentials;
+        set
+        {
+            if (_hasCredentials == value) return;
+            _hasCredentials = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsPasswordVisible
+    {
+        get => _isPasswordVisible;
+        set
+        {
+            if (_isPasswordVisible == value) return;
+            _isPasswordVisible = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PasswordVisibilityButtonText));
+            OnPropertyChanged(nameof(PasswordVisibilityToolTip));
+        }
+    }
+
+    public bool IsTotpSecretVisible
+    {
+        get => _isTotpSecretVisible;
+        set
+        {
+            if (_isTotpSecretVisible == value) return;
+            _isTotpSecretVisible = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TotpVisibilityButtonText));
+            OnPropertyChanged(nameof(TotpVisibilityToolTip));
+        }
+    }
+
+    public bool IsGoogleOAuth => AuthMethod == AuthMethod.GoogleOAuth;
+    public bool IsDirect => AuthMethod == AuthMethod.Direct;
+    public bool IsEditable => !HasCredentials || IsEditing;
+    public string ActionButtonText => IsEditing ? "💾 Save" : (HasCredentials ? "✏ Edit" : "💾 Save");
+    public string PasswordVisibilityButtonText => IsPasswordVisible ? "👁" : "👁";
+    public string PasswordVisibilityToolTip => IsPasswordVisible ? "Hide password" : "Show password";
+    public string TotpVisibilityButtonText => IsTotpSecretVisible ? "👁" : "👁";
+    public string TotpVisibilityToolTip => IsTotpSecretVisible ? "Hide TOTP" : "Show TOTP";
+
+    private void ResetSensitiveVisibility()
+    {
+        IsPasswordVisible = false;
+        IsTotpSecretVisible = false;
+    }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {

@@ -236,36 +236,6 @@ public partial class CredentialsManagerDialog : Window
     }
 
     // Google Account Management
-    private void AddGoogleAccount_Click(object sender, RoutedEventArgs e)
-    {
-        UIEventLogger.LogClick("CredentialsManager.AddGoogleAccount");
-        _viewModel.SetStatus("Feature coming soon: Add Google account");
-
-        // TODO: Open dialog to add new Google account to vault
-        // For now, user can use existing "Tự động đăng nhập Google" context menu
-        MessageBox.Show(
-            "To add a Google account, right-click on a profile and select 'Tự động đăng nhập Google'.",
-            "Add Google Account",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
-    }
-
-    private void EditGoogleAccount_Click(object sender, RoutedEventArgs e)
-    {
-        UIEventLogger.LogClick("CredentialsManager.EditGoogleAccount");
-        if (_viewModel.SelectedGoogleAccount == null)
-            return;
-
-        _viewModel.SetStatus($"Feature coming soon: Edit {_viewModel.SelectedGoogleAccount.Email}");
-
-        // TODO: Open dialog to edit selected Google account
-        MessageBox.Show(
-            "To edit a Google account, right-click on a profile and select 'Tự động đăng nhập Google'.",
-            "Edit Google Account",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
-    }
-
     private async void RemoveGoogleAccount_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("CredentialsManager.RemoveGoogleAccount");
@@ -286,92 +256,152 @@ public partial class CredentialsManagerDialog : Window
         await _viewModel.RemoveGoogleAccountAsync(row);
     }
 
-    // Codex Configuration
-    private void ConfigureCodexConnection_Click(object sender, RoutedEventArgs e)
+    private void ToggleCodexPasswordVisibility_Click(object sender, RoutedEventArgs e)
     {
-        UIEventLogger.LogClick("CredentialsManager.ConfigureCodex");
-        if (_viewModel.SelectedCodexConnection == null)
-            return;
-
-        var connection = _viewModel.SelectedCodexConnection;
-        _viewModel.SetStatus($"Feature coming soon: Configure Codex for {connection.ProfileName}");
-
-        // TODO: Open ProviderConnectionConfigDialog for Codex
-        MessageBox.Show(
-            $"Codex configuration for profile '{connection.ProfileName}':\n\n" +
-            $"Current method: {connection.PreferredMethodText}\n" +
-            $"Google account: {connection.LinkedGoogleAccount}\n" +
-            $"Direct credentials: {(connection.HasDirectCredentials ? "Configured" : "Not configured")}\n\n" +
-            "Full configuration UI coming soon.",
-            "Configure Codex",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        if ((sender as FrameworkElement)?.DataContext is CodexConnectionRowViewModel row)
+        {
+            row.IsPasswordVisible = !row.IsPasswordVisible;
+        }
     }
 
-    // Kiro Configuration
-    private void ConfigureKiroConnection_Click(object sender, RoutedEventArgs e)
+    private void ToggleCodexTotpVisibility_Click(object sender, RoutedEventArgs e)
     {
-        UIEventLogger.LogClick("CredentialsManager.ConfigureKiro");
-        if (_viewModel.SelectedKiroConnection == null)
-            return;
-
-        var connection = _viewModel.SelectedKiroConnection;
-        _viewModel.SetStatus($"Feature coming soon: Configure Kiro for {connection.ProfileName}");
-
-        // TODO: Open ProviderConnectionConfigDialog for Kiro
-        MessageBox.Show(
-            $"Kiro configuration for profile '{connection.ProfileName}':\n\n" +
-            $"Current method: {connection.PreferredMethodText}\n" +
-            $"Google account: {connection.LinkedGoogleAccount}\n" +
-            $"Direct credentials: {(connection.HasDirectCredentials ? "Configured" : "Not configured")}\n\n" +
-            "Full configuration UI coming soon.",
-            "Configure Kiro",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        if ((sender as FrameworkElement)?.DataContext is CodexConnectionRowViewModel row)
+        {
+            row.IsTotpSecretVisible = !row.IsTotpSecretVisible;
+        }
     }
 
-    // GitHub Configuration
-    private void ConfigureGitHubConnection_Click(object sender, RoutedEventArgs e)
+    private void ToggleKiroPasswordVisibility_Click(object sender, RoutedEventArgs e)
     {
-        UIEventLogger.LogClick("CredentialsManager.ConfigureGitHub");
-        if (_viewModel.SelectedGitHubConnection == null)
-            return;
-
-        var connection = _viewModel.SelectedGitHubConnection;
-        _viewModel.SetStatus($"Feature coming soon: Configure GitHub for {connection.ProfileName}");
-
-        // TODO: Open ProviderConnectionConfigDialog for GitHub
-        MessageBox.Show(
-            $"GitHub configuration for profile '{connection.ProfileName}':\n\n" +
-            $"Current method: {connection.PreferredMethodText}\n" +
-            $"Google account: {connection.LinkedGoogleAccount}\n" +
-            $"Direct credentials: {(connection.HasDirectCredentials ? "Configured" : "Not configured")}\n\n" +
-            "Full configuration UI coming soon.",
-            "Configure GitHub",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        if ((sender as FrameworkElement)?.DataContext is ProviderConnectionRowViewModel row)
+        {
+            row.IsPasswordVisible = !row.IsPasswordVisible;
+        }
     }
 
-    // OpenRouter Configuration
-    private void ConfigureOpenRouterConnection_Click(object sender, RoutedEventArgs e)
+    private void ToggleKiroTotpVisibility_Click(object sender, RoutedEventArgs e)
     {
-        UIEventLogger.LogClick("CredentialsManager.ConfigureOpenRouter");
-        if (_viewModel.SelectedOpenRouterConnection == null)
+        if ((sender as FrameworkElement)?.DataContext is ProviderConnectionRowViewModel row)
+        {
+            row.IsTotpSecretVisible = !row.IsTotpSecretVisible;
+        }
+    }
+
+    private void ToggleGitHubPasswordVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ProviderConnectionRowViewModel row)
+        {
+            row.IsPasswordVisible = !row.IsPasswordVisible;
+        }
+    }
+
+    private void ToggleGitHubTotpVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ProviderConnectionRowViewModel row)
+        {
+            row.IsTotpSecretVisible = !row.IsTotpSecretVisible;
+        }
+    }
+
+    private void ToggleOpenRouterPasswordVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ProviderConnectionRowViewModel row)
+        {
+            row.IsPasswordVisible = !row.IsPasswordVisible;
+        }
+    }
+
+    private void ToggleOpenRouterTotpVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ProviderConnectionRowViewModel row)
+        {
+            row.IsTotpSecretVisible = !row.IsTotpSecretVisible;
+        }
+    }
+
+    private void RemoveCodexConnection_Click(object sender, RoutedEventArgs e)
+    {
+        UIEventLogger.LogClick("CredentialsManager.RemoveCodexConnection");
+        if (!_viewModel.CanRemoveCodexConnection || _viewModel.SelectedCodexConnection == null)
             return;
 
-        var connection = _viewModel.SelectedOpenRouterConnection;
-        _viewModel.SetStatus($"Feature coming soon: Configure OpenRouter for {connection.ProfileName}");
+        var row = _viewModel.SelectedCodexConnection;
+        var profileName = row.ProfileName;
+        var result = MessageBox.Show(
+            this,
+            $"Remove Codex credentials for '{profileName}'?\n\nThis cannot be undone.",
+            "Remove Codex Credentials",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
 
-        // TODO: Open ProviderConnectionConfigDialog for OpenRouter
-        MessageBox.Show(
-            $"OpenRouter configuration for profile '{connection.ProfileName}':\n\n" +
-            $"Current method: {connection.PreferredMethodText}\n" +
-            $"Google account: {connection.LinkedGoogleAccount}\n" +
-            $"Direct credentials: {(connection.HasDirectCredentials ? "Configured" : "Not configured")}\n\n" +
-            "Full configuration UI coming soon.",
-            "Configure OpenRouter",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        _viewModel.RemoveCodexConnectionCommand.Execute(null);
+    }
+
+    private void RemoveKiroConnection_Click(object sender, RoutedEventArgs e)
+    {
+        UIEventLogger.LogClick("CredentialsManager.RemoveKiroConnection");
+        if (!_viewModel.CanRemoveKiroConnection || _viewModel.SelectedKiroConnection == null)
+            return;
+
+        var row = _viewModel.SelectedKiroConnection;
+        var profileName = row.ProfileName;
+        var result = MessageBox.Show(
+            this,
+            $"Remove Kiro credentials for '{profileName}'?\n\nThis cannot be undone.",
+            "Remove Kiro Credentials",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        _viewModel.RemoveKiroConnectionCommand.Execute(null);
+    }
+
+    private void RemoveGitHubConnection_Click(object sender, RoutedEventArgs e)
+    {
+        UIEventLogger.LogClick("CredentialsManager.RemoveGitHubConnection");
+        if (!_viewModel.CanRemoveGitHubConnection || _viewModel.SelectedGitHubConnection == null)
+            return;
+
+        var row = _viewModel.SelectedGitHubConnection;
+        var profileName = row.ProfileName;
+        var result = MessageBox.Show(
+            this,
+            $"Remove GitHub credentials for '{profileName}'?\n\nThis cannot be undone.",
+            "Remove GitHub Credentials",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        _viewModel.RemoveGitHubConnectionCommand.Execute(null);
+    }
+
+    private void RemoveOpenRouterConnection_Click(object sender, RoutedEventArgs e)
+    {
+        UIEventLogger.LogClick("CredentialsManager.RemoveOpenRouterConnection");
+        if (!_viewModel.CanRemoveOpenRouterConnection || _viewModel.SelectedOpenRouterConnection == null)
+            return;
+
+        var row = _viewModel.SelectedOpenRouterConnection;
+        var profileName = row.ProfileName;
+        var result = MessageBox.Show(
+            this,
+            $"Remove OpenRouter credentials for '{profileName}'?\n\nThis cannot be undone.",
+            "Remove OpenRouter Credentials",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        _viewModel.RemoveOpenRouterConnectionCommand.Execute(null);
     }
 }
 
