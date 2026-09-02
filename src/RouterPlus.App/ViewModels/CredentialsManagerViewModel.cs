@@ -26,6 +26,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     // Compatibility seam: MainViewModel composes this runner from the shared
     // IGoogleAuthenticationService and owns the Chrome/browser lifetime.
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _runGoogleAuthentication;
+    private readonly Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> _runCodexAuthentication;
 
     private int _selectedTabIndex;
     private string _statusMessage = string.Empty;
@@ -49,13 +50,15 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         IGoogleAccountVaultStore googleAccountVaultStore,
         ProviderConnectionVaultStore providerConnectionVaultStore,
         GoogleAccountVaultPaths vaultPaths,
-        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleAuthenticationRunner)
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleAuthenticationRunner,
+        Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> codexAuthenticationRunner)
     {
         _mainViewModel = mainViewModel ?? throw new ArgumentNullException(nameof(mainViewModel));
         _googleAccountVaultStore = googleAccountVaultStore ?? throw new ArgumentNullException(nameof(googleAccountVaultStore));
         _providerConnectionVaultStore = providerConnectionVaultStore ?? throw new ArgumentNullException(nameof(providerConnectionVaultStore));
         _vaultPaths = vaultPaths ?? throw new ArgumentNullException(nameof(vaultPaths));
         _runGoogleAuthentication = googleAuthenticationRunner ?? throw new ArgumentNullException(nameof(googleAuthenticationRunner));
+        _runCodexAuthentication = codexAuthenticationRunner ?? throw new ArgumentNullException(nameof(codexAuthenticationRunner));
 
         // Initialize commands
         SaveRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(
@@ -76,6 +79,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         SaveCodexRowCommand = new AsyncRelayCommand<CodexConnectionRowViewModel>(
             SaveCodexRowAsync,
             _ => !IsBatchLoginRunning);
+        LoginCodexRowCommand = new AsyncRelayCommand<CodexConnectionRowViewModel>(
+            LoginCodexRowAsync,
+            row => !IsBatchLoginRunning && row?.HasCredentials == true);
         RemoveCodexConnectionCommand = new AsyncRelayCommand(
             RemoveCodexConnectionAsync,
             () => CanRemoveCodexConnection);
@@ -84,6 +90,15 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         SaveProviderRowCommand = new AsyncRelayCommand<ProviderConnectionRowViewModel>(
             SaveProviderRowAsync,
             _ => !IsBatchLoginRunning);
+        LoginKiroRowCommand = new AsyncRelayCommand<ProviderConnectionRowViewModel>(
+            LoginKiroRowAsync,
+            row => !IsBatchLoginRunning && row?.HasCredentials == true);
+        LoginGitHubRowCommand = new AsyncRelayCommand<ProviderConnectionRowViewModel>(
+            LoginGitHubRowAsync,
+            row => !IsBatchLoginRunning && row?.HasCredentials == true);
+        LoginOpenRouterRowCommand = new AsyncRelayCommand<ProviderConnectionRowViewModel>(
+            LoginOpenRouterRowAsync,
+            row => !IsBatchLoginRunning && row?.HasCredentials == true);
         RemoveKiroConnectionCommand = new AsyncRelayCommand(
             RemoveKiroConnectionAsync,
             () => CanRemoveKiroConnection);
@@ -135,6 +150,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     // Google Accounts section
     public ObservableCollection<GoogleAccountRowViewModel> GoogleAccounts { get; } = new();
 
+    public IEnumerable<GoogleAccountRowViewModel> ConfiguredGoogleAccounts =>
+        GoogleAccounts.Where(a => a.HasCredentials && !string.IsNullOrWhiteSpace(a.Email));
+
     public int SelectedCount => GoogleAccounts.Count(a => a.IsSelected && a.HasCredentials);
 
     public int CodexSelectedCount => CodexConnections.Count(c => c.IsSelected && c.HasCredentials);
@@ -160,8 +178,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             LoginRowCommand.RaiseCanExecuteChanged();
             RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
             SaveCodexRowCommand.RaiseCanExecuteChanged();
+            LoginCodexRowCommand.RaiseCanExecuteChanged();
             RemoveCodexConnectionCommand.RaiseCanExecuteChanged();
             SaveProviderRowCommand.RaiseCanExecuteChanged();
+            LoginKiroRowCommand.RaiseCanExecuteChanged();
+            LoginGitHubRowCommand.RaiseCanExecuteChanged();
+            LoginOpenRouterRowCommand.RaiseCanExecuteChanged();
             RemoveKiroConnectionCommand.RaiseCanExecuteChanged();
             RemoveGitHubConnectionCommand.RaiseCanExecuteChanged();
             RemoveOpenRouterConnectionCommand.RaiseCanExecuteChanged();
@@ -265,10 +287,14 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
     // Codex commands
     public AsyncRelayCommand<CodexConnectionRowViewModel> SaveCodexRowCommand { get; }
+    public AsyncRelayCommand<CodexConnectionRowViewModel> LoginCodexRowCommand { get; }
     public AsyncRelayCommand RemoveCodexConnectionCommand { get; }
 
     // Provider commands (Kiro, GitHub, OpenRouter)
     public AsyncRelayCommand<ProviderConnectionRowViewModel> SaveProviderRowCommand { get; }
+    public AsyncRelayCommand<ProviderConnectionRowViewModel> LoginKiroRowCommand { get; }
+    public AsyncRelayCommand<ProviderConnectionRowViewModel> LoginGitHubRowCommand { get; }
+    public AsyncRelayCommand<ProviderConnectionRowViewModel> LoginOpenRouterRowCommand { get; }
     public AsyncRelayCommand RemoveKiroConnectionCommand { get; }
     public AsyncRelayCommand RemoveGitHubConnectionCommand { get; }
     public AsyncRelayCommand RemoveOpenRouterConnectionCommand { get; }
@@ -357,12 +383,19 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                     or nameof(GoogleAccountRowViewModel.HasCredentials))
                 {
                     OnPropertyChanged(nameof(SelectedCount));
+                    OnPropertyChanged(nameof(ConfiguredGoogleAccounts));
                     BatchLoginCommand.RaiseCanExecuteChanged();
+                }
+                else if (e.PropertyName is nameof(GoogleAccountRowViewModel.Email))
+                {
+                    OnPropertyChanged(nameof(ConfiguredGoogleAccounts));
                 }
             };
 
             GoogleAccounts.Add(row);
         }
+
+        OnPropertyChanged(nameof(ConfiguredGoogleAccounts));
     }
 
     /// <summary>
@@ -629,6 +662,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             row.HasCredentials = true;
             row.IsEditing = false;
 
+            OnPropertyChanged(nameof(ConfiguredGoogleAccounts));
             SetStatus($"Saved credentials for {row.ProfileName}");
         }
         catch (Exception ex)
@@ -883,6 +917,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             row.HasCredentials = false;
             row.IsEditing = false;
             OnPropertyChanged(nameof(CanRemoveGoogleAccount));
+            OnPropertyChanged(nameof(ConfiguredGoogleAccounts));
             RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
 
             SetStatus($"Removed credentials for {profileName}");
@@ -1041,6 +1076,116 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         }
     }
 
+    private async Task LoginCodexRowAsync(CodexConnectionRowViewModel? row)
+    {
+        if (row == null || !row.HasCredentials)
+        {
+            SetStatus("No Codex credentials to login with");
+            return;
+        }
+
+        if (IsBatchLoginRunning)
+        {
+            SetStatus("Batch login is already running");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(row.ProfileId))
+        {
+            SetStatus($"Cannot login {row.ProfileName}: Profile ID not resolved");
+            return;
+        }
+
+        var profile = _mainViewModel.Profiles.FirstOrDefault(p => p.Id == row.ProfileId);
+        if (profile == null)
+        {
+            SetStatus($"❌ {row.ProfileName}: Profile not found");
+            return;
+        }
+
+        SetStatus($"🚀 Logging in Codex for {row.ProfileName}...");
+
+        try
+        {
+            CodexLoginCredential credential;
+
+            if (row.AuthMethod == AuthMethod.GoogleOAuth)
+            {
+                // Google OAuth flow: Login Google first, then auto-consent Codex
+                if (string.IsNullOrWhiteSpace(row.LinkedGoogleAccount))
+                {
+                    SetStatus($"❌ {row.ProfileName}: No linked Google account");
+                    return;
+                }
+
+                var googleAccount = GoogleAccounts.FirstOrDefault(a =>
+                    a.Email.Equals(row.LinkedGoogleAccount, StringComparison.OrdinalIgnoreCase));
+
+                if (googleAccount == null || !googleAccount.HasCredentials)
+                {
+                    SetStatus($"❌ {row.ProfileName}: Google account '{row.LinkedGoogleAccount}' not found or has no credentials");
+                    return;
+                }
+
+                // Step 1: Login Google account first
+                SetStatus($"🚀 {row.ProfileName}: Logging in Google account {row.LinkedGoogleAccount}...");
+
+                var googleCredential = new GoogleLoginCredential(
+                    googleAccount.ProfileId,
+                    googleAccount.Email,
+                    googleAccount.Password,
+                    string.IsNullOrWhiteSpace(googleAccount.TotpSecret) ? "NONE" : googleAccount.TotpSecret.Trim());
+
+                var googleResult = await _runGoogleAuthentication(profile, googleCredential, CancellationToken.None);
+
+                if (googleResult.Category != GoogleLoginResultCategory.Success)
+                {
+                    SetStatus($"❌ {row.ProfileName}: Google login failed - {googleResult.Category}");
+                    return;
+                }
+
+                SetStatus($"✓ {row.ProfileName}: Google logged in, starting Codex OAuth...");
+
+                credential = CodexLoginCredential.FromGoogleOAuth(row.ProfileId, row.LinkedGoogleAccount);
+            }
+            else // Direct method
+            {
+                // Direct login: auto-fill OpenAI login form
+                if (string.IsNullOrWhiteSpace(row.Email) || string.IsNullOrWhiteSpace(row.Password))
+                {
+                    SetStatus($"❌ {row.ProfileName}: Email and password required for Direct login");
+                    return;
+                }
+
+                credential = CodexLoginCredential.FromDirect(
+                    row.ProfileId,
+                    row.Email,
+                    row.Password,
+                    string.IsNullOrWhiteSpace(row.TotpSecret) ? null : row.TotpSecret.Trim());
+            }
+
+            // Step 2: Run Codex login automation
+            var result = await _runCodexAuthentication(profile, credential, CancellationToken.None);
+
+            if (result.Category == CodexLoginResultCategory.Success)
+            {
+                SetStatus($"✓ {row.ProfileName}: Codex login successful");
+            }
+            else if (result.Category == CodexLoginResultCategory.ManualInterventionRequired)
+            {
+                SetStatus($"⚠ {row.ProfileName}: Manual intervention required - {result.Message}");
+            }
+            else
+            {
+                SetStatus($"❌ {row.ProfileName}: {result.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"❌ {row.ProfileName}: {ex.Message}");
+        }
+    }
+
     private async Task SaveProviderRowAsync(ProviderConnectionRowViewModel? row)
     {
         if (row == null) return;
@@ -1161,6 +1306,63 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         return SelectedOpenRouterConnection is { } row
             ? RemoveProviderConnectionAsync(row, ProviderKind.OpenRouter)
             : Task.CompletedTask;
+    }
+
+    private async Task LoginKiroRowAsync(ProviderConnectionRowViewModel? row)
+    {
+        await LoginProviderRowAsync(row, ProviderKind.Kiro);
+    }
+
+    private async Task LoginGitHubRowAsync(ProviderConnectionRowViewModel? row)
+    {
+        await LoginProviderRowAsync(row, ProviderKind.GitHub);
+    }
+
+    private async Task LoginOpenRouterRowAsync(ProviderConnectionRowViewModel? row)
+    {
+        await LoginProviderRowAsync(row, ProviderKind.OpenRouter);
+    }
+
+    private async Task LoginProviderRowAsync(ProviderConnectionRowViewModel? row, ProviderKind provider)
+    {
+        if (row == null || !row.HasCredentials)
+        {
+            SetStatus($"No {provider} credentials to login with");
+            return;
+        }
+
+        if (IsBatchLoginRunning)
+        {
+            SetStatus("Batch login is already running");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(row.ProfileId))
+        {
+            SetStatus($"Cannot login {row.ProfileName}: Profile ID not resolved");
+            return;
+        }
+
+        var profile = _mainViewModel.Profiles.FirstOrDefault(p => p.Id == row.ProfileId);
+        if (profile == null)
+        {
+            SetStatus($"❌ {row.ProfileName}: Profile not found");
+            return;
+        }
+
+        SetStatus($"🚀 Logging in {provider} for {row.ProfileName}...");
+
+        try
+        {
+            // TODO: Implement provider direct login automation
+            // For now, just show not implemented message
+            SetStatus($"⚠ {provider} login not implemented yet for {row.ProfileName}");
+            await Task.Delay(100); // Remove warning
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error connecting {provider}: {ex.Message}");
+        }
     }
 
     private async Task RemoveProviderConnectionAsync(ProviderConnectionRowViewModel row, ProviderKind provider)
@@ -1614,6 +1816,13 @@ public sealed class ProviderConnectionRowViewModel : INotifyPropertyChanged
     public string TotpVisibilityButtonText => IsTotpSecretVisible ? "👁" : "👁";
     public string TotpVisibilityToolTip => IsTotpSecretVisible ? "Hide TOTP" : "Show TOTP";
 
+    public string AuthMethodDisplay => AuthMethod switch
+    {
+        AuthMethod.GoogleOAuth => "Google",
+        AuthMethod.Direct => "Direct",
+        _ => "Unknown"
+    };
+
     public string PreferredMethodText => AuthMethod switch
     {
         AuthMethod.GoogleOAuth => "Google OAuth",
@@ -1807,6 +2016,13 @@ public sealed class CodexConnectionRowViewModel : INotifyPropertyChanged
     public string PasswordVisibilityToolTip => IsPasswordVisible ? "Hide password" : "Show password";
     public string TotpVisibilityButtonText => IsTotpSecretVisible ? "👁" : "👁";
     public string TotpVisibilityToolTip => IsTotpSecretVisible ? "Hide TOTP" : "Show TOTP";
+
+    public string AuthMethodDisplay => AuthMethod switch
+    {
+        AuthMethod.GoogleOAuth => "Google",
+        AuthMethod.Direct => "Direct",
+        _ => "Unknown"
+    };
 
     private void ResetSensitiveVisibility()
     {

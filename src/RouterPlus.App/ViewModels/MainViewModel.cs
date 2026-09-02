@@ -44,8 +44,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     internal GoogleAccountVaultPaths GoogleAccountVaultPaths => _googleLoginVaultPaths;
     internal ProviderConnectionVaultStore ProviderConnectionVaultStore => _providerConnectionVaultStore;
     internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginAutomation => _googleLoginAutomation;
+    internal Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> CodexLoginAutomation => _codexLoginAutomation;
 
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
+    private readonly Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> _codexLoginAutomation;
     private readonly IGoogleAuthenticationService _googleAuthenticationService;
     private readonly HttpClient _httpClient;
     private readonly IUpdateService _updateService;
@@ -149,6 +151,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _providerConnectionVaultStore = new ProviderConnectionVaultStore(providerConnectionPath);
         _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
+        _codexLoginAutomation = CreateDefaultCodexLoginAutomation();
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
         _autoGetKeyCredentials = CreateDefaultAutoGetKeyCredentials();
         _openRouterPkceFlow = CreateDefaultOpenRouterPkceFlow();
@@ -3404,6 +3407,98 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
 
                 return GoogleLoginResult.BrowserDisconnected($"{ex.GetType().Name}: {ex.Message}");
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates Codex login automation for Credentials Manager.
+    /// Supports Google OAuth (auto-consent) and Direct login.
+    /// </summary>
+    private Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> CreateDefaultCodexLoginAutomation()
+    {
+        return async (profile, credential, cancellationToken) =>
+        {
+            var installation = _installation ?? throw new InvalidOperationException("Chrome installation not configured.");
+
+            ChromeManagedSession? session = null;
+            CdpSession? cdp = null;
+
+            try
+            {
+                DebugLogger.Log(DiagnosticCategories.Security, $"Codex login started for profile: {profile.DirectoryName}, method: {credential.Method}");
+
+                if (credential.Method == Core.Models.AuthMethod.GoogleOAuth)
+                {
+                    // Google OAuth: Launch Chrome and run OAuth automation
+                    DebugLogger.Log(DiagnosticCategories.Security, "Launching Chrome for Codex OAuth");
+                    var settings = await _settingsStore.LoadAsync();
+
+                    var codexOAuthUrl = new Uri("https://auth.openai.com/authorize?client_id=chatgpt-web&scope=openid%20profile%20email&response_type=code&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fcodex");
+
+                    session = await _chromeLauncher.LaunchManagedAsync(
+                        installation,
+                        profile,
+                        codexOAuthUrl,
+                        cancellationToken,
+                        settings.UseOriginalProfileForAutoLogin);
+
+                    cdp = await session.ConnectAnyTargetAsync(cancellationToken);
+
+                    // Run OAuth automation
+                    var automation = new CodexOAuthAutomation(
+                        cdp.Client,
+                        cdp.SessionId,
+                        cdp.TargetId,
+                        credential.LinkedGoogleEmail ?? string.Empty);
+
+                    DebugLogger.Log(DiagnosticCategories.Security, "Starting Codex OAuth automation");
+                    var consentResult = await automation.WaitAndConsentAsync(
+                        codexOAuthUrl,
+                        timeout: TimeSpan.FromMinutes(3),
+                        cancellationToken);
+
+                    if (consentResult.Success)
+                    {
+                        DebugLogger.Log(DiagnosticCategories.Security, "Codex OAuth completed successfully");
+                        return CodexLoginResult.Success();
+                    }
+
+                    DebugLogger.Log(DiagnosticCategories.Security, $"Codex OAuth failed: {consentResult.Message}");
+                    return CodexLoginResult.Failed(consentResult.Message);
+                }
+                else // Direct login
+                {
+                    // TODO: Implement Direct login automation
+                    // 1. Navigate to OpenAI login page
+                    // 2. Fill email/password
+                    // 3. Handle TOTP if provided
+                    // 4. Detect success
+
+                    DebugLogger.Log(DiagnosticCategories.Security, "Codex Direct login not implemented yet");
+                    return CodexLoginResult.Failed("Codex Direct login not implemented yet");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                DebugLogger.Log(DiagnosticCategories.Security, "Codex login cancelled");
+                return CodexLoginResult.Cancelled();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogError(DiagnosticCategories.Security, "Codex login failed", ex);
+                return CodexLoginResult.Failed($"{ex.GetType().Name}: {ex.Message}");
+            }
+            finally
+            {
+                if (cdp != null)
+                {
+                    await cdp.DisposeAsync();
+                }
+                if (session != null)
+                {
+                    await session.DisposeAsync();
+                }
             }
         };
     }
