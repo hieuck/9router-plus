@@ -28,26 +28,34 @@ public partial class CredentialsManagerDialog : Window
 
         if (_isDisposed)
         {
+            // Already disposed, allow close without canceling
             return;
         }
 
         if (_isClosing)
         {
+            // Still disposing, cancel this close attempt
             e.Cancel = true;
             return;
         }
 
+        // First close attempt: cancel and dispose async
         e.Cancel = true;
         _isClosing = true;
         try
         {
             await _viewModel.DisposeAsync();
             _isDisposed = true;
+
+            // Unsubscribe before final close to prevent re-entry
+            Closing -= OnClosing;
             Close();
         }
-        finally
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Error during CredentialsManager disposal: {ex}");
             _isClosing = false;
+            throw;
         }
     }
 

@@ -1,5 +1,6 @@
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
+using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.App.ViewModels;
 
@@ -803,7 +804,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _googleVaultStore,
             _providerVaultStore,
             _vaultPaths,
-            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()));
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
+            (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
 
         await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
@@ -865,7 +867,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _googleVaultStore,
             _providerVaultStore,
             _vaultPaths,
-            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()));
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
+            (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
 
         await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
@@ -923,7 +926,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _googleVaultStore,
             _providerVaultStore,
             _vaultPaths,
-            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()));
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
+            (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
 
         await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
@@ -971,7 +975,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _googleVaultStore,
             _providerVaultStore,
             _vaultPaths,
-            automation ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())));
+            automation ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
+            (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
         return viewModel;
     }

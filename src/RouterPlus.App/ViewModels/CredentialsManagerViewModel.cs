@@ -67,6 +67,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         LoginRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(
             LoginRowAsync,
             row => !IsBatchLoginRunning && row.HasCredentials);
+        CheckHealthRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(
+            CheckHealthRowAsync,
+            row => !IsBatchLoginRunning && row.HasCredentials);
         RemoveGoogleAccountCommand = new AsyncRelayCommand(
             RemoveGoogleAccountAsync,
             () => CanRemoveGoogleAccount);
@@ -74,6 +77,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
         RefreshCommand = new AsyncRelayCommand(RefreshDataAsync, () => !IsBatchLoginRunning);
+        CheckAllHealthCommand = new AsyncRelayCommand(CheckAllHealthAsync, () => GoogleAccounts.Any(a => a.HasCredentials) && !IsBatchLoginRunning);
 
         // Codex commands
         SaveCodexRowCommand = new AsyncRelayCommand<CodexConnectionRowViewModel>(
@@ -150,8 +154,13 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     // Google Accounts section
     public ObservableCollection<GoogleAccountRowViewModel> GoogleAccounts { get; } = new();
 
+    /// <summary>
+    /// Filtered view of Google accounts that have credentials configured.
+    /// Used in ComboBox dropdowns to avoid showing empty entries.
+    /// </summary>
     public IEnumerable<GoogleAccountRowViewModel> ConfiguredGoogleAccounts =>
-        GoogleAccounts.Where(a => a.HasCredentials && !string.IsNullOrWhiteSpace(a.Email));
+        GoogleAccounts.Where(account => account.HasCredentials &&
+                                       !string.IsNullOrWhiteSpace(account.Email));
 
     public int SelectedCount => GoogleAccounts.Count(a => a.IsSelected && a.HasCredentials);
 
@@ -174,8 +183,10 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             BatchLoginCommand.RaiseCanExecuteChanged();
             StopBatchLoginCommand.RaiseCanExecuteChanged();
             RefreshCommand.RaiseCanExecuteChanged();
+            CheckAllHealthCommand.RaiseCanExecuteChanged();
             SaveRowCommand.RaiseCanExecuteChanged();
             LoginRowCommand.RaiseCanExecuteChanged();
+            CheckHealthRowCommand.RaiseCanExecuteChanged();
             RemoveGoogleAccountCommand.RaiseCanExecuteChanged();
             SaveCodexRowCommand.RaiseCanExecuteChanged();
             LoginCodexRowCommand.RaiseCanExecuteChanged();
@@ -280,10 +291,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     // Commands
     public AsyncRelayCommand<GoogleAccountRowViewModel> SaveRowCommand { get; }
     public AsyncRelayCommand<GoogleAccountRowViewModel> LoginRowCommand { get; }
+    public AsyncRelayCommand<GoogleAccountRowViewModel> CheckHealthRowCommand { get; }
     public AsyncRelayCommand RemoveGoogleAccountCommand { get; }
     public AsyncRelayCommand BatchLoginCommand { get; }
     public RelayCommand StopBatchLoginCommand { get; }
     public AsyncRelayCommand RefreshCommand { get; }
+    public AsyncRelayCommand CheckAllHealthCommand { get; }
 
     // Codex commands
     public AsyncRelayCommand<CodexConnectionRowViewModel> SaveCodexRowCommand { get; }
@@ -474,6 +487,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                 IsEditing = false,
                 IsSelected = false
             };
+
+            codexRow.SetConfiguredGoogleAccounts(ConfiguredGoogleAccounts);
 
             // Subscribe to property changes to update selection count
             codexRow.PropertyChanged += (s, e) =>
@@ -738,6 +753,125 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         {
             SetStatus($"❌ {row.ProfileName}: {ex.Message}");
         }
+    }
+
+    private async Task CheckHealthRowAsync(GoogleAccountRowViewModel? row)
+    {
+        if (row == null || !row.HasCredentials)
+        {
+            SetStatus("No credentials to check");
+            return;
+        }
+
+        if (_vaultSession == null)
+        {
+            SetStatus("Vault not unlocked. Please unlock the vault first.");
+            return;
+        }
+
+        if (IsBatchLoginRunning)
+        {
+            SetStatus("Batch login is already running");
+            return;
+        }
+
+        var profile = ResolveRowProfile(row);
+        if (profile == null)
+        {
+            row.UpdateHealthStatus(CredentialHealthCheckResult.Error($"Profile not found"));
+            SetStatus($"❌ {row.ProfileName}: Profile not found");
+            return;
+        }
+
+        row.ProfileId = profile.Id;
+
+        var credential = new GoogleLoginCredential(
+            row.ProfileId,
+            row.Email,
+            row.Password,
+            string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
+
+        row.UpdateHealthStatus(CredentialHealthCheckResult.Checking());
+        SetStatus($"⟳ Checking health for {row.ProfileName}...");
+
+        try
+        {
+            var result = await _runGoogleAuthentication(profile, credential, CancellationToken.None);
+
+            var healthResult = MapLoginResultToHealthCheck(result);
+            row.UpdateHealthStatus(healthResult);
+
+            SetStatus($"{healthResult.Status.ToEmoji()} {row.ProfileName}: {healthResult.Message}");
+        }
+        catch (Exception ex)
+        {
+            var healthResult = CredentialHealthCheckResult.Error($"Health check failed: {ex.Message}", ex);
+            row.UpdateHealthStatus(healthResult);
+            SetStatus($"❌ {row.ProfileName}: {ex.Message}");
+        }
+    }
+
+    private async Task CheckAllHealthAsync()
+    {
+        var accountsWithCredentials = GoogleAccounts.Where(a => a.HasCredentials).ToList();
+        if (!accountsWithCredentials.Any())
+        {
+            SetStatus("No configured accounts to check");
+            return;
+        }
+
+        SetStatus($"Checking health for {accountsWithCredentials.Count} account(s)...");
+
+        var healthyCount = 0;
+        var unhealthyCount = 0;
+
+        foreach (var account in accountsWithCredentials)
+        {
+            await CheckHealthRowAsync(account);
+
+            if (account.HealthStatus?.Status.IsHealthy() == true)
+            {
+                healthyCount++;
+            }
+            else if (account.HealthStatus?.Status.NeedsAttention() == true)
+            {
+                unhealthyCount++;
+            }
+
+            // Small delay between checks to avoid overwhelming the system
+            await Task.Delay(500);
+        }
+
+        SetStatus($"Health check completed: {healthyCount} healthy, {unhealthyCount} need attention");
+    }
+
+    private static CredentialHealthCheckResult MapLoginResultToHealthCheck(GoogleLoginResult loginResult)
+    {
+        return loginResult.Category switch
+        {
+            GoogleLoginResultCategory.Success =>
+                CredentialHealthCheckResult.Healthy("Credentials are valid"),
+
+            GoogleLoginResultCategory.InvalidCredentials =>
+                CredentialHealthCheckResult.Invalid("Invalid email, password, or TOTP code"),
+
+            GoogleLoginResultCategory.ManualInterventionRequired =>
+                CredentialHealthCheckResult.RequiresAction(loginResult.Message),
+
+            GoogleLoginResultCategory.Timeout =>
+                CredentialHealthCheckResult.Error("Health check timed out"),
+
+            GoogleLoginResultCategory.Cancelled =>
+                CredentialHealthCheckResult.Error("Health check was cancelled"),
+
+            GoogleLoginResultCategory.BrowserDisconnected =>
+                CredentialHealthCheckResult.Error("Browser connection lost"),
+
+            GoogleLoginResultCategory.UnsupportedPage =>
+                CredentialHealthCheckResult.RequiresAction(loginResult.Message),
+
+            _ => CredentialHealthCheckResult.Unknown($"Unexpected result: {loginResult.Category}")
+        };
     }
 
     private Task StartBatchLoginAsync()
@@ -1451,6 +1585,7 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
     private bool _isPasswordVisible;
     private bool _isTotpSecretVisible;
     private bool _isVaultUnlocked;
+    private CredentialHealthCheckResult? _healthStatus;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -1611,6 +1746,28 @@ public sealed class GoogleAccountRowViewModel : INotifyPropertyChanged
 
     public string TotpIndicator => !string.IsNullOrEmpty(TotpSecret) ? "✓" : string.Empty;
 
+    public CredentialHealthCheckResult? HealthStatus
+    {
+        get => _healthStatus;
+        private set
+        {
+            if (_healthStatus == value) return;
+            _healthStatus = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HealthStatusDisplay));
+            OnPropertyChanged(nameof(HealthStatusEmoji));
+        }
+    }
+
+    public string HealthStatusDisplay => HealthStatus?.Status.ToDisplayText() ?? string.Empty;
+
+    public string HealthStatusEmoji => HealthStatus?.Status.ToEmoji() ?? string.Empty;
+
+    public void UpdateHealthStatus(CredentialHealthCheckResult result)
+    {
+        HealthStatus = result;
+    }
+
     public void TogglePasswordVisibility()
     {
         if (IsEditable)
@@ -1657,6 +1814,7 @@ public sealed class ProviderConnectionRowViewModel : INotifyPropertyChanged
     private bool _hasCredentials;
     private bool _isPasswordVisible;
     private bool _isTotpSecretVisible;
+    private CredentialHealthCheckResult? _healthStatus;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -1816,6 +1974,28 @@ public sealed class ProviderConnectionRowViewModel : INotifyPropertyChanged
     public string TotpVisibilityButtonText => IsTotpSecretVisible ? "👁" : "👁";
     public string TotpVisibilityToolTip => IsTotpSecretVisible ? "Hide TOTP" : "Show TOTP";
 
+    public CredentialHealthCheckResult? HealthStatus
+    {
+        get => _healthStatus;
+        private set
+        {
+            if (_healthStatus == value) return;
+            _healthStatus = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HealthStatusDisplay));
+            OnPropertyChanged(nameof(HealthStatusEmoji));
+        }
+    }
+
+    public string HealthStatusDisplay => HealthStatus?.Status.ToDisplayText() ?? string.Empty;
+
+    public string HealthStatusEmoji => HealthStatus?.Status.ToEmoji() ?? string.Empty;
+
+    public void UpdateHealthStatus(CredentialHealthCheckResult result)
+    {
+        HealthStatus = result;
+    }
+
     public string AuthMethodDisplay => AuthMethod switch
     {
         AuthMethod.GoogleOAuth => "Google",
@@ -1861,8 +2041,37 @@ public sealed class CodexConnectionRowViewModel : INotifyPropertyChanged
     private bool _hasCredentials;
     private bool _isPasswordVisible;
     private bool _isTotpSecretVisible;
+    private IEnumerable<GoogleAccountRowViewModel>? _configuredGoogleAccounts;
+    private CredentialHealthCheckResult? _healthStatus;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>
+    /// Smart-suggested Google accounts for this profile.
+    /// Shows matching account first if profile name is an exact email match.
+    /// </summary>
+    public IEnumerable<GoogleAccountItem> SuggestedGoogleAccounts
+    {
+        get
+        {
+            if (_configuredGoogleAccounts == null)
+                return Enumerable.Empty<GoogleAccountItem>();
+
+            return SmartGoogleAccountSuggestion.GetSuggestedAccounts(
+                ProfileName,
+                _configuredGoogleAccounts);
+        }
+    }
+
+    /// <summary>
+    /// Sets the configured Google accounts for smart suggestion.
+    /// Should be called by parent ViewModel when creating rows.
+    /// </summary>
+    public void SetConfiguredGoogleAccounts(IEnumerable<GoogleAccountRowViewModel> accounts)
+    {
+        _configuredGoogleAccounts = accounts;
+        OnPropertyChanged(nameof(SuggestedGoogleAccounts));
+    }
 
     public string ProfileId
     {
@@ -2016,6 +2225,28 @@ public sealed class CodexConnectionRowViewModel : INotifyPropertyChanged
     public string PasswordVisibilityToolTip => IsPasswordVisible ? "Hide password" : "Show password";
     public string TotpVisibilityButtonText => IsTotpSecretVisible ? "👁" : "👁";
     public string TotpVisibilityToolTip => IsTotpSecretVisible ? "Hide TOTP" : "Show TOTP";
+
+    public CredentialHealthCheckResult? HealthStatus
+    {
+        get => _healthStatus;
+        private set
+        {
+            if (_healthStatus == value) return;
+            _healthStatus = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HealthStatusDisplay));
+            OnPropertyChanged(nameof(HealthStatusEmoji));
+        }
+    }
+
+    public string HealthStatusDisplay => HealthStatus?.Status.ToDisplayText() ?? string.Empty;
+
+    public string HealthStatusEmoji => HealthStatus?.Status.ToEmoji() ?? string.Empty;
+
+    public void UpdateHealthStatus(CredentialHealthCheckResult result)
+    {
+        HealthStatus = result;
+    }
 
     public string AuthMethodDisplay => AuthMethod switch
     {
