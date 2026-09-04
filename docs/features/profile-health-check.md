@@ -4,7 +4,7 @@
 
 Profile Health Check monitors Chrome profile integrity and alerts you to issues before they impact auto-login operations.
 
-## What It Checks (Phase 1)
+## What It Checks
 
 ### Filesystem
 - ✅ Profile directory exists and is accessible
@@ -12,9 +12,12 @@ Profile Health Check monitors Chrome profile integrity and alerts you to issues 
 - ✅ Profile Preferences file present
 - ℹ️ Secure Preferences file present (info only)
 
-### Coming in Phase 2
+### Credentials
+- ⚠️ Google account linked to profile
+- ⚠️ Credentials saved in vault
+
+### Coming Later
 - Vault integrity (vault files decryptable)
-- Credentials configuration (Google accounts linked)
 - Provider connections (active and healthy)
 
 ## Usage
@@ -93,3 +96,8 @@ Manual checks are useful when:
 **"Profile Preferences file missing"**
 - Profile created but never used
 - Recommendation: Open Chrome with this profile
+
+**"No Google account linked to this profile"**
+- Profile has not been logged into Google
+- Or credentials were not saved to vault
+- Recommendation: Log in to Google in this profile and save credentials
