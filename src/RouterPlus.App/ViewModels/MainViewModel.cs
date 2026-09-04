@@ -38,6 +38,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IGoogleAccountVaultStore _googleLoginVaultStore;
     private readonly GoogleAccountVaultPaths _googleLoginVaultPaths;
     private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
+    private readonly ProfileHealthService _profileHealthService;
 
     // Internal access for CredentialsManagerViewModel
     internal IGoogleAccountVaultStore GoogleAccountVaultStore => _googleLoginVaultStore;
@@ -130,7 +131,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         GoogleAccountVaultPaths? googleLoginVaultPaths = null,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null,
         IReadOnlyList<ChromeProfile>? harnessProfiles = null,
-        IGoogleAuthenticationService? googleAuthenticationService = null)
+        IGoogleAuthenticationService? googleAuthenticationService = null,
+        ProfileHealthService? profileHealthService = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
@@ -150,6 +152,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             "provider-connections.vault");
         _providerConnectionVaultStore = new ProviderConnectionVaultStore(providerConnectionPath);
         _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
+        _profileHealthService = profileHealthService ?? new ProfileHealthService();
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _codexLoginAutomation = CreateDefaultCodexLoginAutomation();
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
