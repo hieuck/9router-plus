@@ -38,7 +38,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IGoogleAccountVaultStore _googleLoginVaultStore;
     private readonly GoogleAccountVaultPaths _googleLoginVaultPaths;
     private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
-    private readonly ProfileHealthService _profileHealthService;
+    private ProfileHealthService _profileHealthService;
+    private GoogleAccountVault? _googleAccountVault;
 
     // Internal access for CredentialsManagerViewModel
     internal IGoogleAccountVaultStore GoogleAccountVaultStore => _googleLoginVaultStore;
@@ -152,7 +153,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             "provider-connections.vault");
         _providerConnectionVaultStore = new ProviderConnectionVaultStore(providerConnectionPath);
         _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
-        _profileHealthService = profileHealthService ?? new ProfileHealthService();
+        _profileHealthService = profileHealthService ?? new ProfileHealthService(_googleAccountVault);
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _codexLoginAutomation = CreateDefaultCodexLoginAutomation();
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
@@ -1442,6 +1443,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _managedProfiles.AddRange(settings.ManagedProfiles ?? []);
             _recentProfiles.Clear();
             _recentProfiles.AddRange(settings.RecentProfiles ?? []);
+
+            // Load Google account vault for health checks
+            await LoadGoogleAccountVaultAsync();
+
             RefreshProfiles();
             MarkSettingsSaved();
             if (!_harnessMode)
@@ -1471,6 +1476,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             DebugLogger.LogError(DiagnosticCategories.Startup, "Initialization failed", exception);
             SetError(exception);
+        }
+    }
+
+    private async Task LoadGoogleAccountVaultAsync()
+    {
+        try
+        {
+            var vaultSession = await _googleLoginVaultStore.TryOpenRememberedAsync(
+                _googleLoginVaultPaths.VaultPath,
+                CancellationToken.None);
+
+            if (vaultSession is not null)
+            {
+                await using (vaultSession)
+                {
+                    _googleAccountVault = vaultSession.Vault;
+                    // Recreate ProfileHealthService with the loaded vault
+                    _profileHealthService = new ProfileHealthService(_googleAccountVault);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Vault loading is optional - don't fail initialization
+            DebugLogger.LogWarning(DiagnosticCategories.Startup,
+                $"Could not load Google account vault for health checks: {ex.Message}");
         }
     }
 

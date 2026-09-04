@@ -1,5 +1,7 @@
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Security;
+using RouterPlus.Infrastructure.Chrome;
 
 namespace RouterPlus.App.Tests.ViewModels;
 
@@ -87,4 +89,45 @@ public sealed class MainViewModelHealthTests
             directoryName,
             "C:\\Chrome\\User Data",
             false);
+
+    [Fact]
+    public async Task CheckProfileHealth_ProfileWithoutGoogle_ShowsWarning()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var profileDir = Path.Combine(tempDir, "Profile 1");
+        Directory.CreateDirectory(profileDir);
+
+        try
+        {
+            var vault = new GoogleAccountVault(Array.Empty<GoogleLoginCredential>());
+            var healthService = new ProfileHealthService(vault);
+            var viewModel = new MainViewModel(profileHealthService: healthService);
+
+            var profileId = ChromeProfile.CreateId(tempDir, "Profile 1");
+            var profile = new ChromeProfile(profileId, "Test", "Profile 1", tempDir, false);
+            var row = new ProfileRowViewModel(profile, viewModel.Providers);
+            viewModel.ProfileRows.Add(row);
+
+            // Act
+            viewModel.CheckProfileHealthCommand.Execute(row);
+            await Task.Delay(100); // Allow async operation to complete
+
+            // Assert
+            Assert.Equal(HealthLevel.Warning, row.HealthStatus?.Level);
+            Assert.NotNull(row.HealthStatus);
+            var googleIssue = row.HealthStatus.Issues.FirstOrDefault(i =>
+                i.Description.Contains("Google account", StringComparison.OrdinalIgnoreCase));
+            Assert.NotNull(googleIssue);
+            Assert.Equal(IssueSeverity.Warning, googleIssue.Severity);
+        }
+        finally
+        {
+            // Cleanup
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
 }
