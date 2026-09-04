@@ -907,18 +907,7 @@
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                               ScrollViewer.CanContentScroll="True"
                              MouseDoubleClick="ProfileList_OnMouseDoubleClick"
-                             PreviewMouseRightButtonDown="ProfileList_OnPreviewMouseRightButtonDown">
-                        <ListBox.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Đăng nhập Google bằng Chrome" Click="ProfileGoogleLogin_Click" />
-                                <MenuItem Header="Tự động đăng nhập Google" Click="ProfileGoogleAutoLogin_Click" />
-                                <MenuItem Header="Mở thư mục profile" Click="ProfileFolder_Click" />
-                                <MenuItem Header="Sao chép tên profile" Click="CopyProfileName_Click" />
-                                <MenuItem Header="Check Profile Health" Command="{Binding CheckProfileHealthCommand}" CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                <Separator />
-                                <MenuItem Header="Xóa profile…" Click="DeleteProfile_Click" />
-                            </ContextMenu>
-                        </ListBox.ContextMenu>
+                             ContextMenuOpening="ProfileList_OnContextMenuOpening">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="5">

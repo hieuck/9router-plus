@@ -49,7 +49,9 @@ public partial class CredentialsManagerDialog : Window
 
             // Unsubscribe before final close to prevent re-entry
             Closing -= OnClosing;
-            Close();
+
+            // Defer close to next UI cycle to avoid WPF visibility errors
+            _ = Dispatcher.BeginInvoke(() => Close());
         }
         catch (Exception ex)
         {

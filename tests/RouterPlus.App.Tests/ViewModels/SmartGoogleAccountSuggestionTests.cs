@@ -271,6 +271,25 @@ public sealed class SmartGoogleAccountSuggestionTests
     }
 
     [Fact]
+    public void CodexConnectionRow_ProfileNameChange_NotifiesSuggestedGoogleAccounts()
+    {
+        // Arrange
+        var row = new CodexConnectionRowViewModel
+        {
+            ProfileName = "work@company.com"
+        };
+        row.SetConfiguredGoogleAccounts(Array.Empty<GoogleAccountRowViewModel>());
+        var changedProperties = new List<string?>();
+        row.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+
+        // Act
+        row.ProfileName = "personal@gmail.com";
+
+        // Assert
+        Assert.Contains(nameof(CodexConnectionRowViewModel.SuggestedGoogleAccounts), changedProperties);
+    }
+
+    [Fact]
     public void GoogleAccountItem_IsSeparator_HasCorrectProperties()
     {
         // Arrange & Act

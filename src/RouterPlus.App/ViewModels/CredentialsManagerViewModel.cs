@@ -2092,6 +2092,7 @@ public sealed class CodexConnectionRowViewModel : INotifyPropertyChanged
             if (_profileName == value) return;
             _profileName = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(SuggestedGoogleAccounts));
         }
     }
 

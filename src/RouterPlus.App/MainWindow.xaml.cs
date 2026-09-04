@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Core.Providers;
+using RouterPlus.Core.Chrome;
 using RouterPlus.App.ViewModels;
 using RouterPlus.App.Views;
 using RouterPlus.App.Diagnostics;
@@ -257,28 +258,78 @@ public partial class MainWindow : Window
     private void ProfileList_OnPreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.UX, "ProfileList_RightClick");
+        // Simplified - no logic, just measure
+    }
 
-        if (sender is not System.Windows.Controls.ListBox listBox || e.OriginalSource is not DependencyObject source)
+    private void ProfileList_OnContextMenuOpening(object sender, System.Windows.Controls.ContextMenuEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ListBox listBox)
         {
+            e.Handled = true;
             return;
         }
 
-        if (ItemsControl.ContainerFromElement(listBox, source) is System.Windows.Controls.ListBoxItem { DataContext: ProfileRowViewModel row } item)
+        // Use SelectedItem instead of ContainerFromElement to avoid slow lookup
+        if (listBox.SelectedItem is not ProfileRowViewModel row)
         {
-            UIEventLogger.LogRightClick("ProfileListItem", row.Name);
-            item.IsSelected = true;
+            e.Handled = true;
+            return;
         }
+
+        // Build context menu dynamically
+        var menu = new System.Windows.Controls.ContextMenu();
+
+        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Đăng nhập Google bằng Chrome", Tag = row.Profile });
+        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += ProfileGoogleLogin_Click;
+
+        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Tự động đăng nhập Google", Tag = row.Profile });
+        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += ProfileGoogleAutoLogin_Click;
+
+        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Mở thư mục profile", Tag = row.Profile });
+        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += ProfileFolder_Click;
+
+        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Sao chép tên profile", Tag = row.Profile });
+        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += CopyProfileName_Click;
+
+        var healthMenuItem = new System.Windows.Controls.MenuItem { Header = "Check Profile Health" };
+        healthMenuItem.Command = ViewModel.CheckProfileHealthCommand;
+        healthMenuItem.CommandParameter = row;
+        menu.Items.Add(healthMenuItem);
+
+        menu.Items.Add(new System.Windows.Controls.Separator());
+
+        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Xóa profile…", Tag = row.Profile });
+        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += DeleteProfile_Click;
+
+        listBox.ContextMenu = menu;
+        menu.IsOpen = true;
     }
 
     private async void ProfileGoogleLogin_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("ProfileGoogleLogin");
-        await ViewModel.OpenSelectedGoogleLoginAsync();
+        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile profile })
+        {
+            var previousSelection = ViewModel.SelectedProfile;
+            ViewModel.SelectedProfile = profile;
+            await ViewModel.OpenSelectedGoogleLoginAsync();
+            ViewModel.SelectedProfile = previousSelection;
+        }
+        else
+        {
+            await ViewModel.OpenSelectedGoogleLoginAsync();
+        }
     }
 
     private void ProfileGoogleAutoLogin_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("ProfileGoogleAutoLogin");
+        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile profile })
+        {
+            var previousSelection = ViewModel.SelectedProfile;
+            ViewModel.SelectedProfile = profile;
+        }
+
         var dialogViewModel = ViewModel.CreateGoogleAutoLoginViewModel();
         if (dialogViewModel is null)
         {
@@ -296,7 +347,16 @@ public partial class MainWindow : Window
 
     private void ProfileFolder_Click(object sender, RoutedEventArgs e)
     {
-        var profile = ViewModel.SelectedProfile;
+        ChromeProfile? profile = null;
+        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
+        {
+            profile = tagProfile;
+        }
+        else
+        {
+            profile = ViewModel.SelectedProfile;
+        }
+
         if (profile is null)
         {
             return;
@@ -326,7 +386,16 @@ public partial class MainWindow : Window
 
     private void CopyProfileName_Click(object sender, RoutedEventArgs e)
     {
-        var profile = ViewModel.SelectedProfile;
+        ChromeProfile? profile = null;
+        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
+        {
+            profile = tagProfile;
+        }
+        else
+        {
+            profile = ViewModel.SelectedProfile;
+        }
+
         if (profile is null)
         {
             return;
@@ -347,7 +416,16 @@ public partial class MainWindow : Window
 
     private async void DeleteProfile_Click(object sender, RoutedEventArgs e)
     {
-        var profile = ViewModel.SelectedProfile;
+        ChromeProfile? profile = null;
+        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
+        {
+            profile = tagProfile;
+        }
+        else
+        {
+            profile = ViewModel.SelectedProfile;
+        }
+
         if (profile is null)
         {
             return;
