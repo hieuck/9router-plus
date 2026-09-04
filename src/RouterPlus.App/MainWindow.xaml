@@ -1688,7 +1688,11 @@
                                 <Border Style="{StaticResource InfoPillStyle}" HorizontalAlignment="Left" Margin="0,0,0,10">
                                     <TextBlock Text="{Binding ConnectionStatusText}" FontSize="10" TextWrapping="Wrap" />
                                 </Border>
-                                <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" TextWrapping="Wrap" />
+                                <TextBlock AutomationProperties.AutomationId="StatusText"
+                                           Text="{Binding StatusText}"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
