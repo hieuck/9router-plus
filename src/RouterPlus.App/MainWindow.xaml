@@ -1032,7 +1032,7 @@
                                                        VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding HealthStatusText}"
                                                        FontSize="11"
-                                                       Foreground="Gray"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
                                                        VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis"
                                                        MaxWidth="100" />
