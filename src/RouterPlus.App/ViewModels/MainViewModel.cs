@@ -153,7 +153,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             "provider-connections.vault");
         _providerConnectionVaultStore = new ProviderConnectionVaultStore(providerConnectionPath);
         _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
-        _profileHealthService = profileHealthService ?? new ProfileHealthService(_googleAccountVault);
+        _profileHealthService = profileHealthService!; // Deferred initialization in LoadGoogleAccountVaultAsync
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
         _codexLoginAutomation = CreateDefaultCodexLoginAutomation();
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
@@ -1492,8 +1492,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 await using (vaultSession)
                 {
                     _googleAccountVault = vaultSession.Vault;
-                    // Recreate ProfileHealthService with the loaded vault
-                    _profileHealthService = new ProfileHealthService(_googleAccountVault);
                 }
             }
         }
@@ -1502,6 +1500,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             // Vault loading is optional - don't fail initialization
             DebugLogger.LogWarning(DiagnosticCategories.Startup,
                 $"Could not load Google account vault for health checks: {ex.Message}");
+        }
+        finally
+        {
+            // Always initialize ProfileHealthService with loaded vault (or null)
+            _profileHealthService = new ProfileHealthService(_googleAccountVault);
         }
     }
 
@@ -1540,6 +1543,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     private async Task CheckAllProfilesHealthAsync()
     {
+        if (_profileHealthService == null) return;
+
         foreach (var row in ProfileRows)
         {
             var status = await _profileHealthService.GetHealthStatusAsync(
@@ -1557,7 +1562,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     private async Task CheckProfileHealthAsync(ProfileRowViewModel? row)
     {
-        if (row == null) return;
+        if (row == null || _profileHealthService == null) return;
 
         try
         {
