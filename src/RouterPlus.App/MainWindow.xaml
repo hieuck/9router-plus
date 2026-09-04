@@ -1021,13 +1021,13 @@
                                                     <Style TargetType="Ellipse">
                                                         <Setter Property="Fill" Value="{DynamicResource MutedTextBrush}" />
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding HealthStatus.IsHealthy}" Value="True">
+                                                            <DataTrigger Binding="{Binding HealthStatus.Level}" Value="Healthy">
                                                                 <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
                                                             </DataTrigger>
-                                                            <DataTrigger Binding="{Binding HealthStatus.HasWarnings}" Value="True">
+                                                            <DataTrigger Binding="{Binding HealthStatus.Level}" Value="Warning">
                                                                 <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
                                                             </DataTrigger>
-                                                            <DataTrigger Binding="{Binding HealthStatus.HasErrors}" Value="True">
+                                                            <DataTrigger Binding="{Binding HealthStatus.Level}" Value="Error">
                                                                 <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
