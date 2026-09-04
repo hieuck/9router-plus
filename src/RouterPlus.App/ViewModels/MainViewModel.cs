@@ -1507,7 +1507,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>
     /// Check health status for all profiles.
     /// </summary>
-    internal async Task CheckAllProfilesHealthAsync()
+    private async Task CheckAllProfilesHealthAsync()
     {
         foreach (var row in ProfileRows)
         {
@@ -1524,7 +1524,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>
     /// Check health status for a single profile.
     /// </summary>
-    internal async Task CheckProfileHealthAsync(ProfileRowViewModel? row)
+    private async Task CheckProfileHealthAsync(ProfileRowViewModel? row)
     {
         if (row == null) return;
 
