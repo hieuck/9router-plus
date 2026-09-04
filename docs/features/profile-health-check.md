@@ -25,7 +25,6 @@ Health status is displayed directly in the profile list for each profile:
 
 - **Health Icon**: A visual indicator (✓/⚠/✗/?) appears next to each profile name
 - **Status Text**: Brief description of the health state (e.g., "Healthy", "Warning", "Error")
-- **Automatic Checks**: All profiles are checked when the app starts
 - **Cached Results**: Status reflects cached results (refreshed every 5 minutes)
 
 ### Health Icons
