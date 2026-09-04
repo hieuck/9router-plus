@@ -32,6 +32,7 @@ public sealed class MainViewModelHealthTests
         var viewModel = new MainViewModel();
 
         // Assert
+        Assert.Empty(viewModel.ProfileRows);
         Assert.False(viewModel.CheckAllProfilesHealthCommand.CanExecute(null));
     }
 
@@ -40,9 +41,15 @@ public sealed class MainViewModelHealthTests
     {
         // Arrange
         var viewModel = new MainViewModel();
-        viewModel.Profiles.Add(CreateProfile("Test", "Profile 1"));
+        var profile = CreateProfile("Test", "Profile 1");
+
+        // Add to both Profiles and ProfileRows (mimics RefreshProfiles behavior)
+        viewModel.Profiles.Add(profile);
+        var row = new ProfileRowViewModel(profile, viewModel.Providers);
+        viewModel.ProfileRows.Add(row);
 
         // Assert
+        Assert.Single(viewModel.ProfileRows);
         Assert.True(viewModel.CheckAllProfilesHealthCommand.CanExecute(null));
     }
 
@@ -62,10 +69,14 @@ public sealed class MainViewModelHealthTests
         // Arrange
         var viewModel = new MainViewModel();
         var profile = CreateProfile("Test", "Profile 1");
+
+        // Add to both Profiles and ProfileRows (mimics RefreshProfiles behavior)
         viewModel.Profiles.Add(profile);
-        var row = viewModel.ProfileRows.First();
+        var row = new ProfileRowViewModel(profile, viewModel.Providers);
+        viewModel.ProfileRows.Add(row);
 
         // Assert
+        Assert.Single(viewModel.ProfileRows);
         Assert.True(viewModel.CheckProfileHealthCommand.CanExecute(row));
     }
 
