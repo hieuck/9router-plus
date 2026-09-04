@@ -10,6 +10,7 @@ using RouterPlus.Core.Chrome;
 using RouterPlus.App.ViewModels;
 using RouterPlus.App.Views;
 using RouterPlus.App.Diagnostics;
+using RouterPlus.App.Testing;
 using WpfButton = System.Windows.Controls.Button;
 
 namespace RouterPlus.App;
@@ -39,6 +40,10 @@ public partial class MainWindow : Window
     private async void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Startup, "Window_OnLoaded");
+
+        // Initialize testing hooks for E2E automation
+        TestingHooks.Initialize(ViewModel);
+
         await ViewModel.InitializeAsync();
         ViewModel.StartQuotaPolling();
     }

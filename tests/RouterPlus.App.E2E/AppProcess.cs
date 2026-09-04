@@ -81,6 +81,9 @@ public sealed class AppProcess : IAsyncDisposable
             UseShellExecute = false
         };
 
+        // Enable testing hooks for E2E tests
+        startInfo.Environment["ENABLE_TESTING_HOOKS"] = "1";
+
         if (!useRealChromeData && harnessRoot != null)
         {
             startInfo.Environment["ROUTERPLUS_HARNESS"] = "1";
