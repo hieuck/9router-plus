@@ -10,6 +10,7 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
 {
     private int _displayIndex;
     private bool _isSelected;
+    private ProfileHealthStatus? _healthStatus;
 
     public ProfileRowViewModel(
         ChromeProfile profile,
@@ -53,6 +54,46 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
     }
 
     public ObservableCollection<ProfileProviderStatusViewModel> ProviderStatuses { get; }
+
+    /// <summary>
+    /// Current health status of this profile.
+    /// Null if health check has never been performed.
+    /// </summary>
+    public ProfileHealthStatus? HealthStatus
+    {
+        get => _healthStatus;
+        set
+        {
+            if (_healthStatus == value) return;
+            _healthStatus = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HealthStatusIcon));
+            OnPropertyChanged(nameof(HealthStatusText));
+            OnPropertyChanged(nameof(HasHealthIssues));
+        }
+    }
+
+    /// <summary>
+    /// Icon representing health status: "✓" (healthy), "⚠" (warning), "✗" (error), "?" (unknown)
+    /// </summary>
+    public string HealthStatusIcon => HealthStatus?.Level switch
+    {
+        HealthLevel.Healthy => "✓",
+        HealthLevel.Warning => "⚠",
+        HealthLevel.Error => "✗",
+        _ => "?"
+    };
+
+    /// <summary>
+    /// Text summary of health status.
+    /// Example: "Profile healthy" / "2 warning(s) detected"
+    /// </summary>
+    public string HealthStatusText => HealthStatus?.Message ?? "Unknown";
+
+    /// <summary>
+    /// Whether this profile has any health issues.
+    /// </summary>
+    public bool HasHealthIssues => HealthStatus?.Issues.Count > 0;
 
     public void SetDisplayIndex(int displayIndex)
     {
