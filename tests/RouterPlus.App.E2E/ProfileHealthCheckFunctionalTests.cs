@@ -30,6 +30,10 @@ public class ProfileHealthCheckFunctionalTests
         Assert.NotNull(firstProfile);
         _output.WriteLine($"Testing with profile: {firstProfile.Name}");
 
+        // Capture initial state - profile should have health dot (Ellipse)
+        var initialEllipses = firstProfile.FindAllDescendants(cf => cf.ByControlType(ControlType.Text));
+        _output.WriteLine($"Initial state: found {initialEllipses.Length} text elements");
+
         // Act - Right-click and select "Check Profile Health"
         firstProfile.RightClick();
 
@@ -64,12 +68,21 @@ public class ProfileHealthCheckFunctionalTests
 
         healthMenuItem.Click();
 
-        // Wait for health check to complete
-        await Task.Delay(1000);
+        // Wait for health check to complete (should be fast ~200-500ms)
+        await Task.Delay(1500);
 
-        // Assert - Verify status bar or that no error occurred
-        // Health check completes silently - verify no crash
-        _output.WriteLine("Health check completed without errors");
+        // Assert - Re-read profile and verify structure still intact
+        // Health check should have updated internal state
+        var updatedProfile = profileList.FindFirstDescendant(cf => cf.ByControlType(ControlType.ListItem));
+        Assert.NotNull(updatedProfile);
+
+        var updatedElements = updatedProfile.FindAllDescendants(cf => cf.ByControlType(ControlType.Text));
+        _output.WriteLine($"After check: found {updatedElements.Length} text elements");
+
+        // Health check completed - profile structure should be intact
+        Assert.True(updatedElements.Length > 0, "Profile should have text elements after health check");
+
+        _output.WriteLine("Health check completed - profile structure verified");
 
         // Cleanup
         app.MainWindow.Focus();
