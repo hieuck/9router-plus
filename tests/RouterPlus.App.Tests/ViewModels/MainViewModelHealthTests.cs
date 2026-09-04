@@ -7,7 +7,7 @@ namespace RouterPlus.App.Tests.ViewModels;
 public sealed class MainViewModelHealthTests
 {
     [Fact]
-    public async Task CheckAllProfilesHealthCommand_UpdatesAllProfileHealthStatus()
+    public async Task CheckAllProfilesHealthAsync_UpdatesAllProfileHealthStatus()
     {
         // Arrange: MainViewModel with 3 profiles, real ProfileHealthService
         var healthService = new ProfileHealthService();
@@ -24,8 +24,8 @@ public sealed class MainViewModelHealthTests
         // Verify initially null
         Assert.All(viewModel.ProfileRows, row => Assert.Null(row.HealthStatus));
 
-        // Act: Execute CheckAllProfilesHealthCommand
-        await viewModel.CheckAllProfilesHealthCommand.ExecuteAsync(null);
+        // Act: Execute CheckAllProfilesHealthAsync
+        await viewModel.CheckAllProfilesHealthAsync();
 
         // Assert: All 3 ProfileRowViewModel.HealthStatus are non-null
         Assert.Equal(3, viewModel.ProfileRows.Count);
@@ -35,7 +35,7 @@ public sealed class MainViewModelHealthTests
     }
 
     [Fact]
-    public async Task CheckProfileHealthCommand_UpdatesSingleProfileHealthStatus()
+    public async Task CheckProfileHealthAsync_UpdatesSingleProfileHealthStatus()
     {
         // Arrange: MainViewModel with 1 profile, real ProfileHealthService
         var healthService = new ProfileHealthService();
@@ -47,8 +47,8 @@ public sealed class MainViewModelHealthTests
         var row = viewModel.ProfileRows.First();
         Assert.Null(row.HealthStatus); // Initially null
 
-        // Act: Execute CheckProfileHealthCommand with that profile
-        await viewModel.CheckProfileHealthCommand.ExecuteAsync(row);
+        // Act: Execute CheckProfileHealthAsync with that profile
+        await viewModel.CheckProfileHealthAsync(row);
 
         // Assert: HealthStatus updated
         Assert.NotNull(row.HealthStatus);
@@ -58,7 +58,7 @@ public sealed class MainViewModelHealthTests
     }
 
     [Fact]
-    public async Task CheckProfileHealthCommand_HandlesNullParameter()
+    public async Task CheckProfileHealthAsync_HandlesNullParameter()
     {
         // Arrange
         var healthService = new ProfileHealthService();
@@ -70,14 +70,14 @@ public sealed class MainViewModelHealthTests
         Assert.Null(row.HealthStatus);
 
         // Act - should not throw
-        await viewModel.CheckProfileHealthCommand.ExecuteAsync(null);
+        await viewModel.CheckProfileHealthAsync(null);
 
         // Assert - HealthStatus remains null (no update happened)
         Assert.Null(row.HealthStatus);
     }
 
     [Fact]
-    public async Task CheckAllProfilesHealthCommand_UpdatesMultipleProfiles()
+    public async Task CheckAllProfilesHealthAsync_UpdatesMultipleProfiles()
     {
         // Arrange
         var healthService = new ProfileHealthService();
@@ -89,7 +89,7 @@ public sealed class MainViewModelHealthTests
         }
 
         // Act
-        await viewModel.CheckAllProfilesHealthCommand.ExecuteAsync(null);
+        await viewModel.CheckAllProfilesHealthAsync();
 
         // Assert - all 5 profiles have health status
         Assert.Equal(5, viewModel.ProfileRows.Count);
@@ -97,7 +97,7 @@ public sealed class MainViewModelHealthTests
     }
 
     [Fact]
-    public async Task CheckProfileHealthCommand_UpdatesOnlySpecifiedProfile()
+    public async Task CheckProfileHealthAsync_UpdatesOnlySpecifiedProfile()
     {
         // Arrange
         var healthService = new ProfileHealthService();
@@ -110,7 +110,7 @@ public sealed class MainViewModelHealthTests
         var otherRow = viewModel.ProfileRows[1];
 
         // Act - check only first profile
-        await viewModel.CheckProfileHealthCommand.ExecuteAsync(targetRow);
+        await viewModel.CheckProfileHealthAsync(targetRow);
 
         // Assert - only target row is updated
         Assert.NotNull(targetRow.HealthStatus);
