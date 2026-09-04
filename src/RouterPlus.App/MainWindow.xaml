@@ -1025,6 +1025,18 @@
                                     <StackPanel Grid.Column="3" Margin="10,0,5,0" Style="{StaticResource SidebarPanelStyle}" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding ConnectionSummary}" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" ToolTip="{Binding HealthStatusText}">
+                                            <TextBlock Text="{Binding HealthStatusIcon}"
+                                                       FontSize="16"
+                                                       Margin="0,0,4,0"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding HealthStatusText}"
+                                                       FontSize="11"
+                                                       Foreground="Gray"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxWidth="100" />
+                                        </StackPanel>
                                         <ItemsControl ItemsSource="{Binding ProviderStatuses}" Margin="0,4,0,0">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
