@@ -28,6 +28,63 @@ Implement a comprehensive observability system that captures all runtime informa
 - Real-time dashboards (file-based analysis only)
 - User behavior analytics (focus on technical diagnostics)
 
+### 1.4 Value Proposition
+
+**Current State (Before Observability):**
+
+When users encounter bugs:
+1. User reports: "Login failed" (vague description)
+2. AI/Dev asks: Which profile? What error? Screenshot?
+3. User provides partial info, screenshots
+4. Multiple back-and-forth messages
+5. AI guesses based on incomplete information
+6. Often result: "Cannot reproduce" → bug unfixed
+
+**Time to resolution:** Hours to days  
+**User effort:** High (explain, screenshot, reproduce)  
+**AI accuracy:** Low (guessing without data)
+
+**Future State (After Observability):**
+
+When users encounter bugs:
+1. User clicks "Export Diagnostic Report" or zips session folder
+2. User attaches single file to bug report
+3. AI reads `events.jsonl` from export
+4. AI finds exact error with full context (timestamp, stack trace, state)
+5. AI provides precise diagnosis and fix
+
+**Time to resolution:** Minutes  
+**User effort:** Low (single file attachment)  
+**AI accuracy:** High (data-driven diagnosis)
+
+**Concrete Example:**
+
+```
+Bug: Health check fails silently
+
+BEFORE:
+User: "Health check không work"
+AI: "Error gì? Profile nào?"
+User: "Không có error, chỉ không thấy kết quả"
+AI: "Thử refresh profile xem?"
+User: "Vẫn không work"
+→ 5+ turns, unresolved
+
+AFTER:
+User: [Attaches diagnostic-2026-09-04.zip]
+AI: [Reads events.jsonl]
+  → HealthCheckStarted at 17:45:30
+  → NullReferenceException at 17:45:33
+  → ProfileHealthChecker.CheckCredentials, vault was null
+AI: "Health check failed - vault chưa unlock. Click 'Unlock Vault' trước."
+→ 1 turn, resolved
+```
+
+**Win-Win-Win:**
+- **Users:** Faster bug resolution, less effort
+- **App:** Self-documenting behavior, easier maintenance
+- **AI:** Accurate diagnosis, no guessing
+
 ---
 
 ## 2. Architecture
@@ -411,6 +468,121 @@ public static class PrivacyScrubber
 
 **Usage:** Auto-applied in ObservabilityHub before writing
 
+### 5.4 Integration with Existing DebugLogger
+
+**Current DebugLogger (src/RouterPlus.App/Diagnostics/DebugLogger.cs):**
+
+```csharp
+// Compiled out in Release builds via [Conditional("DEBUG")]
+public static class DebugLogger
+{
+    [Conditional("DEBUG")]
+    public static void Log(string category, string message);
+    
+    [Conditional("DEBUG")]
+    public static void LogError(string category, string message, Exception? exception);
+    
+    // Writes to: app-debug.log (plain text)
+}
+```
+
+**Comparison:**
+
+| Aspect | DebugLogger | ObservabilityHub |
+|--------|-------------|------------------|
+| **Target** | Developer console | AI analysis |
+| **Builds** | DEBUG only | All builds |
+| **Format** | Plain text | JSON structured |
+| **Output** | Debug.WriteLine + app-debug.log | sessions/*/events.jsonl |
+| **Privacy** | None | Scrubbed |
+| **Purpose** | Fast dev feedback | Production diagnostics |
+
+**Integration Strategy:**
+
+**Phase 1: Parallel Operation (No Changes to DebugLogger)**
+
+Both systems coexist without interference:
+
+```
+DEBUG builds:
+  DebugLogger → app-debug.log (for dev console)
+  ObservabilityHub → sessions/*/events.jsonl (for AI)
+
+RELEASE builds:
+  ObservabilityHub → sessions/*/events.jsonl (for AI)
+```
+
+Benefits:
+- ✅ Zero risk (no changes to working code)
+- ✅ Developers keep familiar console output
+- ✅ AI gets structured data
+- ⚠️ Small duplication in DEBUG builds (acceptable overhead)
+
+**Phase 2: Gradual Migration (Future)**
+
+Gradually replace DebugLogger calls with ObservabilityHub:
+
+```csharp
+// OLD
+DebugLogger.Log("Chrome", "Refreshing profiles");
+
+// NEW
+ObservabilityHub.Instance.LogEvent(
+    LogLevel.Info,
+    "Chrome",
+    "RefreshProfiles",
+    "Refreshing profiles"
+);
+```
+
+Benefits:
+- Unified logging API
+- Better structured events
+- Easier to query
+
+**Phase 3: DebugLogger as Thin Wrapper (Future)**
+
+Keep DebugLogger API for backward compatibility:
+
+```csharp
+public static class DebugLogger
+{
+    [Conditional("DEBUG")]
+    public static void Log(string category, string message)
+    {
+        // Keep console output for developers
+        Debug.WriteLine($"[{category}] {message}");
+        
+        // Also send to ObservabilityHub
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            category,
+            "Log",
+            message
+        );
+    }
+}
+```
+
+Benefits:
+- No breaking changes to existing code
+- Gradual transition path
+- Best of both worlds
+
+**Recommendation for Initial Implementation:**
+
+Use **Phase 1 (Parallel Operation)**:
+1. Implement ObservabilityHub independently
+2. Add new instrumentation using ObservabilityHub directly
+3. Leave existing DebugLogger calls unchanged
+4. Migrate gradually in future sprints
+
+This approach:
+- ✅ Zero risk to existing functionality
+- ✅ Fastest time to value
+- ✅ Easy rollback if issues found
+- ✅ Provides migration path for future
+
 ---
 
 ## 6. Query Interface
@@ -601,7 +773,145 @@ Add section to documentation:
 
 ---
 
-## 13. Open Questions
+## 13. Comparison with Industry Standards
+
+### 13.1 RouterPlus Position in the Market
+
+**Tier 1: Enterprise/Commercial Apps**
+
+*Examples:* Visual Studio Code, Discord, Slack, Chrome, Figma
+
+**Their observability:**
+- ✅ Automatic telemetry sent to servers
+- ✅ Crash reporting (Sentry, Crashlytics, BugSnag)
+- ✅ Real-time performance monitoring
+- ✅ A/B testing framework
+- ✅ User analytics (DAU, retention, funnels)
+- ✅ Distributed tracing across services
+- ✅ Alerting & dashboards for ops team
+- 💰 **Budget:** Dedicated DevOps/SRE team, infrastructure costs
+
+**Tier 2: Professional Apps**
+
+*Examples:* Postman, Obsidian, Notion desktop, TablePlus
+
+**Their observability:**
+- ✅ Structured logging to local files
+- ✅ Crash dumps auto-collected
+- ✅ Optional telemetry (opt-in/opt-out)
+- ✅ Basic performance metrics
+- ⚠️ Simple error reporting
+- ⚠️ No distributed tracing
+- ❌ No real-time monitoring
+- 💰 **Budget:** 1-2 engineers for infrastructure
+
+**Tier 3: Indie/Small Apps**
+
+*Examples:* Most open-source desktop apps, hobby projects
+
+**Their observability:**
+- ⚠️ Plain text logs (if any)
+- ⚠️ Manual log file inspection
+- ❌ No crash reporting
+- ❌ No structured data
+- ❌ "Email me your log file" approach
+- ❌ Developer manually debugs each report
+- 💰 **Budget:** Developer's spare time only
+
+---
+
+### 13.2 RouterPlus After Implementation
+
+**With ObservabilityHub Phase 1:**
+
+```
+✅ Structured logging (JSON Lines)
+✅ Session lifecycle management
+✅ Privacy scrubbing (sensitive data)
+✅ AI-queryable format
+✅ Automatic retention policy (7 days)
+✅ Local-first (no remote servers needed)
+
+⚠️ Local-only (no remote telemetry)
+⚠️ No crash dumps (yet - future phase)
+
+❌ No real-time monitoring
+❌ No distributed tracing
+❌ No ops dashboards
+```
+
+**Position: Tier 2 (Professional App Level)**
+
+**Better than 80% of desktop apps:**
+- Structured JSON format (not plain text)
+- Privacy-aware (automatic scrubbing)
+- AI-assisted debugging
+- Professional session management
+- Self-maintaining (retention, rotation)
+
+**Not as advanced as big commercial apps:**
+- No telemetry server infrastructure
+- No crash dump collection (yet)
+- No performance dashboards
+- No alerting system
+- No distributed tracing
+
+---
+
+### 13.3 Why This Level is Right for RouterPlus
+
+**Perfect fit because:**
+
+1. **Single-user app:** No need for aggregated analytics across users
+2. **Privacy-sensitive:** Handles credentials, local-first is a feature not a limitation
+3. **AI-first debugging:** Structured logs enable AI to diagnose without cloud infrastructure
+4. **No DevOps team:** Automated local management instead of manual server ops
+5. **Desktop app:** Local storage is reliable, no network dependency
+
+**Not over-engineered:**
+
+Many developers think "logging = plain text file" and stop there. RouterPlus takes it to professional standard:
+- Structured data (queryable)
+- Privacy by design (scrubbed)
+- AI integration (data-driven debugging)
+- Automated lifecycle (no manual cleanup)
+
+This is **professional software engineering practice**, not over-engineering. The difference is:
+- ❌ Over-engineering: Features no one uses
+- ✅ Professional: Features that solve real problems (bug diagnosis)
+
+**With AI in the workflow, ObservabilityHub pays for itself in:**
+- First bug report: Save 10+ messages back-and-forth
+- First crash: AI reads structured data → root cause in minutes
+- First "cannot reproduce": Session export shows exact state
+
+---
+
+### 13.4 Migration Path to Higher Tiers (Optional Future)
+
+**If RouterPlus grows to need Tier 1:**
+
+**Phase 2 additions:**
+- Crash dump collection (Windows Error Reporting integration)
+- Metrics & traces (performance profiling)
+- State snapshots (full app state capture)
+
+**Phase 3 additions (opt-in remote telemetry):**
+- Backend API to receive anonymized diagnostics
+- Aggregate statistics across users
+- Proactive issue detection ("10% of users hitting this error")
+- Version-specific crash rates
+
+**Phase 4 additions:**
+- Real-time monitoring dashboard
+- Alerting system for critical errors
+- Distributed tracing across Chrome DevTools Protocol
+
+**Current assessment:** Phase 1 sufficient for next 12-24 months. Tier 2 capabilities handle expected user base and support load.
+
+---
+
+## 14. Open Questions
 
 1. **Compression:** Should we gzip `.jsonl` files to save space? (Tradeoff: CPU vs disk)
 2. **Structured vs Plain Text:** JSON Lines vs human-readable format? (JSON Lines for AI, but harder for users to read)

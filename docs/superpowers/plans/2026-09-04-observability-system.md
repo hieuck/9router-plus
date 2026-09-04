@@ -61,6 +61,52 @@
 
 ---
 
+## DebugLogger Integration Strategy
+
+### Current State
+
+RouterPlus has existing `DebugLogger` (src/RouterPlus.App/Diagnostics/DebugLogger.cs):
+- Compiled out in Release builds (`[Conditional("DEBUG")]`)
+- Writes plain text to `app-debug.log`
+- Used throughout codebase for development debugging
+
+### Integration Approach: Parallel Operation
+
+**DO NOT modify DebugLogger in Phase 1**
+
+Run both systems in parallel:
+
+```
+DEBUG builds:
+  ✅ DebugLogger → app-debug.log (developer console output)
+  ✅ ObservabilityHub → sessions/*/events.jsonl (AI analysis)
+
+RELEASE builds:
+  ✅ ObservabilityHub → sessions/*/events.jsonl (AI analysis)
+```
+
+**Rationale:**
+- ✅ Zero risk to existing functionality
+- ✅ Developers keep familiar console output
+- ✅ AI gets structured data immediately
+- ✅ Easy rollback if issues found
+- ⚠️ Small duplication in DEBUG builds (acceptable)
+
+**New code guidelines:**
+- Use `ObservabilityHub` for new instrumentation
+- Leave existing `DebugLogger` calls unchanged
+- Migrate gradually in future phases
+
+### Future Migration Path (Post Phase 1)
+
+**Phase 2:** Gradually replace DebugLogger calls with ObservabilityHub
+
+**Phase 3:** Make DebugLogger a thin wrapper around ObservabilityHub
+
+This is explicitly a **non-goal for Phase 1** to minimize risk and speed up delivery.
+
+---
+
 ## Phase 1 Detailed Tasks
 
 ### Task 1: Core Infrastructure
