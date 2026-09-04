@@ -1,4 +1,5 @@
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Chrome;
 using Xunit;
 using System.Diagnostics;
@@ -93,5 +94,39 @@ public sealed class ProfileHealthServiceTests
 
         Directory.Delete(profile1.UserDataDirectory, true);
         Directory.Delete(profile2.UserDataDirectory, true);
+    }
+
+    [Fact]
+    public async Task GetHealthStatusAsync_ProfileWithoutGoogleAccount_ReturnsWarning()
+    {
+        var profile = CreateTestProfile();
+        var vault = new GoogleAccountVault(Array.Empty<GoogleLoginCredential>());
+        var service = new ProfileHealthService(vault);
+
+        var status = await service.GetHealthStatusAsync(profile);
+
+        Assert.Equal(HealthLevel.Warning, status.Level);
+        Assert.Contains(status.Issues, i => i.Category == HealthCategory.Credentials);
+
+        Directory.Delete(profile.UserDataDirectory, true);
+    }
+
+    [Fact]
+    public async Task GetHealthStatusAsync_ProfileWithGoogleAccount_Healthy()
+    {
+        var profile = CreateTestProfile();
+        var credential = new GoogleLoginCredential(
+            profile.Id,
+            "test@gmail.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+        var vault = new GoogleAccountVault(new[] { credential });
+        var service = new ProfileHealthService(vault);
+
+        var status = await service.GetHealthStatusAsync(profile);
+
+        Assert.Equal(HealthLevel.Healthy, status.Level);
+
+        Directory.Delete(profile.UserDataDirectory, true);
     }
 }

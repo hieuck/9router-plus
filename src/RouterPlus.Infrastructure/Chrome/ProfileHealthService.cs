@@ -1,4 +1,5 @@
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Security;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
@@ -8,12 +9,18 @@ namespace RouterPlus.Infrastructure.Chrome;
 public sealed class ProfileHealthService
 {
     private readonly ProfileHealthChecker _checker;
+    private readonly GoogleAccountVault? _vault;
     private readonly Dictionary<CacheKey, CachedHealthStatus> _cache = new();
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
-    public ProfileHealthService()
+    /// <summary>
+    /// Create a new ProfileHealthService.
+    /// </summary>
+    /// <param name="vault">Optional Google account vault for credentials checks</param>
+    public ProfileHealthService(GoogleAccountVault? vault = null)
     {
         _checker = new ProfileHealthChecker();
+        _vault = vault;
     }
 
     /// <summary>
@@ -93,9 +100,17 @@ public sealed class ProfileHealthService
 
     private ProfileHealthStatus PerformHealthCheck(ChromeProfile profile)
     {
-        // For now, only filesystem checks
+        var allIssues = new List<HealthIssue>();
+
+        // Filesystem checks
         var filesystemIssues = _checker.CheckFilesystemHealth(profile);
-        return ProfileHealthStatus.FromIssues(filesystemIssues);
+        allIssues.AddRange(filesystemIssues);
+
+        // Credentials checks
+        var credentialsIssues = _checker.CheckCredentialsHealth(profile, _vault);
+        allIssues.AddRange(credentialsIssues);
+
+        return ProfileHealthStatus.FromIssues(allIssues);
     }
 
     private record struct CacheKey(string ProfileId);
