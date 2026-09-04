@@ -1,5 +1,6 @@
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
+using RouterPlus.Core.Observability;
 using RouterPlus.App.Diagnostics;
 using RouterPlus.Infrastructure.Security;
 using System.ComponentModel;
@@ -146,6 +147,13 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "UnlockVaultAsync");
         ArgumentException.ThrowIfNullOrWhiteSpace(vaultPassword);
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AutoLogin",
+            "VaultUnlockAttempt",
+            "User attempting to unlock vault",
+            new { profile_name = _profile.Name, remember_on_device = remember });
+
         IsBusy = true;
         try
         {
@@ -155,33 +163,80 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             // Try to open existing vault or create new one
             if (File.Exists(vaultPath))
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "AutoLogin",
+                    "VaultOpening",
+                    "Opening existing vault",
+                    new { vault_path = vaultPath });
+
                 _session = await _vaultStore.OpenAsync(vaultPath, vaultPassword, cancellationToken);
             }
             else
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AutoLogin",
+                    "VaultCreating",
+                    "Creating new vault - first time setup",
+                    new { vault_path = vaultPath });
+
                 _session = await _vaultStore.CreateAsync(vaultPath, vaultPassword, cancellationToken);
             }
 
             var existingCredential = _session.Vault.Find(_profile.Id);
             if (existingCredential != null)
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AutoLogin",
+                    "CredentialsLoaded",
+                    "Existing credentials loaded from vault",
+                    new { profile_id = _profile.Id, email = existingCredential.Email });
+
                 Email = existingCredential.Email;
                 Password = existingCredential.Password;
                 TotpSecret = existingCredential.TotpSecret;
             }
+            else
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AutoLogin",
+                    "NoCredentials",
+                    "No existing credentials for this profile",
+                    new { profile_id = _profile.Id });
+            }
 
             IsVaultUnlocked = true;
-            DebugLogger.Log(DiagnosticCategories.Security, "Google login vault unlocked");
             StatusText = "Vault unlocked successfully";
 
             if (remember)
             {
                 await _session.RememberAsync(cancellationToken);
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AutoLogin",
+                    "VaultRemembered",
+                    "Vault password remembered on this device",
+                    null);
             }
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "AutoLogin",
+                "VaultUnlockSuccess",
+                "Vault unlock completed successfully",
+                new { total_credentials = _session.Vault.Records.Count });
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Security, "Google login vault unlock failed", ex);
+            ObservabilityHub.Instance.LogError(
+                "AutoLogin",
+                "VaultUnlockFailed",
+                ex,
+                new { profile_name = _profile.Name });
+
             StatusText = $"Failed to unlock vault: {GetSafeErrorMessage(ex)}";
             IsVaultUnlocked = false;
             throw;
@@ -206,6 +261,13 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             totpSecret = "AAAAAAAAAAAAAAAAAAAAAAAA"; // Valid Base32 placeholder
         }
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AutoLogin",
+            "SaveCredentials",
+            "Saving credentials to vault",
+            new { profile_id = _profile.Id, email, has_totp = totpSecret != "AAAAAAAAAAAAAAAAAAAAAAAA" });
+
         IsBusy = true;
         try
         {
@@ -218,12 +280,23 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             Email = email;
             Password = password;
             TotpSecret = totpSecret;
-            DebugLogger.Log(DiagnosticCategories.Security, "Google login credential record saved");
             StatusText = "Information saved successfully";
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "AutoLogin",
+                "SaveCredentialsSuccess",
+                "Credentials saved successfully",
+                new { profile_id = _profile.Id, email });
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Security, "Google login credential save failed", ex);
+            ObservabilityHub.Instance.LogError(
+                "AutoLogin",
+                "SaveCredentialsFailed",
+                ex,
+                new { profile_id = _profile.Id, email });
+
             StatusText = $"Failed to save: {GetSafeErrorMessage(ex)}";
             throw;
         }
@@ -248,6 +321,13 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             totpSecret = "AAAAAAAAAAAAAAAAAAAAAAAA";
         }
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AutoLogin",
+            "AutoLoginStarted",
+            "Starting Google auto-login automation",
+            new { profile_name = _profile.Name, email, has_totp = totpSecret != "AAAAAAAAAAAAAAAAAAAAAAAA" });
+
         IsBusy = true;
         try
         {
@@ -258,6 +338,13 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             var existingCredential = _session.Vault.Find(_profile.Id);
             if (existingCredential != null && existingCredential.Email != email)
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AutoLogin",
+                    "EmailChanged",
+                    "Email changed - persisting new email",
+                    new { old_email = existingCredential.Email, new_email = email });
+
                 // Persist email change only - keep existing password/TOTP
                 var updatedCredential = new GoogleLoginCredential(
                     _profile.Id,
@@ -282,14 +369,25 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             // Run automation with current fields
             var result = await _runAutomation(_profile, credential, cancellationToken);
 
-            DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login result: {result.Category}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "AutoLogin",
+                "AutoLoginCompleted",
+                "Auto-login automation completed",
+                new { profile_name = _profile.Name, result_category = result.Category.ToString(), message = result.Message });
+
             StatusText = MapResultToStatus(result);
 
             return result;
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Security, "Google auto-login operation failed", ex);
+            ObservabilityHub.Instance.LogError(
+                "AutoLogin",
+                "AutoLoginFailed",
+                ex,
+                new { profile_name = _profile.Name, email });
+
             var errorMessage = GetSafeErrorMessage(ex);
             StatusText = $"Auto-login failed: {errorMessage}";
             throw;
@@ -306,6 +404,13 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePassword);
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AutoLogin",
+            "VaultImportStarted",
+            "Starting vault import",
+            new { source_path = sourcePath });
+
         IsBusy = true;
         try
         {
@@ -321,12 +426,23 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             }
 
             IsVaultUnlocked = false;
-            DebugLogger.Log(DiagnosticCategories.Security, "Google login vault imported");
             StatusText = "Vault imported successfully. Please unlock the new vault.";
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "AutoLogin",
+                "VaultImportSuccess",
+                "Vault imported successfully",
+                new { vault_path = vaultPath });
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Security, "Google login vault import failed", ex);
+            ObservabilityHub.Instance.LogError(
+                "AutoLogin",
+                "VaultImportFailed",
+                ex,
+                new { source_path = sourcePath });
+
             StatusText = $"Import failed: {GetSafeErrorMessage(ex)}";
             throw;
         }
@@ -345,16 +461,34 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(exportPassword);
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AutoLogin",
+            "VaultExportStarted",
+            "Starting vault export",
+            new { destination_path = destinationPath });
+
         IsBusy = true;
         try
         {
             await _vaultStore.ExportAsync(_session, destinationPath, exportPassword, cancellationToken);
-            DebugLogger.Log(DiagnosticCategories.Security, "Google login vault exported");
             StatusText = "Vault exported successfully";
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "AutoLogin",
+                "VaultExportSuccess",
+                "Vault exported successfully",
+                new { destination_path = destinationPath, credential_count = _session.Vault.Records.Count });
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Security, "Google login vault export failed", ex);
+            ObservabilityHub.Instance.LogError(
+                "AutoLogin",
+                "VaultExportFailed",
+                ex,
+                new { destination_path = destinationPath });
+
             StatusText = $"Export failed: {GetSafeErrorMessage(ex)}";
             throw;
         }
@@ -406,25 +540,109 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
     {
         try
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "AutoLogin",
+                "CredentialLookupStarted",
+                "Starting auto-unlock credential lookup",
+                new
+                {
+                    profile_name = _profile.Name,
+                    profile_id = _profile.Id,
+                    profile_directory = _profile.DirectoryName,
+                    user_data_directory = _profile.UserDataDirectory
+                });
+
             var vaultPaths = new GoogleAccountVaultPaths();
-            _session = await _vaultStore.TryOpenRememberedAsync(vaultPaths.VaultPath, CancellationToken.None);
+            var vaultPath = vaultPaths.VaultPath;
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "AutoLogin",
+                "VaultAccess",
+                "Attempting vault access",
+                new { vault_path = vaultPath, vault_exists = File.Exists(vaultPath) });
+
+            _session = await _vaultStore.TryOpenRememberedAsync(vaultPath, CancellationToken.None);
 
             if (_session != null)
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AutoLogin",
+                    "VaultUnlocked",
+                    "Vault unlocked successfully",
+                    new { total_credentials = _session.Vault.Records.Count });
+
+                if (_session.Vault.Records.Count > 0)
+                {
+                    var profileIds = _session.Vault.Records.Select(r => new { r.ProfileId, r.Email }).ToList();
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Debug,
+                        "AutoLogin",
+                        "VaultInventory",
+                        "Available credentials in vault",
+                        new { credentials = profileIds });
+                }
+
                 var existingCredential = _session.Vault.Find(_profile.Id);
                 if (existingCredential != null)
                 {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "AutoLogin",
+                        "CredentialsFound",
+                        "Credentials found for profile",
+                        new
+                        {
+                            profile_id = _profile.Id,
+                            email = existingCredential.Email,
+                            has_password = !string.IsNullOrEmpty(existingCredential.Password),
+                            has_totp = !string.IsNullOrEmpty(existingCredential.TotpSecret)
+                        });
+
                     Email = existingCredential.Email;
                     Password = existingCredential.Password;
                     TotpSecret = existingCredential.TotpSecret;
+                }
+                else
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Warning,
+                        "AutoLogin",
+                        "CredentialsNotFound",
+                        "Credentials not found for profile - Profile ID mismatch detected",
+                        new
+                        {
+                            lookup_profile_id = _profile.Id,
+                            available_profile_ids = _session.Vault.Records.Select(r => r.ProfileId).ToList(),
+                            diagnosis = "Credentials may have been saved with different User Data path or Directory Name",
+                            solution = "Delete old credential in Credentials Manager and save again"
+                        });
                 }
 
                 IsVaultUnlocked = true;
                 StatusText = "Vault unlocked from remembered device";
             }
+            else
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AutoLogin",
+                    "VaultLocked",
+                    "Vault unlock failed - vault is locked or doesn't exist",
+                    new { vault_path = vaultPath });
+            }
         }
-        catch
+        catch (Exception ex)
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "AutoLogin",
+                "AutoUnlockFailed",
+                "Auto-unlock failed with exception",
+                new { error = ex.Message, error_type = ex.GetType().Name });
+
             // Silently ignore remembered unlock failures
             _session = null;
             IsVaultUnlocked = false;
