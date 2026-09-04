@@ -1,12 +1,16 @@
 using System;
 using System.Windows;
 using RouterPlus.App.Diagnostics;
+using RouterPlus.Core.Observability;
+using RouterPlus.Infrastructure.Observability;
 using RouterPlus.Infrastructure.Storage;
 
 namespace RouterPlus.App;
 
 public partial class App : System.Windows.Application
 {
+    private SessionManager? _sessionManager;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         // Debug-only path: ROUTERPLUS_DEBUG_AUTOLOGIN=1 runs the production
@@ -27,6 +31,9 @@ public partial class App : System.Windows.Application
         DebugLogger.Log(DiagnosticCategories.Startup, "Application startup began");
         base.OnStartup(e);
         HarnessEnvironment.Trace("WPF base startup completed");
+
+        // Initialize observability system FIRST (before anything else)
+        InitializeObservability();
 
         var settingsStore = HarnessEnvironment.CreateSettingsStore();
         HarnessEnvironment.Trace("Settings store created");
@@ -83,6 +90,107 @@ public partial class App : System.Windows.Application
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             Shutdown(1);
+        }
+    }
+
+    private void InitializeObservability()
+    {
+        try
+        {
+            DebugLogger.Log(DiagnosticCategories.Startup, "Initializing observability system");
+
+            // Create paths and session manager
+            var paths = new ObservabilityPaths();
+            DebugLogger.Log(DiagnosticCategories.Startup, $"Observability root: {paths.RootDirectory}");
+
+            _sessionManager = new SessionManager(paths);
+            DebugLogger.Log(DiagnosticCategories.Startup, $"Session ID: {_sessionManager.SessionId}");
+
+            // Initialize session directory and metadata
+            try
+            {
+                _sessionManager.Initialize();
+                DebugLogger.Log(DiagnosticCategories.Startup, "Session directory created");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogError(DiagnosticCategories.Startup, "Initialize failed", ex);
+                throw;
+            }
+
+            // Clean up old sessions in background (don't block startup)
+            System.Threading.Tasks.Task.Run(() => _sessionManager.CleanupOldSessions());
+
+            // Create and set writer
+            try
+            {
+                var writer = new JsonLinesWriter(paths, _sessionManager.SessionId);
+                DebugLogger.Log(DiagnosticCategories.Startup, "JsonLinesWriter created");
+
+                ObservabilityHub.Instance.SetWriter(writer);
+                DebugLogger.Log(DiagnosticCategories.Startup, "ObservabilityHub writer set");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogError(DiagnosticCategories.Startup, "Writer setup failed", ex);
+                throw;
+            }
+
+            // Log first event
+            try
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Startup",
+                    "AppStarted",
+                    "Application starting",
+                    new
+                    {
+                        version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
+                        os = Environment.OSVersion.ToString(),
+                        dotnet_version = Environment.Version.ToString(),
+                        session_id = _sessionManager.SessionId
+                    });
+                DebugLogger.Log(DiagnosticCategories.Startup, "ObservabilityHub first event logged");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogError(DiagnosticCategories.Startup, "First event log failed", ex);
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Never crash app due to observability failure
+            DebugLogger.LogError(DiagnosticCategories.Startup, "Observability initialization failed", ex);
+        }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            // Log shutdown event
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Shutdown",
+                "AppExiting",
+                "Application exiting",
+                new { exit_code = e.ApplicationExitCode });
+
+            // Dispose hub (flushes pending events)
+            ObservabilityHub.Instance.Dispose();
+
+            // Finalize session metadata
+            _sessionManager?.FinalizeAsync().Wait(TimeSpan.FromSeconds(5));
+        }
+        catch
+        {
+            // Best effort cleanup
+        }
+        finally
+        {
+            base.OnExit(e);
         }
     }
 }

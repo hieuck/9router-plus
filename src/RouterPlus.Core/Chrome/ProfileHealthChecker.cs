@@ -1,3 +1,4 @@
+using RouterPlus.Core.Observability;
 using RouterPlus.Core.Security;
 
 namespace RouterPlus.Core.Chrome;
@@ -15,11 +16,25 @@ public sealed class ProfileHealthChecker
     {
         ArgumentNullException.ThrowIfNull(profile);
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "HealthCheck",
+            "FilesystemCheckStarted",
+            "Starting filesystem health check",
+            new { profile = profile.Name, profile_path = profile.ProfilePath });
+
         var issues = new List<HealthIssue>();
 
         // Check #1: Profile directory exists
         if (!Directory.Exists(profile.ProfilePath))
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "HealthCheck",
+                "ProfileDirectoryNotFound",
+                "Profile directory does not exist",
+                new { profile = profile.Name, profile_path = profile.ProfilePath });
+
             issues.Add(HealthIssue.Error(
                 HealthCategory.Filesystem,
                 "Profile directory not found",
@@ -77,6 +92,13 @@ public sealed class ProfileHealthChecker
                 "Secure Preferences file missing. This is normal for older Chrome versions or unused profiles."));
         }
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "HealthCheck",
+            "FilesystemCheckCompleted",
+            "Filesystem health check completed",
+            new { profile = profile.Name, issue_count = issues.Count });
+
         return issues;
     }
 
@@ -90,6 +112,13 @@ public sealed class ProfileHealthChecker
         GoogleAccountVault? vault)
     {
         ArgumentNullException.ThrowIfNull(profile);
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "HealthCheck",
+            "CredentialsCheckStarted",
+            "Starting credentials health check",
+            new { profile = profile.Name, profile_id = profile.Id, vault_loaded = vault != null });
 
         var issues = new List<HealthIssue>();
 
@@ -106,11 +135,34 @@ public sealed class ProfileHealthChecker
         var credential = vault.Find(profile.Id);
         if (credential == null)
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "HealthCheck",
+                "CredentialsNotFound",
+                "No credentials found for profile",
+                new { profile = profile.Name, profile_id = profile.Id });
+
             issues.Add(HealthIssue.Warning(
                 HealthCategory.Credentials,
                 "No Google account linked to this profile",
                 "Profile has not been logged into Google, or credentials not saved."));
         }
+        else
+        {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "HealthCheck",
+                "CredentialsFound",
+                "Credentials found for profile",
+                new { profile = profile.Name, email = credential.Email });
+        }
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "HealthCheck",
+            "CredentialsCheckCompleted",
+            "Credentials health check completed",
+            new { profile = profile.Name, issue_count = issues.Count });
 
         return issues;
     }
