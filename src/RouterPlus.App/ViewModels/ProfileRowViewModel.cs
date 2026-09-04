@@ -11,6 +11,7 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
     private int _displayIndex;
     private bool _isSelected;
     private ProfileHealthStatus? _healthStatus;
+    private bool _isCheckingHealth;
 
     public ProfileRowViewModel(
         ChromeProfile profile,
@@ -94,6 +95,20 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
     /// Whether this profile has any health issues.
     /// </summary>
     public bool HasHealthIssues => HealthStatus?.Issues.Count > 0;
+
+    /// <summary>
+    /// Whether a health check is currently in progress for this profile.
+    /// </summary>
+    public bool IsCheckingHealth
+    {
+        get => _isCheckingHealth;
+        set
+        {
+            if (_isCheckingHealth == value) return;
+            _isCheckingHealth = value;
+            OnPropertyChanged();
+        }
+    }
 
     public void SetDisplayIndex(int displayIndex)
     {

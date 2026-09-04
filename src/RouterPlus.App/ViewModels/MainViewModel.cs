@@ -1528,10 +1528,59 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         if (row == null) return;
 
-        var status = await _profileHealthService.GetHealthStatusAsync(
-            row.Profile,
-            forceRefresh: true);
-        row.HealthStatus = status;
+        try
+        {
+            row.IsCheckingHealth = true;
+            var status = await _profileHealthService.GetHealthStatusAsync(
+                row.Profile,
+                forceRefresh: true);
+            row.HealthStatus = status;
+
+            // Show result notification
+            ShowHealthCheckResult(row, status);
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.LogError(DiagnosticCategories.Chrome, $"Health check failed for profile {row.Name}", ex);
+            StatusText = $"Health check failed: {ex.Message}";
+            ShowToast(StatusText, ToastType.Error);
+        }
+        finally
+        {
+            row.IsCheckingHealth = false;
+        }
+    }
+
+    /// <summary>
+    /// Show health check result message to user.
+    /// </summary>
+    private void ShowHealthCheckResult(ProfileRowViewModel row, ProfileHealthStatus status)
+    {
+        var icon = status.Level switch
+        {
+            HealthLevel.Healthy => "✓",
+            HealthLevel.Warning => "⚠",
+            HealthLevel.Error => "✗",
+            _ => "?"
+        };
+
+        var toastType = status.Level switch
+        {
+            HealthLevel.Healthy => ToastType.Success,
+            HealthLevel.Warning => ToastType.Warning,
+            HealthLevel.Error => ToastType.Error,
+            _ => ToastType.Info
+        };
+
+        StatusText = status.Level switch
+        {
+            HealthLevel.Healthy => $"{icon} {row.Name}: {status.Message}",
+            HealthLevel.Warning => $"{icon} {row.Name}: {status.Issues.Count} warning(s) found",
+            HealthLevel.Error => $"{icon} {row.Name}: {status.Issues.Count} error(s) found",
+            _ => $"{icon} {row.Name}: Health status unknown"
+        };
+
+        ShowToast(StatusText, toastType);
     }
 
     public async Task CheckForUpdatesAsync()

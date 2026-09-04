@@ -1039,6 +1039,18 @@
                                                     <Style TargetType="Ellipse">
                                                         <Setter Property="Fill" Value="{DynamicResource MutedTextBrush}" />
                                                         <Style.Triggers>
+                                                            <!-- Loading state: pulsing animation -->
+                                                            <DataTrigger Binding="{Binding IsCheckingHealth}" Value="True">
+                                                                <DataTrigger.EnterActions>
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard RepeatBehavior="Forever">
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           From="1.0" To="0.3" Duration="0:0:0.6"
+                                                                                           AutoReverse="True" />
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </DataTrigger.EnterActions>
+                                                            </DataTrigger>
                                                             <DataTrigger Binding="{Binding HealthStatus.Level}" Value="Healthy">
                                                                 <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
                                                             </DataTrigger>
