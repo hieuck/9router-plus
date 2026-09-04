@@ -267,7 +267,6 @@ public partial class MainWindow : Window
         {
             UIEventLogger.LogRightClick("ProfileListItem", row.Name);
             item.IsSelected = true;
-            ViewModel.SelectProfileForContextMenu(row.Profile);
         }
     }
 
