@@ -1,3 +1,5 @@
+using RouterPlus.Core.Security;
+
 namespace RouterPlus.Core.Chrome;
 
 /// <summary>
@@ -73,6 +75,41 @@ public sealed class ProfileHealthChecker
             issues.Add(HealthIssue.Info(
                 HealthCategory.Filesystem,
                 "Secure Preferences file missing. This is normal for older Chrome versions or unused profiles."));
+        }
+
+        return issues;
+    }
+
+    /// <summary>
+    /// Check credentials configuration health.
+    /// </summary>
+    /// <param name="profile">Profile to check</param>
+    /// <param name="vault">Google account vault (null if not loaded)</param>
+    public IReadOnlyList<HealthIssue> CheckCredentialsHealth(
+        ChromeProfile profile,
+        GoogleAccountVault? vault)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        var issues = new List<HealthIssue>();
+
+        // Check #12: Google credentials present
+        if (vault == null)
+        {
+            issues.Add(HealthIssue.Info(
+                HealthCategory.Credentials,
+                "Google vault not loaded")
+                with { Recommendation = "Cannot check credential status." });
+            return issues;
+        }
+
+        var credential = vault.Find(profile.Id);
+        if (credential == null)
+        {
+            issues.Add(HealthIssue.Warning(
+                HealthCategory.Credentials,
+                "No Google account linked to this profile",
+                "Profile has not been logged into Google, or credentials not saved."));
         }
 
         return issues;
