@@ -17,6 +17,39 @@ Profile Health Check monitors Chrome profile integrity and alerts you to issues 
 - Credentials configuration (Google accounts linked)
 - Provider connections (active and healthy)
 
+## Usage
+
+### Viewing Health Status
+
+Health status is displayed directly in the profile list for each profile:
+
+- **Health Icon**: A visual indicator (✓/⚠/✗/?) appears next to each profile name
+- **Status Text**: Brief description of the health state (e.g., "Healthy", "Warning", "Error")
+- **Automatic Checks**: All profiles are checked when the app starts
+- **Cached Results**: Status reflects cached results (refreshed every 5 minutes)
+
+### Health Icons
+
+| Icon | Meaning | Description |
+|------|---------|-------------|
+| ✓ | Healthy | All checks passed, profile ready to use |
+| ⚠ | Warning | Minor issues detected, may need attention |
+| ✗ | Error | Critical issues, profile likely unusable |
+| ? | Unknown | Health check not yet performed |
+
+### Manual Health Check
+
+To manually check a specific profile:
+
+1. Right-click the profile in the profile list
+2. Select **"Check Profile Health"** from the context menu
+3. The health status will refresh immediately (bypassing cache)
+
+Manual checks are useful when:
+- You've just fixed an issue and want to verify the profile is healthy
+- You want to force a fresh check before an important operation
+- The cached status seems outdated
+
 ## Performance
 
 - First check: <100ms per profile
