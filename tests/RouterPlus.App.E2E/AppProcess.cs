@@ -57,6 +57,16 @@ public sealed class AppProcess : IAsyncDisposable
 
     public static async Task<AppProcess> StartAsync(TestEnvironment environment)
     {
+        return await StartAsync(environment.RootPath, useRealChromeData: false);
+    }
+
+    public static async Task<AppProcess> StartAsync(bool useRealChromeData)
+    {
+        return await StartAsync(harnessRoot: null, useRealChromeData: useRealChromeData);
+    }
+
+    private static async Task<AppProcess> StartAsync(string? harnessRoot, bool useRealChromeData)
+    {
         var exePath = Path.GetFullPath(
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "RouterPlus.App", "bin", "Debug", "net8.0-windows", "RouterPlus.exe"));
 
@@ -70,8 +80,12 @@ public sealed class AppProcess : IAsyncDisposable
             WorkingDirectory = Path.GetDirectoryName(exePath)!,
             UseShellExecute = false
         };
-        startInfo.Environment["ROUTERPLUS_HARNESS"] = "1";
-        startInfo.Environment["ROUTERPLUS_HARNESS_ROOT"] = environment.RootPath;
+
+        if (!useRealChromeData && harnessRoot != null)
+        {
+            startInfo.Environment["ROUTERPLUS_HARNESS"] = "1";
+            startInfo.Environment["ROUTERPLUS_HARNESS_ROOT"] = harnessRoot;
+        }
 
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start RouterPlus.exe");
@@ -90,7 +104,7 @@ public sealed class AppProcess : IAsyncDisposable
 
             var app = new AppProcess(process, application, automation, mainWindow, processId)
             {
-                Instrumentation = new E2EInstrumentation(environment.RootPath)
+                Instrumentation = new E2EInstrumentation(harnessRoot ?? Path.GetTempPath())
             };
             app.Instrumentation.Record("APP_STARTED", $"pid={processId}");
             return app;

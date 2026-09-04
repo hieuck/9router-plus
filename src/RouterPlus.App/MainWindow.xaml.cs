@@ -269,62 +269,64 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Use SelectedItem instead of ContainerFromElement to avoid slow lookup
-        if (listBox.SelectedItem is not ProfileRowViewModel row)
+        // Use SelectedItem instead of slow ContainerFromElement lookup
+        if (listBox.SelectedItem is ProfileRowViewModel row)
+        {
+            // Set DataContext for context menu bindings
+            if (listBox.ContextMenu != null)
+            {
+                listBox.ContextMenu.DataContext = row;
+            }
+        }
+        else
         {
             e.Handled = true;
-            return;
         }
-
-        // Build context menu dynamically
-        var menu = new System.Windows.Controls.ContextMenu();
-
-        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Đăng nhập Google bằng Chrome", Tag = row.Profile });
-        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += ProfileGoogleLogin_Click;
-
-        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Tự động đăng nhập Google", Tag = row.Profile });
-        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += ProfileGoogleAutoLogin_Click;
-
-        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Mở thư mục profile", Tag = row.Profile });
-        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += ProfileFolder_Click;
-
-        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Sao chép tên profile", Tag = row.Profile });
-        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += CopyProfileName_Click;
-
-        var healthMenuItem = new System.Windows.Controls.MenuItem { Header = "Check Profile Health" };
-        healthMenuItem.Command = ViewModel.CheckProfileHealthCommand;
-        healthMenuItem.CommandParameter = row;
-        menu.Items.Add(healthMenuItem);
-
-        menu.Items.Add(new System.Windows.Controls.Separator());
-
-        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "Xóa profile…", Tag = row.Profile });
-        ((System.Windows.Controls.MenuItem)menu.Items[^1]).Click += DeleteProfile_Click;
-
-        listBox.ContextMenu = menu;
-        menu.IsOpen = true;
     }
 
     private async void ProfileGoogleLogin_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("ProfileGoogleLogin");
-        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile profile })
+
+        // Get profile from context menu DataContext
+        ChromeProfile? profile = null;
+        if (sender is System.Windows.Controls.MenuItem menuItem && menuItem.DataContext is ProfileRowViewModel row)
         {
-            var previousSelection = ViewModel.SelectedProfile;
-            ViewModel.SelectedProfile = profile;
-            await ViewModel.OpenSelectedGoogleLoginAsync();
-            ViewModel.SelectedProfile = previousSelection;
+            profile = row.Profile;
         }
-        else
+        else if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
+        {
+            profile = tagProfile;
+        }
+
+        if (profile == null)
         {
             await ViewModel.OpenSelectedGoogleLoginAsync();
+            return;
         }
+
+        var previousSelection = ViewModel.SelectedProfile;
+        ViewModel.SelectedProfile = profile;
+        await ViewModel.OpenSelectedGoogleLoginAsync();
+        ViewModel.SelectedProfile = previousSelection;
     }
 
     private void ProfileGoogleAutoLogin_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("ProfileGoogleAutoLogin");
-        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile profile })
+
+        // Get profile from context menu DataContext
+        ChromeProfile? profile = null;
+        if (sender is System.Windows.Controls.MenuItem menuItem && menuItem.DataContext is ProfileRowViewModel row)
+        {
+            profile = row.Profile;
+        }
+        else if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
+        {
+            profile = tagProfile;
+        }
+
+        if (profile != null)
         {
             var previousSelection = ViewModel.SelectedProfile;
             ViewModel.SelectedProfile = profile;
@@ -348,7 +350,13 @@ public partial class MainWindow : Window
     private void ProfileFolder_Click(object sender, RoutedEventArgs e)
     {
         ChromeProfile? profile = null;
-        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
+
+        // Get profile from context menu DataContext
+        if (sender is System.Windows.Controls.MenuItem menuItem && menuItem.DataContext is ProfileRowViewModel row)
+        {
+            profile = row.Profile;
+        }
+        else if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
         {
             profile = tagProfile;
         }
@@ -387,7 +395,13 @@ public partial class MainWindow : Window
     private void CopyProfileName_Click(object sender, RoutedEventArgs e)
     {
         ChromeProfile? profile = null;
-        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
+
+        // Get profile from context menu DataContext
+        if (sender is System.Windows.Controls.MenuItem menuItem && menuItem.DataContext is ProfileRowViewModel row)
+        {
+            profile = row.Profile;
+        }
+        else if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
         {
             profile = tagProfile;
         }
@@ -414,10 +428,46 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CheckProfileHealth_Click(object sender, RoutedEventArgs e)
+    {
+        ProfileRowViewModel? row = null;
+
+        // Get profile from context menu DataContext
+        if (sender is System.Windows.Controls.MenuItem menuItem && menuItem.DataContext is ProfileRowViewModel menuRow)
+        {
+            row = menuRow;
+        }
+
+        if (row is null)
+        {
+            return;
+        }
+
+        try
+        {
+            UIEventLogger.LogClick("CheckProfileHealth", row.Profile.Name);
+            if (ViewModel.CheckProfileHealthCommand.CanExecute(row))
+            {
+                ViewModel.CheckProfileHealthCommand.Execute(row);
+            }
+        }
+        catch (Exception exception)
+        {
+            DebugLogger.LogError(DiagnosticCategories.UI, "Failed to check profile health", exception);
+            ViewModel.MarkProfileActionFailed(exception);
+        }
+    }
+
     private async void DeleteProfile_Click(object sender, RoutedEventArgs e)
     {
         ChromeProfile? profile = null;
-        if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
+
+        // Get profile from context menu DataContext
+        if (sender is System.Windows.Controls.MenuItem menuItem && menuItem.DataContext is ProfileRowViewModel row)
+        {
+            profile = row.Profile;
+        }
+        else if (sender is System.Windows.Controls.MenuItem { Tag: ChromeProfile tagProfile })
         {
             profile = tagProfile;
         }

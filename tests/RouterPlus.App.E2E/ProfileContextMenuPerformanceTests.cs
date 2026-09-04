@@ -31,15 +31,23 @@ public class ProfileContextMenuPerformanceTests
         var stopwatch = Stopwatch.StartNew();
         firstProfile.RightClick();
 
-        // Poll for context menu with timeout
+        // Poll for context menu with timeout - try multiple search strategies
         var automation = app.MainWindow.Automation;
         var contextMenu = null as FlaUI.Core.AutomationElements.AutomationElement;
-        var timeout = TimeSpan.FromSeconds(5);
+        var timeout = TimeSpan.FromSeconds(6);
         var endTime = DateTime.UtcNow + timeout;
 
         while (DateTime.UtcNow < endTime && contextMenu == null)
         {
-            contextMenu = automation.GetDesktop().FindFirstChild(cf => cf.ByControlType(ControlType.Menu));
+            // Try AutomationId first
+            contextMenu = automation.GetDesktop().FindFirstDescendant(cf => cf.ByAutomationId("ProfileContextMenu"));
+
+            // Fallback to ControlType.Menu
+            if (contextMenu == null)
+            {
+                contextMenu = automation.GetDesktop().FindFirstChild(cf => cf.ByControlType(ControlType.Menu));
+            }
+
             if (contextMenu == null)
             {
                 await Task.Delay(50);

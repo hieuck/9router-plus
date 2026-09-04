@@ -905,9 +905,27 @@
                              HorizontalContentAlignment="Stretch"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              ScrollViewer.CanContentScroll="True"
-                             MouseDoubleClick="ProfileList_OnMouseDoubleClick"
-                             ContextMenuOpening="ProfileList_OnContextMenuOpening">
+                             ScrollViewer.CanContentScroll="True"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.CacheLength="10,10"
+                             VirtualizingPanel.CacheLengthUnit="Item"
+                             MouseDoubleClick="ProfileList_OnMouseDoubleClick">
+                        <ListBox.ContextMenu>
+                            <ContextMenu x:Name="ProfileContextMenu"
+                                         AutomationProperties.AutomationId="ProfileContextMenu"
+                                         DataContext="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource Self}}">
+                                <MenuItem Header="Đăng nhập Google bằng Chrome" Click="ProfileGoogleLogin_Click" />
+                                <MenuItem Header="Tự động đăng nhập Google" Click="ProfileGoogleAutoLogin_Click" />
+                                <MenuItem Header="Mở thư mục profile" Click="ProfileFolder_Click" />
+                                <MenuItem Header="Sao chép tên profile" Click="CopyProfileName_Click" />
+                                <MenuItem Header="Check Profile Health"
+                                          AutomationProperties.AutomationId="CheckProfileHealthMenuItem"
+                                          Click="CheckProfileHealth_Click" />
+                                <Separator />
+                                <MenuItem Header="Xóa profile…" Click="DeleteProfile_Click" />
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="5">
