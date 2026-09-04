@@ -1,0 +1,175 @@
+using RouterPlus.App.ViewModels;
+using RouterPlus.Core.Chrome;
+using RouterPlus.Infrastructure.Chrome;
+
+namespace RouterPlus.App.Tests.ViewModels;
+
+public sealed class MainViewModelHealthTests
+{
+    [Fact]
+    public async Task CheckAllProfilesHealthCommand_UpdatesAllProfileHealthStatus()
+    {
+        // Arrange: MainViewModel with 3 profiles, mocked ProfileHealthService
+        var mockHealthService = new MockProfileHealthService();
+        var viewModel = new MainViewModel(profileHealthService: mockHealthService);
+
+        var profile1 = CreateProfile("Profile1", "Profile 1");
+        var profile2 = CreateProfile("Profile2", "Profile 2");
+        var profile3 = CreateProfile("Profile3", "Profile 3");
+
+        viewModel.Profiles.Add(profile1);
+        viewModel.Profiles.Add(profile2);
+        viewModel.Profiles.Add(profile3);
+
+        // Act: Execute CheckAllProfilesHealthCommand
+        await viewModel.CheckAllProfilesHealthCommand.ExecuteAsync(null);
+
+        // Assert: All 3 ProfileRowViewModel.HealthStatus are non-null
+        Assert.Equal(3, viewModel.ProfileRows.Count);
+        Assert.All(viewModel.ProfileRows, row => Assert.NotNull(row.HealthStatus));
+        Assert.Equal(3, mockHealthService.CheckCount);
+    }
+
+    [Fact]
+    public async Task CheckProfileHealthCommand_UpdatesSingleProfileHealthStatus()
+    {
+        // Arrange: MainViewModel with 1 profile
+        var mockHealthService = new MockProfileHealthService();
+        var viewModel = new MainViewModel(profileHealthService: mockHealthService);
+
+        var profile = CreateProfile("TestProfile", "Profile 1");
+        viewModel.Profiles.Add(profile);
+
+        var row = viewModel.ProfileRows.First();
+        Assert.Null(row.HealthStatus); // Initially null
+
+        // Act: Execute CheckProfileHealthCommand with that profile
+        await viewModel.CheckProfileHealthCommand.ExecuteAsync(row);
+
+        // Assert: HealthStatus updated
+        Assert.NotNull(row.HealthStatus);
+        Assert.Equal(1, mockHealthService.CheckCount);
+    }
+
+    [Fact]
+    public async Task CheckAllProfilesHealthCommand_CallsServiceWithForceRefreshTrue()
+    {
+        // Arrange
+        var mockHealthService = new MockProfileHealthService();
+        var viewModel = new MainViewModel(profileHealthService: mockHealthService);
+        var profile = CreateProfile("Test", "Profile 1");
+        viewModel.Profiles.Add(profile);
+
+        // Act
+        await viewModel.CheckAllProfilesHealthCommand.ExecuteAsync(null);
+
+        // Assert
+        Assert.True(mockHealthService.LastForceRefresh);
+    }
+
+    [Fact]
+    public async Task CheckProfileHealthCommand_CallsServiceWithForceRefreshTrue()
+    {
+        // Arrange
+        var mockHealthService = new MockProfileHealthService();
+        var viewModel = new MainViewModel(profileHealthService: mockHealthService);
+        var profile = CreateProfile("Test", "Profile 1");
+        viewModel.Profiles.Add(profile);
+        var row = viewModel.ProfileRows.First();
+
+        // Act
+        await viewModel.CheckProfileHealthCommand.ExecuteAsync(row);
+
+        // Assert
+        Assert.True(mockHealthService.LastForceRefresh);
+    }
+
+    [Fact]
+    public async Task CheckProfileHealthCommand_HandlesNullParameter()
+    {
+        // Arrange
+        var mockHealthService = new MockProfileHealthService();
+        var viewModel = new MainViewModel(profileHealthService: mockHealthService);
+
+        // Act - should not throw
+        await viewModel.CheckProfileHealthCommand.ExecuteAsync(null);
+
+        // Assert - no health checks performed
+        Assert.Equal(0, mockHealthService.CheckCount);
+    }
+
+    [Fact]
+    public void CheckAllProfilesHealthCommand_CanExecute_ReturnsFalseWhenNoProfiles()
+    {
+        // Arrange
+        var viewModel = new MainViewModel();
+
+        // Assert
+        Assert.False(viewModel.CheckAllProfilesHealthCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void CheckAllProfilesHealthCommand_CanExecute_ReturnsTrueWhenProfilesExist()
+    {
+        // Arrange
+        var viewModel = new MainViewModel();
+        viewModel.Profiles.Add(CreateProfile("Test", "Profile 1"));
+
+        // Assert
+        Assert.True(viewModel.CheckAllProfilesHealthCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void CheckProfileHealthCommand_CanExecute_ReturnsFalseWhenParameterIsNull()
+    {
+        // Arrange
+        var viewModel = new MainViewModel();
+
+        // Assert
+        Assert.False(viewModel.CheckProfileHealthCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void CheckProfileHealthCommand_CanExecute_ReturnsTrueWhenParameterIsValid()
+    {
+        // Arrange
+        var viewModel = new MainViewModel();
+        var profile = CreateProfile("Test", "Profile 1");
+        viewModel.Profiles.Add(profile);
+        var row = viewModel.ProfileRows.First();
+
+        // Assert
+        Assert.True(viewModel.CheckProfileHealthCommand.CanExecute(row));
+    }
+
+    private static ChromeProfile CreateProfile(string name, string directoryName) =>
+        new(
+            ChromeProfile.CreateId("C:\\Chrome\\User Data", directoryName),
+            name,
+            directoryName,
+            "C:\\Chrome\\User Data",
+            false);
+
+    /// <summary>
+    /// Mock ProfileHealthService for testing.
+    /// </summary>
+    private sealed class MockProfileHealthService : ProfileHealthService
+    {
+        public int CheckCount { get; private set; }
+        public bool LastForceRefresh { get; private set; }
+
+        public new async Task<ProfileHealthStatus> GetHealthStatusAsync(
+            ChromeProfile profile,
+            bool forceRefresh = false)
+        {
+            CheckCount++;
+            LastForceRefresh = forceRefresh;
+
+            // Simulate async work
+            await Task.Delay(10);
+
+            // Return a healthy status
+            return ProfileHealthStatus.Healthy($"Profile {profile.Name} is healthy");
+        }
+    }
+}

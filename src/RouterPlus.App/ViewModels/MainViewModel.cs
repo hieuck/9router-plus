@@ -221,6 +221,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ToggleAppearanceSectionCommand = new RelayCommand(ToggleAppearanceSection);
         ToggleDashboardSectionCommand = new RelayCommand(ToggleDashboardSection);
         ToggleChromeSectionCommand = new RelayCommand(ToggleChromeSection);
+        CheckAllProfilesHealthCommand = new AsyncRelayCommand(
+            CheckAllProfilesHealthAsync,
+            () => ProfileRows.Any());
+        CheckProfileHealthCommand = new AsyncRelayCommand<ProfileRowViewModel>(
+            CheckProfileHealthAsync,
+            row => row != null);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -1387,6 +1393,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand OpenReleasePageCommand { get; }
 
+    /// <summary>
+    /// Command to check health status for all profiles.
+    /// </summary>
+    public AsyncRelayCommand CheckAllProfilesHealthCommand { get; }
+
+    /// <summary>
+    /// Command to check health status for a single profile.
+    /// </summary>
+    public AsyncRelayCommand<ProfileRowViewModel> CheckProfileHealthCommand { get; }
+
     internal Task InitializationTask => _initializationTask ?? _initializationCompletion.Task;
 
     internal bool IsInitialized => _isInitialized;
@@ -1486,6 +1502,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         _linkLauncher.Open(ApplicationLinks.ReleaseUri);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Check health status for all profiles.
+    /// </summary>
+    private async Task CheckAllProfilesHealthAsync()
+    {
+        foreach (var row in ProfileRows)
+        {
+            var status = await _profileHealthService.GetHealthStatusAsync(
+                row.Profile,
+                forceRefresh: true);
+            row.HealthStatus = status;
+
+            // Small delay to avoid overwhelming UI
+            await Task.Delay(50);
+        }
+    }
+
+    /// <summary>
+    /// Check health status for a single profile.
+    /// </summary>
+    private async Task CheckProfileHealthAsync(ProfileRowViewModel? row)
+    {
+        if (row == null) return;
+
+        var status = await _profileHealthService.GetHealthStatusAsync(
+            row.Profile,
+            forceRefresh: true);
+        row.HealthStatus = status;
     }
 
     public async Task CheckForUpdatesAsync()
