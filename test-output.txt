@@ -1,0 +1,76 @@
+Test run for E:\GitHub\9router-plus\tests\RouterPlus.App.E2E\bin\Debug\net8.0-windows\RouterPlus.App.E2E.dll (.NETCoreApp,Version=v8.0)
+Test run for E:\GitHub\9router-plus\tests\RouterPlus.Core.Tests\bin\Debug\net8.0-windows\RouterPlus.Core.Tests.dll (.NETCoreApp,Version=v8.0)
+Test run for E:\GitHub\9router-plus\tests\RouterPlus.Updater.Tests\bin\Debug\net8.0-windows\RouterPlus.Updater.Tests.dll (.NETCoreApp,Version=v8.0)
+Test run for E:\GitHub\9router-plus\tests\RouterPlus.App.Tests\bin\Debug\net8.0-windows\RouterPlus.App.Tests.dll (.NETCoreApp,Version=v8.0)
+Test run for E:\GitHub\9router-plus\tests\RouterPlus.Infrastructure.Tests\bin\Debug\net8.0-windows\RouterPlus.Infrastructure.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)VSTest version 17.11.1 (x64)
+
+VSTest version 17.11.1 (x64)
+
+
+VSTest version 17.11.1 (x64)
+
+
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+Starting test execution, please wait...
+Starting test execution, please wait...
+Starting test execution, please wait...
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 92 ms - RouterPlus.Updater.Tests.dll (net8.0)
+[xUnit.net 00:00:01.59]     RouterPlus.Core.Tests.MainViewModelApiKeyTests.AddApiKey_preserves_selected_profile_when_refresh_rebuilds_filtered_rows [FAIL]
+  Failed RouterPlus.Core.Tests.MainViewModelApiKeyTests.AddApiKey_preserves_selected_profile_when_refresh_rebuilds_filtered_rows [185 ms]
+  Error Message:
+   System.UnauthorizedAccessException : Access to the path is denied.
+  Stack Trace:
+     at System.IO.FileSystem.MoveFile(String sourceFullPath, String destFullPath, Boolean overwrite)
+   at RouterPlus.Infrastructure.Security.DpapiSecretVault.WriteStoreAsync(Dictionary`2 values, CancellationToken cancellationToken) in E:\GitHub\9router-plus\src\RouterPlus.Infrastructure\Security\DpapiSecretVault.cs:line 120
+   at RouterPlus.Infrastructure.Security.DpapiSecretVault.RemoveAsync(String key, CancellationToken cancellationToken) in E:\GitHub\9router-plus\src\RouterPlus.Infrastructure\Security\DpapiSecretVault.cs:line 78
+   at RouterPlus.Core.Tests.MainViewModelApiKeyTests.AddApiKey_preserves_selected_profile_when_refresh_rebuilds_filtered_rows() in E:\GitHub\9router-plus\tests\RouterPlus.Core.Tests\MainViewModelApiKeyTests.cs:line 50
+--- End of stack trace from previous location ---
+
+Passed!  - Failed:     0, Passed:   104, Skipped:     0, Total:   104, Duration: 2 s - RouterPlus.Infrastructure.Tests.dll (net8.0)
+[xUnit.net 00:00:03.95]     RouterPlus.Core.Tests.Observability.ObservabilityE2ETests.E2E_Complete_observability_flow_captures_all_phases [FAIL]
+  Failed RouterPlus.Core.Tests.Observability.ObservabilityE2ETests.E2E_Complete_observability_flow_captures_all_phases [1 s]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "InvalidOperationException"
+Actual:   "FormatException"
+           ↑ (pos 0)
+  Stack Trace:
+     at RouterPlus.Core.Tests.Observability.ObservabilityE2ETests.E2E_Complete_observability_flow_captures_all_phases() in E:\GitHub\9router-plus\tests\RouterPlus.Core.Tests\Observability\ObservabilityE2ETests.cs:line 329
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ === Initializing Observability System ===
+ Test Session ID: test_20260905_091617_2df0e68868a94adfbc422ee5df569d7f
+ 
+=== Phase 1: Testing Event Logging ===
+ ✓ Phase 1: Logged 6 events
+ 
+=== Phase 2: Testing Metrics & Traces ===
+ ✓ Phase 2: Recorded metrics and traces
+ 
+=== Phase 3: Testing State Snapshots ===
+ ✓ Phase 3: Captured 4 snapshots
+ 
+=== Phase 4: Testing User Features ===
+ ✓ Settings saved and loaded
+ ✓ Found 212 total sessions
+ ✓ Test session size: 0,05 MB
+ ✓ Created diagnostic report: 4,77 KB
+ 
+=== Verification: Validating Captured Data ===
+ Total events: 181
+ ✓ Privacy scrubbing verified
+
+
+
+Passed!  - Failed:     0, Passed:    79, Skipped:     0, Total:    79, Duration: 21 s - RouterPlus.App.Tests.dll (net8.0)

@@ -88,8 +88,26 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                             "GoogleLogin",
                             "ConfirmIdentifierContinueClicked",
                             "Continue button clicked on confirmidentifier page in ReadState");
-                        // Wait for navigation to password page
-                        await Task.Delay(1500, renderCts.Token);
+
+                        // Wait longer for navigation - Google may be slow or rate limiting
+                        await Task.Delay(3000, renderCts.Token);
+
+                        // Check if we're still on confirmidentifier after click
+                        var checkState = await ReadStateOnceAsync(renderCts.Token);
+                        if (checkState.PageUri.AbsolutePath.Contains("/confirmidentifier"))
+                        {
+                            // Still on confirmidentifier after click - Google is blocking automation
+                            DebugConsole.WriteLine("[ReadState] Still on confirmidentifier after click - possible anti-automation");
+                            ObservabilityHub.Instance.LogEvent(
+                                LogLevel.Warning,
+                                "GoogleLogin",
+                                "ConfirmIdentifierStuck",
+                                "Page still on confirmidentifier after Continue click - possible anti-bot");
+
+                            // Don't retry infinitely - break out after detecting password field elsewhere
+                            await Task.Delay(2000, renderCts.Token);
+                        }
+
                         continue;
                     }
                 }
@@ -1495,8 +1513,14 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         if (btn && !btn.disabled) {
             const rect = btn.getBoundingClientRect();
             if (btn.getClientRects().length > 0 && rect.width > 0 && rect.height > 0) {
-                btn.click();
-                return { clicked: true, method: 'selector', selector: selector };
+                // Return button position for real mouse click
+                return {
+                    clicked: true,
+                    method: 'selector',
+                    selector: selector,
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
             }
         }
     }
@@ -1509,8 +1533,14 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         if (labels.some(label => text.includes(label)) && !btn.disabled) {
             const rect = btn.getBoundingClientRect();
             if (btn.getClientRects().length > 0 && rect.width > 0 && rect.height > 0) {
-                btn.click();
-                return { clicked: true, method: 'text', text: btn.innerText };
+                // Return button position for real mouse click
+                return {
+                    clicked: true,
+                    method: 'text',
+                    text: btn.innerText,
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
             }
         }
     }
@@ -1537,7 +1567,42 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             if (clicked)
             {
                 var method = value.TryGetProperty("method", out var m) ? m.GetString() : "unknown";
-                DebugConsole.WriteLine($"[ConfirmIdentifier] Clicked Continue button via {method}");
+                var x = value.GetProperty("x").GetDouble();
+                var y = value.GetProperty("y").GetDouble();
+
+                DebugConsole.WriteLine($"[ConfirmIdentifier] Found Continue button via {method}, dispatching real mouse click at ({x}, {y})");
+
+                // Dispatch REAL mouse events instead of just .click()
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseMoved",
+                    x = x,
+                    y = y
+                }, cancellationToken, _sessionId);
+
+                await Task.Delay(100, cancellationToken);
+
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mousePressed",
+                    x = x,
+                    y = y,
+                    button = "left",
+                    clickCount = 1
+                }, cancellationToken, _sessionId);
+
+                await Task.Delay(50, cancellationToken);
+
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseReleased",
+                    x = x,
+                    y = y,
+                    button = "left",
+                    clickCount = 1
+                }, cancellationToken, _sessionId);
+
+                DebugConsole.WriteLine($"[ConfirmIdentifier] Real mouse click dispatched successfully");
             }
             else
             {
