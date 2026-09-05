@@ -12,9 +12,11 @@ public sealed class ObservabilitySettingsTests
         var settings = ObservabilitySettings.Load();
 
         // Assert
-        Assert.True(settings.Enabled);
-        Assert.Equal(30, settings.MaxSessionsToKeep);
-        Assert.Equal(90, settings.MaxSessionAgeDays);
+        Assert.True(settings.EnableLogging);
+        Assert.True(settings.EnableMetrics);
+        Assert.True(settings.EnableSnapshots);
+        Assert.Equal(7, settings.RetentionDays);
+        Assert.Equal(100, settings.MaxSessionSizeMB);
     }
 
     [Fact]
@@ -23,9 +25,11 @@ public sealed class ObservabilitySettingsTests
         // Arrange
         var settings = new ObservabilitySettings
         {
-            Enabled = false,
-            MaxSessionsToKeep = 10,
-            MaxSessionAgeDays = 30
+            EnableLogging = false,
+            EnableMetrics = true,
+            EnableSnapshots = false,
+            RetentionDays = 14,
+            MaxSessionSizeMB = 50
         };
 
         // Act
@@ -33,9 +37,11 @@ public sealed class ObservabilitySettingsTests
         var loaded = ObservabilitySettings.Load();
 
         // Assert
-        Assert.False(loaded.Enabled);
-        Assert.Equal(10, loaded.MaxSessionsToKeep);
-        Assert.Equal(30, loaded.MaxSessionAgeDays);
+        Assert.False(loaded.EnableLogging);
+        Assert.True(loaded.EnableMetrics);
+        Assert.False(loaded.EnableSnapshots);
+        Assert.Equal(14, loaded.RetentionDays);
+        Assert.Equal(50, loaded.MaxSessionSizeMB);
 
         // Cleanup - restore defaults
         var defaults = new ObservabilitySettings();

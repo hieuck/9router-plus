@@ -16,6 +16,7 @@ public sealed class ObservabilityHub : IDisposable
     public static ObservabilityHub Instance => LazyInstance.Value;
 
     private readonly ConcurrentQueue<LogEvent> _eventQueue = new();
+    private readonly ConcurrentQueue<StateSnapshot> _snapshotQueue = new();
     private readonly ConcurrentDictionary<string, double> _counters = new();
     private readonly ConcurrentDictionary<string, double> _gauges = new();
     private readonly ConcurrentDictionary<string, Histogram> _histograms = new();
@@ -95,6 +96,35 @@ public sealed class ObservabilityHub : IDisposable
         }
     }
 
+    /// <summary>
+    /// Captures a snapshot of application state.
+    /// </summary>
+    public void CaptureSnapshot(string component, Dictionary<string, object?> state, SnapshotTrigger trigger, string? errorContext = null)
+    {
+        if (_disposed) return;
+
+        try
+        {
+            var scrubbedState = PrivacyScrubber.Scrub(state) as Dictionary<string, object?>
+                ?? new Dictionary<string, object?>();
+
+            var snapshot = new StateSnapshot
+            {
+                Timestamp = DateTime.UtcNow,
+                Component = component,
+                State = scrubbedState,
+                Trigger = trigger,
+                ErrorContext = errorContext
+            };
+
+            _snapshotQueue.Enqueue(snapshot);
+        }
+        catch
+        {
+            // Never crash the app due to snapshot failure
+        }
+    }
+
     private async Task FlushLoopAsync()
     {
         while (!_shutdownCts.Token.IsCancellationRequested)
@@ -138,9 +168,20 @@ public sealed class ObservabilityHub : IDisposable
             events.Add(evt);
         }
 
+        var snapshots = new System.Collections.Generic.List<StateSnapshot>();
+        while (_snapshotQueue.TryDequeue(out var snapshot))
+        {
+            snapshots.Add(snapshot);
+        }
+
         if (events.Count > 0)
         {
             await _writer.WriteEventsAsync(events);
+        }
+
+        if (snapshots.Count > 0)
+        {
+            await _writer.WriteSnapshotsAsync(snapshots);
         }
     }
 
@@ -260,4 +301,5 @@ public sealed class ObservabilityHub : IDisposable
 public interface IObservabilityWriter : IDisposable
 {
     Task WriteEventsAsync(System.Collections.Generic.IEnumerable<LogEvent> events);
+    Task WriteSnapshotsAsync(System.Collections.Generic.IEnumerable<StateSnapshot> snapshots);
 }

@@ -42,6 +42,14 @@ public sealed class ObservabilityPaths
     }
 
     /// <summary>
+    /// Gets the path for the snapshots.jsonl file in a session.
+    /// </summary>
+    public string GetSnapshotsFilePath(string sessionId)
+    {
+        return Path.Combine(GetSessionDirectory(sessionId), "snapshots.jsonl");
+    }
+
+    /// <summary>
     /// Gets the path for the session.json metadata file.
     /// </summary>
     public string GetSessionMetadataPath(string sessionId)

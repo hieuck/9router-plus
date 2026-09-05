@@ -9,29 +9,18 @@ namespace RouterPlus.Core.Observability;
 /// </summary>
 public sealed class ObservabilitySettings
 {
+    public bool EnableLogging { get; set; } = true;
+    public bool EnableMetrics { get; set; } = true;
+    public bool EnableSnapshots { get; set; } = true;
+    public int RetentionDays { get; set; } = 7;
+    public int MaxSessionSizeMB { get; set; } = 100;
+
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RouterPlus",
-        "Observability",
-        "settings.json");
+        "RouterPlus", "Observability", "settings.json");
 
     /// <summary>
-    /// Whether observability logging is enabled.
-    /// </summary>
-    public bool Enabled { get; set; } = true;
-
-    /// <summary>
-    /// Maximum number of sessions to keep (older sessions auto-deleted).
-    /// </summary>
-    public int MaxSessionsToKeep { get; set; } = 30;
-
-    /// <summary>
-    /// Maximum age of sessions in days (older sessions auto-deleted).
-    /// </summary>
-    public int MaxSessionAgeDays { get; set; } = 90;
-
-    /// <summary>
-    /// Load settings from disk.
+    /// Loads settings from disk, or returns defaults if file doesn't exist.
     /// </summary>
     public static ObservabilitySettings Load()
     {
@@ -45,31 +34,35 @@ public sealed class ObservabilitySettings
         }
         catch
         {
-            // Fall back to defaults on error
+            // Return defaults on error
         }
 
         return new ObservabilitySettings();
     }
 
     /// <summary>
-    /// Save settings to disk.
+    /// Saves current settings to disk.
     /// </summary>
     public void Save()
     {
         try
         {
             var directory = Path.GetDirectoryName(SettingsPath);
-            if (directory != null && !Directory.Exists(directory))
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
             }
 
-            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
             File.WriteAllText(SettingsPath, json);
         }
         catch
         {
-            // Fail silently - don't crash app for settings save failure
+            // Fail silently - settings are non-critical
         }
     }
 }

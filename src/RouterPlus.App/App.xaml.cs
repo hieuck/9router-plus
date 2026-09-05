@@ -101,7 +101,7 @@ public partial class App : System.Windows.Application
 
             // Check if observability is enabled
             var settings = ObservabilitySettings.Load();
-            if (!settings.Enabled)
+            if (!settings.EnableLogging && !settings.EnableMetrics && !settings.EnableSnapshots)
             {
                 DebugLogger.Log(DiagnosticCategories.Startup, "Observability disabled in settings - skipping initialization");
                 return;

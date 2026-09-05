@@ -71,6 +71,43 @@ public sealed class JsonLinesWriter : IObservabilityWriter
         }
     }
 
+    public async Task WriteSnapshotsAsync(IEnumerable<StateSnapshot> snapshots)
+    {
+        if (_disposed) return;
+
+        await _writeLock.WaitAsync();
+        try
+        {
+            var snapshotsFilePath = _paths.GetSnapshotsFilePath(_sessionId);
+
+            // Check if file rotation needed
+            if (File.Exists(snapshotsFilePath))
+            {
+                var fileInfo = new FileInfo(snapshotsFilePath);
+                if (fileInfo.Length > MaxFileSizeBytes)
+                {
+                    await RotateFileAsync(snapshotsFilePath);
+                }
+            }
+
+            // Append snapshots as JSON Lines
+            await using var writer = new StreamWriter(snapshotsFilePath, append: true);
+            foreach (var snapshot in snapshots)
+            {
+                var json = JsonSerializer.Serialize(snapshot, _jsonOptions);
+                await writer.WriteLineAsync(json);
+            }
+        }
+        catch
+        {
+            // Never crash app due to write failure
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     private Task RotateFileAsync(string filePath)
     {
         try
