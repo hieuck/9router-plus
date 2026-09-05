@@ -1308,7 +1308,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
             if (row.AuthMethod == AuthMethod.GoogleOAuth)
             {
-                // Google OAuth flow: CodexOAuthAutomation handles Google login automatically
+                // Google OAuth flow: CodexOAuthAutomation uses existing Google session from the Chrome profile
                 if (string.IsNullOrWhiteSpace(row.LinkedGoogleAccount))
                 {
                     SetStatus($"❌ {row.ProfileName}: No linked Google account");
@@ -1318,9 +1318,16 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                 var googleAccount = GoogleAccounts.FirstOrDefault(a =>
                     a.Email.Equals(row.LinkedGoogleAccount, StringComparison.OrdinalIgnoreCase));
 
-                if (googleAccount == null || !googleAccount.HasCredentials)
+                if (googleAccount == null)
                 {
-                    SetStatus($"❌ {row.ProfileName}: Google account '{row.LinkedGoogleAccount}' not found or has no credentials");
+                    SetStatus($"❌ {row.ProfileName}: Google account '{row.LinkedGoogleAccount}' not found");
+                    return;
+                }
+
+                // Validate that Google account is already logged in
+                if (googleAccount.HealthStatus?.Status != CredentialHealthStatus.Healthy)
+                {
+                    SetStatus($"❌ {row.ProfileName}: Google account '{row.LinkedGoogleAccount}' must be logged in first. Please log in the Google account before using Codex OAuth.");
                     return;
                 }
 
