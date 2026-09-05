@@ -68,6 +68,19 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     }
                 }
 
+                // Google v3 confirmidentifier page - email already filled, just need to click Continue
+                if (state.PageUri.Host == "accounts.google.com" &&
+                    state.PageUri.AbsolutePath.Contains("/confirmidentifier"))
+                {
+                    DebugConsole.WriteLine("[ReadState] Detected confirmidentifier page, clicking Continue...");
+                    if (await TryClickConfirmIdentifierContinueAsync(renderCts.Token))
+                    {
+                        // Wait for navigation to password page
+                        await Task.Delay(1500, renderCts.Token);
+                        continue;
+                    }
+                }
+
                 // Google passkey enrollment speedbump after successful authentication
                 if (!triedSkipPasskey && state.PageUri.Host == "accounts.google.com" &&
                     (state.PageUri.AbsolutePath.Contains("/speedbump/passkey") ||
@@ -1415,6 +1428,85 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         catch (Exception ex)
         {
             DebugConsole.WriteLine($"[Submit] Failed to log page state: {ex.Message}");
+        }
+    }
+
+    private async Task<bool> TryClickConfirmIdentifierContinueAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            const string clickScript = @"
+(function() {
+    // Find Continue/Next button on confirmidentifier page
+    const buttonSelectors = [
+        '#identifierNext',
+        'button[type=""submit""]',
+        '[jsname=""LgbsSe""]',
+        '[jsname=""Njthtb""]',
+        '[data-primary-action-label]'
+    ];
+
+    // Try by selector first
+    for (const selector of buttonSelectors) {
+        const btn = document.querySelector(selector);
+        if (btn && !btn.disabled) {
+            const rect = btn.getBoundingClientRect();
+            if (btn.getClientRects().length > 0 && rect.width > 0 && rect.height > 0) {
+                btn.click();
+                return { clicked: true, method: 'selector', selector: selector };
+            }
+        }
+    }
+
+    // Try by text matching
+    const labels = ['continue', 'next', 'tiếp theo', 'tiếp'];
+    const buttons = Array.from(document.querySelectorAll('button, [role=""button""]'));
+    for (const btn of buttons) {
+        const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
+        if (labels.some(label => text.includes(label)) && !btn.disabled) {
+            const rect = btn.getBoundingClientRect();
+            if (btn.getClientRects().length > 0 && rect.width > 0 && rect.height > 0) {
+                btn.click();
+                return { clicked: true, method: 'text', text: btn.innerText };
+            }
+        }
+    }
+
+    return { clicked: false };
+})()";
+
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = clickScript,
+                returnByValue = true,
+                awaitPromise = false
+            }, cancellationToken, _sessionId);
+
+            if (result.TryGetProperty("exceptionDetails", out var ex))
+            {
+                DebugConsole.WriteLine($"[ConfirmIdentifier] Click failed: {GetCdpExceptionDescription(ex)}");
+                return false;
+            }
+
+            var value = result.GetProperty("result").GetProperty("value");
+            var clicked = value.TryGetProperty("clicked", out var c) && c.GetBoolean();
+
+            if (clicked)
+            {
+                var method = value.TryGetProperty("method", out var m) ? m.GetString() : "unknown";
+                DebugConsole.WriteLine($"[ConfirmIdentifier] Clicked Continue button via {method}");
+            }
+            else
+            {
+                DebugConsole.WriteLine("[ConfirmIdentifier] Could not find Continue button");
+            }
+
+            return clicked;
+        }
+        catch (Exception ex)
+        {
+            DebugConsole.WriteLine($"[ConfirmIdentifier] Exception: {ex.Message}");
+            return false;
         }
     }
 
