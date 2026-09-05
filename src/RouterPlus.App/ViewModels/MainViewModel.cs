@@ -3555,6 +3555,97 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return new GoogleAutoLoginViewModel(SelectedProfile, _googleLoginVaultStore, _googleLoginAutomation);
     }
 
+    /// <summary>
+    /// Run Google auto-login directly without showing dialog.
+    /// Credentials are loaded from vault (single source of truth).
+    /// </summary>
+    public async Task RunGoogleAutoLoginDirectAsync()
+    {
+        if (SelectedProfile is null)
+        {
+            StatusText = "Hãy chọn Chrome profile trước.";
+            return;
+        }
+
+        using var trace = TraceScope.Begin("MainViewModel", "GoogleAutoLoginDirect",
+            new { profile_id = SelectedProfile.Id, profile_name = SelectedProfile.Name });
+
+        try
+        {
+            StatusText = $"Đang tải thông tin đăng nhập cho {SelectedProfile.Name}...";
+
+            // Get vault path
+            var vaultPaths = new GoogleAccountVaultPaths();
+            var vaultPath = vaultPaths.VaultPath;
+
+            // Try to open vault with remembered key
+            GoogleAccountVaultSession? session = null;
+            try
+            {
+                session = await _googleLoginVaultStore.TryOpenRememberedAsync(vaultPath, CancellationToken.None);
+            }
+            catch
+            {
+                // Remembered key not available
+            }
+
+            if (session == null)
+            {
+                StatusText = $"❌ Vault chưa được mở khóa. Vui lòng mở Credentials Manager để thiết lập.";
+                ObservabilityHub.Instance.LogEvent(LogLevel.Warning, "MainViewModel", "AutoLoginVaultLocked",
+                    "Cannot auto-login: vault is locked", new { profile_id = SelectedProfile.Id });
+                return;
+            }
+
+            await using (session)
+            {
+                // Find credential for this profile
+                var credential = session.Vault.Find(SelectedProfile.Id);
+                if (credential == null)
+                {
+                    StatusText = $"❌ Không tìm thấy thông tin đăng nhập cho {SelectedProfile.Name}. Vui lòng thêm trong Credentials Manager.";
+                    ObservabilityHub.Instance.LogEvent(LogLevel.Warning, "MainViewModel", "AutoLoginNoCredentials",
+                        "Cannot auto-login: no credentials found", new { profile_id = SelectedProfile.Id });
+                    return;
+                }
+
+                trace.LogCheckpoint("CredentialsLoaded", new { email = credential.Email, has_totp = !string.IsNullOrWhiteSpace(credential.TotpSecret) });
+
+                StatusText = $"🚀 Đang đăng nhập Google với {credential.Email}...";
+
+                ObservabilityHub.Instance.LogEvent(LogLevel.Info, "MainViewModel", "AutoLoginStarted",
+                    "Starting direct auto-login from vault credentials",
+                    new { profile_id = SelectedProfile.Id, email = credential.Email });
+
+                // Run automation
+                var result = await _googleLoginAutomation(SelectedProfile, credential, CancellationToken.None);
+
+                ObservabilityHub.Instance.IncrementCounter("autologin.direct",
+                    tags: new Dictionary<string, string> { ["result"] = result.Category.ToString() });
+
+                // Update status based on result
+                if (result.Category == GoogleLoginResultCategory.Success)
+                {
+                    StatusText = $"✓ Đăng nhập Google thành công cho {SelectedProfile.Name}";
+                }
+                else if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
+                {
+                    StatusText = $"⚠ {SelectedProfile.Name}: Cần can thiệp thủ công - {result.Message}";
+                }
+                else
+                {
+                    StatusText = $"❌ {SelectedProfile.Name}: Đăng nhập thất bại - {result.Message ?? result.Category.ToString()}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ObservabilityHub.Instance.LogError("MainViewModel", "AutoLoginDirectFailed", ex,
+                new { profile_id = SelectedProfile.Id });
+            StatusText = $"❌ Lỗi auto-login: {ex.Message}";
+        }
+    }
+
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> CreateDefaultGoogleLoginAutomation()
     {
         return async (profile, credential, cancellationToken) =>

@@ -316,7 +316,7 @@ public partial class MainWindow : Window
         ViewModel.SelectedProfile = previousSelection;
     }
 
-    private void ProfileGoogleAutoLogin_Click(object sender, RoutedEventArgs e)
+    private async void ProfileGoogleAutoLogin_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("ProfileGoogleAutoLogin");
 
@@ -333,23 +333,11 @@ public partial class MainWindow : Window
 
         if (profile != null)
         {
-            var previousSelection = ViewModel.SelectedProfile;
             ViewModel.SelectedProfile = profile;
         }
 
-        var dialogViewModel = ViewModel.CreateGoogleAutoLoginViewModel();
-        if (dialogViewModel is null)
-        {
-            return;
-        }
-
-        UIEventLogger.LogDialogOpen("GoogleAutoLogin");
-        var dialog = new GoogleAutoLoginDialog(dialogViewModel)
-        {
-            Owner = this
-        };
-        var result = dialog.ShowDialog();
-        UIEventLogger.LogDialogClose("GoogleAutoLogin", result);
+        // Run auto-login directly without showing dialog
+        await ViewModel.RunGoogleAutoLoginDirectAsync();
     }
 
     private void ProfileFolder_Click(object sender, RoutedEventArgs e)
