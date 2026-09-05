@@ -144,6 +144,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task UnlockVaultAsync(string vaultPassword, bool remember, CancellationToken cancellationToken)
     {
+        using var trace = TraceScope.Begin("AutoLogin", "UnlockVault", new { profile_id = _profile.Id, profile_name = _profile.Name, remember_on_device = remember });
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "UnlockVaultAsync");
         ArgumentException.ThrowIfNullOrWhiteSpace(vaultPassword);
 
@@ -171,6 +172,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                     new { vault_path = vaultPath });
 
                 _session = await _vaultStore.OpenAsync(vaultPath, vaultPassword, cancellationToken);
+                trace.LogCheckpoint("VaultOpened");
             }
             else
             {
@@ -182,6 +184,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                     new { vault_path = vaultPath });
 
                 _session = await _vaultStore.CreateAsync(vaultPath, vaultPassword, cancellationToken);
+                trace.LogCheckpoint("VaultCreated");
             }
 
             var existingCredential = _session.Vault.Find(_profile.Id);
@@ -194,6 +197,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                     "Existing credentials loaded from vault",
                     new { profile_id = _profile.Id, email = existingCredential.Email });
 
+                trace.LogCheckpoint("CredentialsFound");
                 Email = existingCredential.Email;
                 Password = existingCredential.Password;
                 TotpSecret = existingCredential.TotpSecret;

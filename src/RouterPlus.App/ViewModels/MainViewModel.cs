@@ -344,6 +344,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         ArgumentNullException.ThrowIfNull(profile);
         SelectedProfile = profile;
+
+        ObservabilityHub.Instance.IncrementCounter("profile.selected", tags: new Dictionary<string, string>
+        {
+            ["source"] = "context_menu"
+        });
     }
 
     public ProfileRowViewModel? SelectedProfileRow => _selectedProfile is null
@@ -2926,8 +2931,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Providers, "OpenProviderAsync");
         var definition = ProviderCatalog.Get(provider);
+        using var trace = TraceScope.Begin("Providers", "OpenProvider", new { provider = provider.ToString(), workflow = definition.Workflow.ToString() });
+        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Providers, "OpenProviderAsync");
 
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Info,
@@ -2990,6 +2996,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 "Provider workflow cancelled by user",
                 new { provider = provider.ToString() });
 
+            ObservabilityHub.Instance.IncrementCounter("provider.workflow.cancelled", tags: new Dictionary<string, string>
+            {
+                ["provider"] = provider.ToString()
+            });
+
             _currentWorkflowProvider = null;
             _workflowExistingConnections.Clear();
             StatusText = $"Đã hủy thao tác thêm {definition.DisplayName}. Bạn có thể thử lại.";
@@ -2997,6 +3008,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception exception)
         {
+            ObservabilityHub.Instance.IncrementCounter("provider.workflow.failed", tags: new Dictionary<string, string>
+            {
+                ["provider"] = provider.ToString()
+            });
+
             ObservabilityHub.Instance.LogError(
                 "Providers",
                 "ProviderWorkflowFailed",

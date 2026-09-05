@@ -48,4 +48,13 @@ public sealed class ObservabilityPaths
     {
         return Path.Combine(GetSessionDirectory(sessionId), "session.json");
     }
+
+    /// <summary>
+    /// Gets the path for a state snapshot file.
+    /// </summary>
+    public string GetSnapshotFilePath(string sessionId, DateTime timestamp, bool compressed)
+    {
+        var fileName = $"snapshot_{timestamp:yyyyMMdd_HHmmss}{(compressed ? ".json.gz" : ".json")}";
+        return Path.Combine(GetSessionDirectory(sessionId), fileName);
+    }
 }

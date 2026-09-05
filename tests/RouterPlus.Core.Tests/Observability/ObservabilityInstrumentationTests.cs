@@ -7,10 +7,11 @@ using Xunit;
 
 namespace RouterPlus.Core.Tests.Observability;
 
+[Collection("Observability")]
 public sealed class ObservabilityInstrumentationTests
 {
     [Fact]
-    public void HealthCheck_logs_filesystem_check_events()
+    public async Task HealthCheck_logs_filesystem_check_events()
     {
         // Arrange
         var testSessionDir = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString());
@@ -43,9 +44,9 @@ public sealed class ObservabilityInstrumentationTests
             // Act
             var issues = checker.CheckFilesystemHealth(profile);
 
-            // Force immediate flush by disposing hub (flushes all pending events)
-            // Note: ObservabilityHub is singleton, so we need to wait for background flush
-            System.Threading.Thread.Sleep(6000); // Wait for 5-second flush cycle + buffer
+            // Flush and wait for write
+            await ObservabilityHub.Instance.FlushAsync();
+            System.Threading.Thread.Sleep(500);
 
             // Assert - check events were logged
             var eventsFile = paths.GetEventsFilePath(sessionManager.SessionId);
@@ -65,7 +66,7 @@ public sealed class ObservabilityInstrumentationTests
     }
 
     [Fact]
-    public void HealthCheck_logs_credentials_not_found()
+    public async Task HealthCheck_logs_credentials_not_found()
     {
         // Arrange
         var testSessionDir = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString());
@@ -97,8 +98,9 @@ public sealed class ObservabilityInstrumentationTests
             // Act
             var issues = checker.CheckCredentialsHealth(profile, vault);
 
-            // Wait for background flush
-            System.Threading.Thread.Sleep(6000);
+            // Flush and wait for write
+            await ObservabilityHub.Instance.FlushAsync();
+            System.Threading.Thread.Sleep(500);
 
             // Assert
             var eventsFile = paths.GetEventsFilePath(sessionManager.SessionId);

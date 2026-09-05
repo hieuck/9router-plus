@@ -16,6 +16,9 @@ public sealed class ObservabilityHub : IDisposable
     public static ObservabilityHub Instance => LazyInstance.Value;
 
     private readonly ConcurrentQueue<LogEvent> _eventQueue = new();
+    private readonly ConcurrentDictionary<string, double> _counters = new();
+    private readonly ConcurrentDictionary<string, double> _gauges = new();
+    private readonly ConcurrentDictionary<string, Histogram> _histograms = new();
     private readonly CancellationTokenSource _shutdownCts = new();
     private readonly Task _flushTask;
     private IObservabilityWriter? _writer;
@@ -100,7 +103,7 @@ public sealed class ObservabilityHub : IDisposable
             {
                 // Flush every 5 seconds
                 await Task.Delay(TimeSpan.FromSeconds(5), _shutdownCts.Token);
-                await FlushAsync();
+                await FlushEventsAsync();
             }
             catch (OperationCanceledException)
             {
@@ -114,10 +117,18 @@ public sealed class ObservabilityHub : IDisposable
         }
 
         // Final flush on shutdown
-        await FlushAsync();
+        await FlushEventsAsync();
     }
 
-    private async Task FlushAsync()
+    /// <summary>
+    /// Flush pending events immediately (primarily for testing).
+    /// </summary>
+    public async Task FlushAsync()
+    {
+        await FlushEventsAsync();
+    }
+
+    private async Task FlushEventsAsync()
     {
         if (_writer == null) return;
 
@@ -131,6 +142,90 @@ public sealed class ObservabilityHub : IDisposable
         {
             await _writer.WriteEventsAsync(events);
         }
+    }
+
+    /// <summary>
+    /// Increments a counter metric.
+    /// </summary>
+    public void IncrementCounter(string name, double delta = 1.0, Dictionary<string, string>? tags = null)
+    {
+        try
+        {
+            var key = BuildMetricKey(name, tags);
+            _counters.AddOrUpdate(key, delta, (_, current) => current + delta);
+        }
+        catch
+        {
+            // Never crash the app due to metrics failure
+        }
+    }
+
+    /// <summary>
+    /// Sets a gauge metric to a specific value.
+    /// </summary>
+    public void RecordGauge(string name, double value, Dictionary<string, string>? tags = null)
+    {
+        try
+        {
+            var key = BuildMetricKey(name, tags);
+            _gauges[key] = value;
+        }
+        catch
+        {
+            // Never crash the app due to metrics failure
+        }
+    }
+
+    /// <summary>
+    /// Records a histogram observation (e.g., duration, size).
+    /// </summary>
+    public void RecordHistogram(string name, double value, Dictionary<string, string>? tags = null, string? unit = null)
+    {
+        try
+        {
+            var key = BuildMetricKey(name, tags);
+            var histogram = _histograms.GetOrAdd(key, _ => CreateDefaultHistogram());
+            histogram.Observe(value);
+        }
+        catch
+        {
+            // Never crash the app due to metrics failure
+        }
+    }
+
+    private static string BuildMetricKey(string name, Dictionary<string, string>? tags)
+    {
+        if (tags == null || tags.Count == 0)
+        {
+            return name;
+        }
+
+        var tagString = string.Join(",", tags.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}={kv.Value}"));
+        return $"{name}{{{tagString}}}";
+    }
+
+    private static Histogram CreateDefaultHistogram()
+    {
+        // Default buckets suitable for duration (ms) and size (bytes) measurements
+        return new Histogram(new[] { 1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0 });
+    }
+
+    /// <summary>
+    /// Gets current metric snapshots (for testing/debugging).
+    /// </summary>
+    public (Dictionary<string, double> counters, Dictionary<string, double> gauges, Dictionary<string, (long count, double sum)> histograms) GetMetricSnapshots()
+    {
+        var counterSnapshot = new Dictionary<string, double>(_counters);
+        var gaugeSnapshot = new Dictionary<string, double>(_gauges);
+        var histogramSnapshot = new Dictionary<string, (long count, double sum)>();
+
+        foreach (var kvp in _histograms)
+        {
+            var snapshot = kvp.Value.GetSnapshot();
+            histogramSnapshot[kvp.Key] = (snapshot.count, snapshot.sum);
+        }
+
+        return (counterSnapshot, gaugeSnapshot, histogramSnapshot);
     }
 
     public void Dispose()

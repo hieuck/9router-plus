@@ -99,6 +99,14 @@ public partial class App : System.Windows.Application
         {
             DebugLogger.Log(DiagnosticCategories.Startup, "Initializing observability system");
 
+            // Check if observability is enabled
+            var settings = ObservabilitySettings.Load();
+            if (!settings.Enabled)
+            {
+                DebugLogger.Log(DiagnosticCategories.Startup, "Observability disabled in settings - skipping initialization");
+                return;
+            }
+
             // Create paths and session manager
             var paths = new ObservabilityPaths();
             DebugLogger.Log(DiagnosticCategories.Startup, $"Observability root: {paths.RootDirectory}");
