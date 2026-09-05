@@ -63,7 +63,7 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
     // Check if on target service (Codex post-auth landing page).
     // The add-phone and consent routes are still part of OAuth on auth.openai.com.
     const isTargetService = ((host.includes('chatgpt.com') || host.includes('openai.com')) &&
-        host !== 'auth.openai.com' && !isCodexAddPhonePage && !isCodexConsentPage) ||
+        host !== 'auth.openai.com' && !path.includes('/auth/') && !isCodexAddPhonePage && !isCodexConsentPage) ||
         (host.startsWith('localhost') && path.includes('/auth/callback') && currentUrl.includes('code='));
 
     let hasGoogleLoginButton = false;
@@ -190,12 +190,11 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         if (providerState == null)
             return false;
 
-        // Only click the initial CTA while it is actually present.
-        // Add-phone and Codex consent pages are passive/provider-consent states.
+        // Click "Log in" button on authorize page, OR "Continue with Google" button on login page
         return !state.IsGoogleOAuthPage &&
                providerState.IsOpenAIOAuthPage &&
                !providerState.HasOpenAIAccountPicker &&
-               providerState.HasGoogleLoginButton;
+               !state.HasAccountPicker; // Try clicking if no account pickers visible
     }
 
     protected override bool ShouldClickProviderAccountPicker(CombinedOAuthPageState state)
@@ -273,8 +272,7 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
     {
         var providerState = state.ProviderState as CodexOAuthPageState;
         if (state.IsGoogleOAuthPage || providerState == null ||
-            !providerState.IsOpenAIOAuthPage || providerState.HasOpenAIAccountPicker ||
-            !providerState.HasGoogleLoginButton)
+            !providerState.IsOpenAIOAuthPage || providerState.HasOpenAIAccountPicker)
             return false;
 
         const string script = @"
@@ -284,18 +282,27 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     };
-    const candidates = Array.from(document.querySelectorAll('button, a, [role=""button""]')).filter(btn => {
-        if (!isVisible(btn)) return false;
+    const buttons = Array.from(document.querySelectorAll('button, a, [role=""button""]')).filter(isVisible);
+
+    let googleButton = buttons.find(btn => {
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '') + ' ' + (btn.getAttribute('href') || '')).toLowerCase();
-        return text.includes('continue with google') ||
-               text.includes('sign in with google') ||
-               text.includes('log in with google') ||
-               text.includes('tiếp tục với google') ||
-               text.includes('đăng nhập bằng google');
+        return text.includes('continue with google') || text.includes('sign in with google') || text.includes('log in with google') || text.includes('tiếp tục với google') || text.includes('đăng nhập bằng google');
     });
-    if (candidates.length === 0) return false;
-    candidates[0].click();
-    return true;
+    if (googleButton) {
+        googleButton.click();
+        return 'google';
+    }
+
+    let loginButton = buttons.find(btn => {
+        const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
+        return text.includes('log in') || text.includes('sign in') || text.includes('đăng nhập');
+    });
+    if (loginButton) {
+        loginButton.click();
+        return 'login';
+    }
+
+    return false;
 })()
 ";
 
@@ -310,19 +317,27 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
             if (result.TryGetProperty("result", out var resultProp) &&
                 resultProp.TryGetProperty("value", out var valueProp))
             {
-                var clicked = valueProp.ValueKind == JsonValueKind.True;
-                if (clicked)
+                if (valueProp.ValueKind == JsonValueKind.String)
                 {
-                    DebugConsole.WriteLine("[CodexOAuth] Clicked 'Continue with Google' button on OpenAI page");
+                    var clickedType = valueProp.GetString();
+                    if (clickedType == "google")
+                    {
+                        DebugConsole.WriteLine("[CodexOAuth] Clicked 'Continue with Google' button on OpenAI page");
+                        return true;
+                    }
+                    if (clickedType == "login")
+                    {
+                        DebugConsole.WriteLine("[CodexOAuth] Clicked 'Log in' button on authorize page");
+                        return true;
+                    }
                 }
-                return clicked;
             }
 
             return false;
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[CodexOAuth] Click Google login button error: {ex.Message}");
+            DebugConsole.WriteLine($"[CodexOAuth] Click initial button error: {ex.Message}");
             return false;
         }
     }

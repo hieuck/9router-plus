@@ -47,9 +47,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     internal GoogleAccountVaultPaths GoogleAccountVaultPaths => _googleLoginVaultPaths;
     internal ProviderConnectionVaultStore ProviderConnectionVaultStore => _providerConnectionVaultStore;
     internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginAutomation => _googleLoginAutomation;
+    internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginHealthCheckAutomation => _googleLoginHealthCheckAutomation;
     internal Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> CodexLoginAutomation => _codexLoginAutomation;
 
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;
+    private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginHealthCheckAutomation;
     private readonly Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> _codexLoginAutomation;
     private readonly IGoogleAuthenticationService _googleAuthenticationService;
     private readonly HttpClient _httpClient;
@@ -156,6 +158,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
         _profileHealthService = profileHealthService!; // Deferred initialization in LoadGoogleAccountVaultAsync
         _googleLoginAutomation = googleLoginAutomation ?? CreateDefaultGoogleLoginAutomation();
+        _googleLoginHealthCheckAutomation = CreateDefaultGoogleLoginAutomation(minimized: true);
         _codexLoginAutomation = CreateDefaultCodexLoginAutomation();
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
         _autoGetKeyCredentials = CreateDefaultAutoGetKeyCredentials();
@@ -3787,7 +3790,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> CreateDefaultGoogleLoginAutomation()
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> CreateDefaultGoogleLoginAutomation(bool minimized = false)
     {
         return async (profile, credential, cancellationToken) =>
         {
@@ -3807,7 +3810,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     profile,
                     new Uri("https://accounts.google.com/"),
                     cancellationToken,
-                    settings.UseOriginalProfileForAutoLogin);
+                    settings.UseOriginalProfileForAutoLogin,
+                    minimized);
 
                 DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launched and CDP endpoint is available");
 
@@ -3834,11 +3838,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
                 DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login state machine completed: {result.Category}");
 
-                // Keep the managed browser open after success so the authenticated
-                // Google page remains visible. Manual intervention also transfers
-                // ownership to the main view model for the same reason.
-                if (result.Category is GoogleLoginResultCategory.Success
-                    or GoogleLoginResultCategory.ManualInterventionRequired)
+                // Dispose session to close the profile after successful login
+                if (result.Category is GoogleLoginResultCategory.Success)
+                {
+                    if (browser is not null)
+                    {
+                        await browser.DisposeAsync();
+                        browser = null;
+                    }
+                    if (session is not null)
+                    {
+                        await session.DisposeAsync();
+                        session = null;
+                    }
+                    return result;
+                }
+
+                // Keep the managed browser open for manual intervention
+                if (result.Category is GoogleLoginResultCategory.ManualInterventionRequired)
                 {
                     if (session is not null && browser is not null)
                     {

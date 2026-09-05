@@ -164,6 +164,7 @@ public partial class MainWindow : Window
                 ViewModel.ProviderConnectionVaultStore,
                 ViewModel.GoogleAccountVaultPaths,
                 ViewModel.GoogleLoginAutomation,
+                ViewModel.GoogleLoginHealthCheckAutomation,
                 ViewModel.CodexLoginAutomation);
             var dialog = new CredentialsManagerDialog(viewModel)
             {

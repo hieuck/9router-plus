@@ -27,6 +27,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     // Compatibility seam: MainViewModel composes this runner from the shared
     // IGoogleAuthenticationService and owns the Chrome/browser lifetime.
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _runGoogleAuthentication;
+    private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _runGoogleHealthCheck;
     private readonly Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> _runCodexAuthentication;
 
     private int _selectedTabIndex;
@@ -52,6 +53,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         ProviderConnectionVaultStore providerConnectionVaultStore,
         GoogleAccountVaultPaths vaultPaths,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleAuthenticationRunner,
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleHealthCheckRunner,
         Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> codexAuthenticationRunner)
     {
         _mainViewModel = mainViewModel ?? throw new ArgumentNullException(nameof(mainViewModel));
@@ -59,6 +61,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         _providerConnectionVaultStore = providerConnectionVaultStore ?? throw new ArgumentNullException(nameof(providerConnectionVaultStore));
         _vaultPaths = vaultPaths ?? throw new ArgumentNullException(nameof(vaultPaths));
         _runGoogleAuthentication = googleAuthenticationRunner ?? throw new ArgumentNullException(nameof(googleAuthenticationRunner));
+        _runGoogleHealthCheck = googleHealthCheckRunner ?? throw new ArgumentNullException(nameof(googleHealthCheckRunner));
         _runCodexAuthentication = codexAuthenticationRunner ?? throw new ArgumentNullException(nameof(codexAuthenticationRunner));
 
         // Initialize commands
@@ -830,7 +833,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         try
         {
-            var result = await _runGoogleAuthentication(profile, credential, CancellationToken.None);
+            var result = await _runGoogleHealthCheck(profile, credential, CancellationToken.None);
 
             var healthResult = MapLoginResultToHealthCheck(result);
             row.UpdateHealthStatus(healthResult);
@@ -1305,7 +1308,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
             if (row.AuthMethod == AuthMethod.GoogleOAuth)
             {
-                // Google OAuth flow: Login Google first, then auto-consent Codex
+                // Google OAuth flow: CodexOAuthAutomation handles Google login automatically
                 if (string.IsNullOrWhiteSpace(row.LinkedGoogleAccount))
                 {
                     SetStatus($"❌ {row.ProfileName}: No linked Google account");
@@ -1321,24 +1324,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                     return;
                 }
 
-                // Step 1: Login Google account first
-                SetStatus($"🚀 {row.ProfileName}: Logging in Google account {row.LinkedGoogleAccount}...");
-
-                var googleCredential = new GoogleLoginCredential(
-                    googleAccount.ProfileId,
-                    googleAccount.Email,
-                    googleAccount.Password,
-                    string.IsNullOrWhiteSpace(googleAccount.TotpSecret) ? "NONE" : googleAccount.TotpSecret.Trim());
-
-                var googleResult = await _runGoogleAuthentication(profile, googleCredential, CancellationToken.None);
-
-                if (googleResult.Category != GoogleLoginResultCategory.Success)
-                {
-                    SetStatus($"❌ {row.ProfileName}: Google login failed - {googleResult.Category}");
-                    return;
-                }
-
-                SetStatus($"✓ {row.ProfileName}: Google logged in, starting Codex OAuth...");
+                SetStatus($"🚀 {row.ProfileName}: Starting Codex OAuth with Google account {row.LinkedGoogleAccount}...");
 
                 credential = !string.IsNullOrWhiteSpace(row.TotpSecret)
                     ? CodexLoginCredential.FromGoogleOAuthWithTotp(row.ProfileId, row.LinkedGoogleAccount, row.TotpSecret.Trim())

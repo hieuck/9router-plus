@@ -805,6 +805,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _providerVaultStore,
             _vaultPaths,
             (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
             (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
 
@@ -868,6 +869,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _providerVaultStore,
             _vaultPaths,
             (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
             (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
 
@@ -926,6 +928,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _googleVaultStore,
             _providerVaultStore,
             _vaultPaths,
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
             (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
             (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);

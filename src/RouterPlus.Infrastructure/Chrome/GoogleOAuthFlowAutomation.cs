@@ -1,3 +1,4 @@
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -39,6 +40,13 @@ public abstract class GoogleOAuthFlowAutomation
     {
         ArgumentNullException.ThrowIfNull(startUri);
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "GoogleOAuth",
+            "FlowStarted",
+            "Google OAuth consent flow started",
+            new { start_uri = startUri.ToString(), timeout_seconds = timeout.TotalSeconds, profile_email = _profileEmail });
+
         var deadline = DateTimeOffset.UtcNow + timeout;
         var clickedScreenUrls = new HashSet<string>(StringComparer.Ordinal);
         var totpAttempted = false;
@@ -61,6 +69,19 @@ public abstract class GoogleOAuthFlowAutomation
                 GoogleState = googleState
             };
 
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "GoogleOAuth",
+                "StateDetected",
+                "OAuth page state detected",
+                new {
+                    is_google = combinedState.IsGoogleOAuthPage,
+                    current_url = combinedState.CurrentUrl,
+                    has_account_picker = combinedState.GoogleState?.HasAccountPicker,
+                    has_totp = combinedState.GoogleState?.HasGoogleTotpInput,
+                    has_consent = combinedState.GoogleState?.HasGoogleConsentButton
+                });
+
             if (!combinedState.IsGoogleOAuthPage)
             {
                 LogPageState(combinedState);
@@ -69,6 +90,12 @@ public abstract class GoogleOAuthFlowAutomation
                 var completionCheck = CheckCompletion(combinedState);
                 if (completionCheck.IsComplete)
                 {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleOAuth",
+                        "FlowCompleted",
+                        "OAuth flow completed",
+                        new { success = completionCheck.Result?.Success, message = completionCheck.Result?.Message });
                     return completionCheck.Result!;
                 }
             }
@@ -106,6 +133,13 @@ public abstract class GoogleOAuthFlowAutomation
                     await Task.Delay(500, cancellationToken);
                     continue;
                 }
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleOAuth",
+                    "ClickingAccountPicker",
+                    "Clicking Google account picker",
+                    new { profile_email = _profileEmail });
 
                 var accountClicked = await TryClickAccountPickerAsync(
                     combinedState, cancellationToken);
@@ -156,7 +190,11 @@ public abstract class GoogleOAuthFlowAutomation
                     var totpCode = await _totpGenerator();
                     if (!string.IsNullOrWhiteSpace(totpCode))
                     {
-                        DebugConsole.WriteLine("[GoogleOAuth] Auto-filling TOTP code...");
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "GoogleOAuth",
+                            "TotpAutoFilling",
+                            "Auto-filling Google TOTP code");
                         var filled = await GoogleOAuthPageDetector.TryFillTotpAsync(
                             _client, _sessionId, totpCode, cancellationToken);
                         if (filled)
@@ -167,7 +205,11 @@ public abstract class GoogleOAuthFlowAutomation
                     }
                 }
 
-                DebugConsole.WriteLine("[GoogleOAuth] Waiting for manual TOTP entry...");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleOAuth",
+                    "TotpWaitingManual",
+                    "Waiting for manual Google TOTP entry");
                 await Task.Delay(1000, cancellationToken);
                 continue;
             }
@@ -182,7 +224,11 @@ public abstract class GoogleOAuthFlowAutomation
                     continue;
                 }
 
-                DebugConsole.WriteLine("[GoogleOAuth] Clicking Google consent button...");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleOAuth",
+                    "ClickingConsent",
+                    "Clicking Google consent button");
                 var clicked = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
                     _client, _sessionId, cancellationToken);
                 if (clicked)
@@ -207,6 +253,12 @@ public abstract class GoogleOAuthFlowAutomation
                     await Task.Delay(500, cancellationToken);
                     continue;
                 }
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleOAuth",
+                    "ClickingProviderConsent",
+                    "Clicking provider consent button");
 
                 var clicked = await TryClickProviderConsentButtonAsync(combinedState, cancellationToken);
                 if (clicked)

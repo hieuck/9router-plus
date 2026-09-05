@@ -56,7 +56,8 @@ public sealed class ChromeLauncher
         ChromeProfile profile,
         Uri startUri,
         CancellationToken cancellationToken,
-        bool useOriginalProfile = false)
+        bool useOriginalProfile = false,
+        bool minimized = false)
     {
         ArgumentNullException.ThrowIfNull(installation);
         ArgumentNullException.ThrowIfNull(profile);
