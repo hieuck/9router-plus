@@ -704,28 +704,6 @@
                                 </Style>
                             </Button.Style>
                         </Button>
-                        <Button AutomationProperties.AutomationId="ToggleMultiSelectButton"
-                                Content="☑  Chọn nhiều"
-                                Command="{Binding ToggleMultiSelectModeCommand}"
-                                ToolTip="Bật/tắt chế độ chọn nhiều profiles (Ctrl+A)"
-                                Padding="8,5"
-                                HorizontalContentAlignment="Left"
-                                Margin="0,0,0,6">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                    <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsMultiSelectMode}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
-                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                            <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
                         <ItemsControl ItemsSource="{Binding ProviderFilterOptions}" Margin="0,0,0,8">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
