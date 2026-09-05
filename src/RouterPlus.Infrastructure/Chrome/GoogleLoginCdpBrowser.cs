@@ -957,6 +957,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         DebugConsole.WriteLine($"[Submit] {field} - Waiting 300ms before submit...");
         await Task.Delay(300, cancellationToken);
 
+        // Log page state BEFORE submit attempt
+        await LogPageStateForDebugAsync(field, cancellationToken);
+
         // Google uses step-specific controls whose exact markup varies by
         // Chromium version and locale.
         var selectorJson = JsonSerializer.Serialize(selector);
@@ -1004,12 +1007,6 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         var method = submitValue.TryGetProperty("method", out var m) ? m.GetString() : "none";
 
         DebugConsole.WriteLine($"[Submit] field={field} submittedByDom={submittedByDom} method={method}");
-
-        // Log page state if submit failed
-        if (!submittedByDom)
-        {
-            await LogPageStateForDebugAsync(field, cancellationToken);
-        }
 
         if (submittedByDom)
         {
