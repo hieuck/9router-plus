@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Diagnostics;
+using RouterPlus.Core.Observability;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
@@ -73,8 +74,20 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     state.PageUri.AbsolutePath.Contains("/confirmidentifier"))
                 {
                     DebugConsole.WriteLine("[ReadState] Detected confirmidentifier page, clicking Continue...");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleLogin",
+                        "ConfirmIdentifierDetected",
+                        "Detected confirmidentifier page in ReadState",
+                        new { page_url = state.PageUri.AbsolutePath });
+
                     if (await TryClickConfirmIdentifierContinueAsync(renderCts.Token))
                     {
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "GoogleLogin",
+                            "ConfirmIdentifierContinueClicked",
+                            "Continue button clicked on confirmidentifier page in ReadState");
                         // Wait for navigation to password page
                         await Task.Delay(1500, renderCts.Token);
                         continue;
@@ -1070,10 +1083,22 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     state.PageUri.AbsolutePath.Contains("/confirmidentifier"))
                 {
                     DebugConsole.WriteLine("[WaitForNextState] Detected confirmidentifier page after password, clicking Continue...");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleLogin",
+                        "ConfirmIdentifierDetected",
+                        "Detected confirmidentifier page after password submit",
+                        new { submitted_field = submittedField.ToString(), page_url = state.PageUri.AbsolutePath });
+
                     if (await TryClickConfirmIdentifierContinueAsync(cancellationToken))
                     {
                         triedConfirmIdentifier = true;
                         DebugConsole.WriteLine("[WaitForNextState] Continue clicked, waiting for navigation...");
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "GoogleLogin",
+                            "ConfirmIdentifierContinueClicked",
+                            "Continue button clicked on confirmidentifier page");
                         await Task.Delay(1500, cancellationToken);
                         // Reset deadline to give time for navigation
                         deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
