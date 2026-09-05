@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.App.Setup;
@@ -27,6 +28,14 @@ public partial class WelcomeWizardWindow : Window
         _settingsStore = settingsStore ?? new SettingsStore();
         _httpClient = httpClient ?? DefaultHttpClient;
         _nodeRouterSetupService = nodeRouterSetupService ?? new NodeRouterSetupService();
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Wizard",
+            "WizardOpened",
+            "Welcome wizard opened - first-time setup required",
+            new { timestamp = DateTime.UtcNow });
+
         InitializeComponent();
     }
 
@@ -48,6 +57,13 @@ public partial class WelcomeWizardWindow : Window
             return;
         }
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Wizard",
+            "RouterVerificationStarted",
+            "Starting router verification",
+            new { url });
+
         CheckRouterButton.IsEnabled = false;
         RouterCheckingPanel.Visibility = Visibility.Visible;
         RouterNotFoundPanel.Visibility = Visibility.Collapsed;
@@ -60,19 +76,47 @@ public partial class WelcomeWizardWindow : Window
 
             if (response.IsSuccessStatusCode)
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Wizard",
+                    "RouterVerified",
+                    "Router verified successfully",
+                    new { url, status_code = (int)response.StatusCode });
+
                 ShowRouterFound();
             }
             else
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "Wizard",
+                    "RouterVerificationFailed",
+                    "Router verification failed - non-success status code",
+                    new { url, status_code = (int)response.StatusCode });
+
                 ShowRouterNotFound($"9Router phản hồi mã HTTP {(int)response.StatusCode}. Kiểm tra lại Dashboard URL.");
             }
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Wizard",
+                "RouterVerificationFailed",
+                "Router verification failed - connection error",
+                new { url, error = ex.Message });
+
             ShowRouterNotFound("Không thể kết nối tới 9Router. Hãy khởi chạy 9Router rồi thử lại.");
         }
         catch (TaskCanceledException)
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Wizard",
+                "RouterVerificationFailed",
+                "Router verification failed - timeout",
+                new { url });
+
             ShowRouterNotFound("Kết nối tới 9Router quá thời gian chờ. Kiểm tra 9Router và Dashboard URL.");
         }
         finally
@@ -267,6 +311,13 @@ public partial class WelcomeWizardWindow : Window
 
     private void SkipButton_Click(object sender, RoutedEventArgs e)
     {
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Wizard",
+            "WizardSkipped",
+            "User skipped welcome wizard setup",
+            new { timestamp = DateTime.UtcNow });
+
         // User chose to skip wizard
         DialogResult = false;
         Close();
@@ -282,6 +333,18 @@ public partial class WelcomeWizardWindow : Window
                 ChromeUserDataDirectory: ChromeUserDataTextBox.Text.Trim(),
                 UseLightTheme: true
             );
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Wizard",
+                "WizardCompleted",
+                "User completed welcome wizard setup",
+                new
+                {
+                    router_url = settings.DashboardBaseUrl,
+                    chrome_exe = settings.ChromeExecutablePath,
+                    chrome_user_data = settings.ChromeUserDataDirectory
+                });
 
             await _settingsStore.SaveAsync(settings);
             DialogResult = true;
