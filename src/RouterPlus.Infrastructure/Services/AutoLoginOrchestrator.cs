@@ -2,6 +2,7 @@ using System.Text.Json;
 using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Security;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Diagnostics;
 using RouterPlus.Infrastructure.Security;
@@ -47,10 +48,16 @@ public sealed class AutoLoginOrchestrator
     {
         ArgumentNullException.ThrowIfNull(startUri);
 
+        using var trace = TraceScope.Begin("AutoLoginOrchestrator", "Login",
+            new { profile = profileName, provider = provider.ToString() });
+
         // Get connection config
         var connection = await _connectionVault.GetConnectionAsync(profileName, provider, cancellationToken);
         if (connection == null)
         {
+            ObservabilityHub.Instance.IncrementCounter("autologin.no_credentials",
+                tags: new Dictionary<string, string> { ["provider"] = provider.ToString() });
+
             return new AutoLoginResult(
                 Success: false,
                 Method: null,
@@ -61,11 +68,21 @@ public sealed class AutoLoginOrchestrator
         var primaryMethod = connection.PreferredMethod;
         var fallbackMethod = primaryMethod == AuthMethod.GoogleOAuth ? AuthMethod.Direct : AuthMethod.GoogleOAuth;
 
+        trace.LogCheckpoint("TryingPrimaryMethod", new { method = primaryMethod.ToString() });
+
         // Try primary method
         DebugConsole.WriteLine($"[AutoLogin] Trying primary method: {primaryMethod}");
         var primaryResult = await TryMethodAsync(connection, primaryMethod, provider, startUri, timeout, cancellationToken);
         if (primaryResult.Success)
         {
+            ObservabilityHub.Instance.IncrementCounter("autologin.success",
+                tags: new Dictionary<string, string>
+                {
+                    ["provider"] = provider.ToString(),
+                    ["method"] = primaryMethod.ToString(),
+                    ["fallback_used"] = "false"
+                });
+
             return primaryResult;
         }
 
@@ -78,11 +95,43 @@ public sealed class AutoLoginOrchestrator
 
         if (!fallbackAvailable)
         {
+            ObservabilityHub.Instance.IncrementCounter("autologin.failed",
+                tags: new Dictionary<string, string>
+                {
+                    ["provider"] = provider.ToString(),
+                    ["method"] = primaryMethod.ToString(),
+                    ["fallback_available"] = "false"
+                });
+
             return primaryResult;
         }
 
+        trace.LogCheckpoint("TryingFallbackMethod", new { method = fallbackMethod.ToString() });
+
         DebugConsole.WriteLine($"[AutoLogin] Attempting fallback: {fallbackMethod}");
         var fallbackResult = await TryMethodAsync(connection, fallbackMethod, provider, startUri, timeout, cancellationToken);
+
+        if (fallbackResult.Success)
+        {
+            ObservabilityHub.Instance.IncrementCounter("autologin.success",
+                tags: new Dictionary<string, string>
+                {
+                    ["provider"] = provider.ToString(),
+                    ["method"] = fallbackMethod.ToString(),
+                    ["fallback_used"] = "true"
+                });
+        }
+        else
+        {
+            ObservabilityHub.Instance.IncrementCounter("autologin.failed",
+                tags: new Dictionary<string, string>
+                {
+                    ["provider"] = provider.ToString(),
+                    ["method"] = "both",
+                    ["fallback_available"] = "true"
+                });
+        }
+
         return fallbackResult.Success ? fallbackResult : primaryResult;
     }
 
