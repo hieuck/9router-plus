@@ -1056,12 +1056,30 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         GoogleLoginPageState? lastState = null;
         var stableStateReads = 0;
         var triedSkipPasskey = false;
+        var triedConfirmIdentifier = false;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
             try
             {
                 var state = await ReadStateOnceAsync(cancellationToken);
+
+                // Handle Google v3 confirmidentifier page after password submit
+                if (submittedField == GoogleLoginField.Password && !triedConfirmIdentifier &&
+                    state.PageUri.Host == "accounts.google.com" &&
+                    state.PageUri.AbsolutePath.Contains("/confirmidentifier"))
+                {
+                    DebugConsole.WriteLine("[WaitForNextState] Detected confirmidentifier page after password, clicking Continue...");
+                    if (await TryClickConfirmIdentifierContinueAsync(cancellationToken))
+                    {
+                        triedConfirmIdentifier = true;
+                        DebugConsole.WriteLine("[WaitForNextState] Continue clicked, waiting for navigation...");
+                        await Task.Delay(1500, cancellationToken);
+                        // Reset deadline to give time for navigation
+                        deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+                        continue;
+                    }
+                }
 
                 // After TOTP submit, Google may show passkey enrollment speedbump
                 if (submittedField == GoogleLoginField.Totp && !triedSkipPasskey &&
