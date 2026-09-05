@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Observability;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Security;
 using RouterPlus.Core.Updates;
@@ -1357,15 +1358,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             // Set as selected and track
-            DebugLogger.Log(DiagnosticCategories.Chrome, $"Launching profile: {profile.Name}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "UI",
+                "ProfileLaunchRequested",
+                "User launching profile",
+                new { profile_name = profile.Name, profile_id = profile.Id, directory = profile.DirectoryName });
+
             SelectedProfile = profile;
             TrackProfileLaunch(profile);
             await LaunchUrlAsync(DashboardBaseUrl);
-            DebugLogger.Log(DiagnosticCategories.Chrome, $"Profile launch completed: {profile.Name}");
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "UI",
+                "ProfileLaunchCompleted",
+                "Profile launch completed successfully",
+                new { profile_name = profile.Name });
+
             StatusText = $"Đã mở 9Router bằng profile {profile.Name}.";
         }
         catch (Exception exception)
         {
+            ObservabilityHub.Instance.LogError(
+                "UI",
+                "ProfileLaunchFailed",
+                exception,
+                new { profile_name = profile.Name });
+
             SetError(exception);
         }
     }
@@ -1422,7 +1442,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private async Task InitializeCoreAsync()
     {
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Startup, "MainViewModel.InitializeAsync");
-        DebugLogger.Log(DiagnosticCategories.Startup, "Loading application settings and profiles");
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Startup",
+            "MainViewModelInitStarted",
+            "MainViewModel initialization started",
+            null);
+
         try
         {
             var settings = await _settingsStore.LoadAsync();
@@ -1443,6 +1470,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _managedProfiles.AddRange(settings.ManagedProfiles ?? []);
             _recentProfiles.Clear();
             _recentProfiles.AddRange(settings.RecentProfiles ?? []);
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Startup",
+                "SettingsLoaded",
+                "Application settings loaded",
+                new
+                {
+                    chrome_path = ChromeExecutablePath,
+                    user_data_dir = ChromeUserDataDirectory,
+                    managed_profiles = _managedProfiles.Count,
+                    recent_profiles = _recentProfiles.Count,
+                    font_scale = FontScale,
+                    light_theme = UseLightTheme
+                });
 
             // Load Google account vault for health checks
             await LoadGoogleAccountVaultAsync();
@@ -1466,7 +1508,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             _isInitialized = true;
             _initializationCompletion.TrySetResult(true);
-            DebugLogger.Log(DiagnosticCategories.Startup, $"Initialization completed: {Profiles.Count} profiles");
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Startup",
+                "MainViewModelInitCompleted",
+                "MainViewModel initialization completed",
+                new
+                {
+                    profile_count = Profiles.Count,
+                    harness_mode = _harnessMode
+                });
+
             if (_runStartupUpdateCheck)
             {
                 _ = RunStartupUpdateCheckAsync();
@@ -1474,7 +1527,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            DebugLogger.LogError(DiagnosticCategories.Startup, "Initialization failed", exception);
+            ObservabilityHub.Instance.LogError(
+                "Startup",
+                "MainViewModelInitFailed",
+                exception,
+                new { chrome_path = ChromeExecutablePath, user_data_dir = ChromeUserDataDirectory });
+
             SetError(exception);
         }
     }
@@ -1731,6 +1789,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Chrome, "RefreshProfiles");
         var previousProfileId = SelectedProfile?.Id;
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Profiles",
+            "ProfileRefreshStarted",
+            "Starting profile discovery",
+            new { harness_mode = _harnessMode, chrome_path = ChromeExecutablePath, user_data_dir = ChromeUserDataDirectory });
+
         if (_harnessMode)
         {
             RefreshHarnessProfiles(previousProfileId);
@@ -1742,7 +1807,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         if (_installation is null)
         {
-            DebugLogger.LogWarning(DiagnosticCategories.Chrome, "Profile refresh could not find a Chrome installation");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Profiles",
+                "ChromeInstallationNotFound",
+                "Profile refresh could not find Chrome installation",
+                new { chrome_path = ChromeExecutablePath, user_data_dir = ChromeUserDataDirectory });
             return;
         }
 
@@ -1758,7 +1828,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
             discoveredProfiles,
             managedProfiles,
             _installation.UserDataDirectory);
-        DebugLogger.Log(DiagnosticCategories.Chrome, $"Profile refresh discovered {profiles.Count} profiles");
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Profiles",
+            "ProfileRefreshCompleted",
+            "Profile discovery completed",
+            new
+            {
+                total_profiles = profiles.Count,
+                discovered_profiles = discoveredProfiles.Length,
+                managed_profiles = managedProfiles.Length,
+                user_data_dir = _installation.UserDataDirectory
+            });
+
         Profiles.Clear();
         ProfileRows.Clear();
         foreach (var profile in profiles)
@@ -2845,7 +2928,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Providers, "OpenProviderAsync");
         var definition = ProviderCatalog.Get(provider);
-        DebugLogger.Log(DiagnosticCategories.Providers, $"Provider workflow started: {provider} ({definition.Workflow})");
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Providers",
+            "ProviderWorkflowStarted",
+            "User starting provider connection workflow",
+            new
+            {
+                provider = provider.ToString(),
+                workflow = definition.Workflow.ToString(),
+                profile_name = SelectedProfile?.Name,
+                profile_id = SelectedProfile?.Id
+            });
+
         if (SelectedProfile is null)
         {
             StatusText = "Hãy chọn Chrome profile trước.";
@@ -2887,6 +2983,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (OperationCanceledException) when (workflowCancellation.IsCancellationRequested)
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Providers",
+                "ProviderWorkflowCancelled",
+                "Provider workflow cancelled by user",
+                new { provider = provider.ToString() });
+
             _currentWorkflowProvider = null;
             _workflowExistingConnections.Clear();
             StatusText = $"Đã hủy thao tác thêm {definition.DisplayName}. Bạn có thể thử lại.";
@@ -2894,13 +2997,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception exception)
         {
+            ObservabilityHub.Instance.LogError(
+                "Providers",
+                "ProviderWorkflowFailed",
+                exception,
+                new { provider = provider.ToString(), workflow = definition.Workflow.ToString() });
+
             _currentWorkflowProvider = null;
             _workflowExistingConnections.Clear();
             SetError(exception);
         }
         finally
         {
-            DebugLogger.Log(DiagnosticCategories.Providers, $"Provider workflow finished: {provider}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Providers",
+                "ProviderWorkflowFinished",
+                "Provider workflow completed",
+                new { provider = provider.ToString() });
+
             if (ReferenceEquals(_workflowCancellation, workflowCancellation))
             {
                 _workflowCancellation = null;
