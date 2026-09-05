@@ -226,6 +226,25 @@ The observability system has been validated in production:
 8. **Predictive health checks**: Proactive credential validation
 9. **Dashboard integration**: Real-time metrics visualization
 
+## Lessons Learned
+
+### Timing False Negatives (2026-09-05 10:06)
+
+**Issue:** Premature state verification after action led to false "stuck" signals.
+
+**Case Study:** Google confirmidentifier page
+- System clicked "Continue" button at 09:56:18
+- System checked state after 3 seconds, logged "ConfirmIdentifierStuck" warning at 09:56:21
+- **Login actually succeeded** at 09:56:30 (9 seconds after click)
+
+**Root Cause:** Checking state too soon (3s) when Google needs 5-10s to process authentication.
+
+**Fix:** Removed immediate state verification, let natural polling loop detect state changes.
+
+**Principle:** Don't verify actions immediately - external systems need processing time. False negatives create confusion and wrong diagnosis. Trust polling loops to detect changes naturally.
+
+**Documentation:** `docs/observability/TIMING_FALSE_NEGATIVES.md`
+
 ## Documentation
 
 | Component | Documentation File |
@@ -235,6 +254,7 @@ The observability system has been validated in production:
 | Bug Discovery Case Study | `docs/observability/BUG_DISCOVERY_WIZARD.md` |
 | Credentials Manager | `docs/observability/CREDENTIALS_INSTRUMENTATION.md` |
 | AutoLogin Orchestrator | `docs/observability/AUTOLOGIN_INSTRUMENTATION.md` |
+| Timing False Negatives | `docs/observability/TIMING_FALSE_NEGATIVES.md` |
 
 ## Commits
 

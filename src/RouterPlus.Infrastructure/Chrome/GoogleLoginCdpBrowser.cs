@@ -89,27 +89,12 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                             "ConfirmIdentifierContinueClicked",
                             "Continue button clicked on confirmidentifier page in ReadState");
 
-                        // Wait longer for navigation - Google may be slow or rate limiting
-                        await Task.Delay(3000, renderCts.Token);
-
-                        // Check if we're still on confirmidentifier after click
-                        var checkState = await ReadStateOnceAsync(renderCts.Token);
-                        if (checkState.PageUri.AbsolutePath.Contains("/confirmidentifier"))
-                        {
-                            // Still on confirmidentifier after click - Google is blocking automation
-                            DebugConsole.WriteLine("[ReadState] Still on confirmidentifier after click - possible anti-automation");
-                            ObservabilityHub.Instance.LogEvent(
-                                LogLevel.Warning,
-                                "GoogleLogin",
-                                "ConfirmIdentifierStuck",
-                                "Page still on confirmidentifier after Continue click - possible anti-bot");
-
-                            // Don't retry infinitely - break out after detecting password field elsewhere
-                            await Task.Delay(2000, renderCts.Token);
-                        }
-
-                        continue;
+                        // Don't check state immediately - let polling loop naturally handle navigation
+                        // Google may take 5-10 seconds to process, checking too early gives false "stuck" signal
+                        DebugConsole.WriteLine("[ReadState] Continue clicked, waiting for natural navigation...");
                     }
+
+                    continue;
                 }
 
                 // Google passkey enrollment speedbump after successful authentication
