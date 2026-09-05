@@ -82,6 +82,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
         RefreshCommand = new AsyncRelayCommand(RefreshDataAsync, () => !IsBatchLoginRunning);
         CheckAllHealthCommand = new AsyncRelayCommand(CheckAllHealthAsync, () => GoogleAccounts.Any(a => a.HasCredentials) && !IsBatchLoginRunning);
+        ToggleSelectAllGoogleCommand = new RelayCommand(ToggleSelectAllGoogle, () => GoogleAccounts.Any(a => a.HasCredentials));
+        ToggleSelectAllCodexCommand = new RelayCommand(ToggleSelectAllCodex, () => CodexConnections.Any(c => c.HasCredentials));
 
         // Codex commands
         SaveCodexRowCommand = new AsyncRelayCommand<CodexConnectionRowViewModel>(
@@ -169,6 +171,56 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     public int SelectedCount => GoogleAccounts.Count(a => a.IsSelected && a.HasCredentials);
 
     public int CodexSelectedCount => CodexConnections.Count(c => c.IsSelected && c.HasCredentials);
+
+    /// <summary>
+    /// True if all Google accounts with credentials are selected.
+    /// </summary>
+    public bool IsAllGoogleSelected
+    {
+        get
+        {
+            var credentialed = GoogleAccounts.Where(a => a.HasCredentials).ToList();
+            return credentialed.Any() && credentialed.All(a => a.IsSelected);
+        }
+    }
+
+    /// <summary>
+    /// True if some (but not all) Google accounts with credentials are selected.
+    /// </summary>
+    public bool IsGoogleSelectionIndeterminate
+    {
+        get
+        {
+            var credentialed = GoogleAccounts.Where(a => a.HasCredentials).ToList();
+            var selectedCount = credentialed.Count(a => a.IsSelected);
+            return selectedCount > 0 && selectedCount < credentialed.Count;
+        }
+    }
+
+    /// <summary>
+    /// True if all Codex connections with credentials are selected.
+    /// </summary>
+    public bool IsAllCodexSelected
+    {
+        get
+        {
+            var credentialed = CodexConnections.Where(c => c.HasCredentials).ToList();
+            return credentialed.Any() && credentialed.All(c => c.IsSelected);
+        }
+    }
+
+    /// <summary>
+    /// True if some (but not all) Codex connections with credentials are selected.
+    /// </summary>
+    public bool IsCodexSelectionIndeterminate
+    {
+        get
+        {
+            var credentialed = CodexConnections.Where(c => c.HasCredentials).ToList();
+            var selectedCount = credentialed.Count(c => c.IsSelected);
+            return selectedCount > 0 && selectedCount < credentialed.Count;
+        }
+    }
 
     public bool IsBatchLoginRunning
     {
@@ -301,6 +353,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     public RelayCommand StopBatchLoginCommand { get; }
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand CheckAllHealthCommand { get; }
+    public RelayCommand ToggleSelectAllGoogleCommand { get; }
+    public RelayCommand ToggleSelectAllCodexCommand { get; }
 
     // Codex commands
     public AsyncRelayCommand<CodexConnectionRowViewModel> SaveCodexRowCommand { get; }
@@ -401,7 +455,10 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                 {
                     OnPropertyChanged(nameof(SelectedCount));
                     OnPropertyChanged(nameof(ConfiguredGoogleAccounts));
+                    OnPropertyChanged(nameof(IsAllGoogleSelected));
+                    OnPropertyChanged(nameof(IsGoogleSelectionIndeterminate));
                     BatchLoginCommand.RaiseCanExecuteChanged();
+                    ToggleSelectAllGoogleCommand.RaiseCanExecuteChanged();
                 }
                 else if (e.PropertyName is nameof(GoogleAccountRowViewModel.Email))
                 {
@@ -501,6 +558,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                     or nameof(CodexConnectionRowViewModel.HasCredentials))
                 {
                     OnPropertyChanged(nameof(CodexSelectedCount));
+                    OnPropertyChanged(nameof(IsAllCodexSelected));
+                    OnPropertyChanged(nameof(IsCodexSelectionIndeterminate));
+                    ToggleSelectAllCodexCommand.RaiseCanExecuteChanged();
                 }
             };
 
@@ -936,6 +996,39 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     private void StopBatchLogin()
     {
         _batchLoginCts?.Cancel();
+    }
+
+    private void ToggleSelectAllGoogle()
+    {
+        var credentialed = GoogleAccounts.Where(a => a.HasCredentials).ToList();
+        if (!credentialed.Any()) return;
+
+        var shouldSelect = !IsAllGoogleSelected;
+        foreach (var account in credentialed)
+        {
+            account.IsSelected = shouldSelect;
+        }
+
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(IsAllGoogleSelected));
+        OnPropertyChanged(nameof(IsGoogleSelectionIndeterminate));
+        BatchLoginCommand.RaiseCanExecuteChanged();
+    }
+
+    private void ToggleSelectAllCodex()
+    {
+        var credentialed = CodexConnections.Where(c => c.HasCredentials).ToList();
+        if (!credentialed.Any()) return;
+
+        var shouldSelect = !IsAllCodexSelected;
+        foreach (var connection in credentialed)
+        {
+            connection.IsSelected = shouldSelect;
+        }
+
+        OnPropertyChanged(nameof(CodexSelectedCount));
+        OnPropertyChanged(nameof(IsAllCodexSelected));
+        OnPropertyChanged(nameof(IsCodexSelectionIndeterminate));
     }
 
     private async Task BatchLoginAsync(
