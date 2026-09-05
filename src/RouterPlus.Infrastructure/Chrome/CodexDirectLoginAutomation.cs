@@ -19,13 +19,13 @@ public sealed class CodexDirectLoginAutomation : DirectLoginAutomation
     {
     }
 
-    protected override string GetEmailSelector() => "input[type='email'], input[name='username'], input#username";
+    protected override string GetEmailSelector() => "input[type='email'], input[name='username'], input#username, input[name='email'], input[autocomplete='email']";
 
     protected override string GetPasswordSelector() => "input[type='password'], input[name='password'], input#password";
 
     protected override string? GetTotpSelector() => "input[type='text'][name='code'], input[name='otp'], input[autocomplete='one-time-code']";
 
-    protected override string GetSubmitSelector() => "button[type='submit'], button[name='action'], input[type='submit']";
+    protected override string GetSubmitSelector() => "button[type='submit'], button[name='action'], input[type='submit'], button:not([type='button'])";
 
     protected override async Task<bool> IsLoginCompleteAsync(CancellationToken cancellationToken)
     {

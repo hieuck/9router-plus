@@ -47,9 +47,33 @@ public abstract class DirectLoginAutomation
             "Direct login automation loop started",
             new { timeout_seconds = timeout.TotalSeconds });
 
+        var clickedLoginButton = false;
+
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // If no email field and haven't clicked login button yet, try to click it
+            if (!clickedLoginButton && !await IsElementVisibleAsync(GetEmailSelector(), cancellationToken))
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "DirectLogin",
+                    "TryClickLoginButton",
+                    "Email field not visible, attempting to click Log in button");
+
+                if (await TryClickLoginButtonAsync(cancellationToken))
+                {
+                    clickedLoginButton = true;
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "DirectLogin",
+                        "LoginButtonClicked",
+                        "Clicked Log in button, waiting for email field");
+                    await Task.Delay(2000, cancellationToken);
+                    continue;
+                }
+            }
 
             // Wait for email field
             ObservabilityHub.Instance.LogEvent(
@@ -379,6 +403,49 @@ public abstract class DirectLoginAutomation
         catch
         {
             return "error";
+        }
+    }
+
+    protected virtual async Task<bool> TryClickLoginButtonAsync(CancellationToken cancellationToken)
+    {
+        const string script = @"
+(function() {
+    const isVisible = el => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+    };
+    const buttons = Array.from(document.querySelectorAll('button, a, [role=""button""]')).filter(isVisible);
+    const loginButton = buttons.find(btn => {
+        const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
+        return text.includes('log in') || text.includes('sign in') || text.includes('đăng nhập');
+    });
+    if (loginButton) {
+        loginButton.click();
+        return true;
+    }
+    return false;
+})()
+";
+
+        try
+        {
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = script,
+                returnByValue = true
+            }, cancellationToken, _sessionId);
+
+            if (result.TryGetProperty("result", out var resultProp) &&
+                resultProp.TryGetProperty("value", out var valueProp))
+            {
+                return valueProp.GetBoolean();
+            }
+            return false;
+        }
+        catch
+        {
+            return false;
         }
     }
 }
