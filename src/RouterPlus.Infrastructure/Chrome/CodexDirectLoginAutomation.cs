@@ -76,12 +76,31 @@ public sealed class CodexDirectLoginAutomation : DirectLoginAutomation
             if (result.TryGetProperty("result", out var resultProp) &&
                 resultProp.TryGetProperty("value", out var valueProp))
             {
-                return valueProp.GetBoolean();
+                var isComplete = valueProp.GetBoolean();
+                RouterPlus.Core.Observability.ObservabilityHub.Instance.LogEvent(
+                    RouterPlus.Core.Observability.LogLevel.Debug,
+                    "CodexDirectLogin",
+                    "IsLoginCompleteCheck",
+                    "Checked login completion status",
+                    new { is_complete = isComplete });
+                return isComplete;
             }
+
+            RouterPlus.Core.Observability.ObservabilityHub.Instance.LogEvent(
+                RouterPlus.Core.Observability.LogLevel.Warning,
+                "CodexDirectLogin",
+                "IsLoginCompleteNoResult",
+                "IsLoginComplete returned no result property");
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            RouterPlus.Core.Observability.ObservabilityHub.Instance.LogEvent(
+                RouterPlus.Core.Observability.LogLevel.Error,
+                "CodexDirectLogin",
+                "IsLoginCompleteException",
+                "IsLoginComplete threw exception",
+                new { exception = ex.Message });
             return false;
         }
     }

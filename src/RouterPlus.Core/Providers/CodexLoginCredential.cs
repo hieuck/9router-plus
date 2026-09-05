@@ -38,6 +38,9 @@ public sealed class CodexLoginCredential
     public static CodexLoginCredential FromGoogleOAuth(string profileId, string googleEmail) =>
         new(profileId, AuthMethod.GoogleOAuth, linkedGoogleEmail: googleEmail);
 
+    public static CodexLoginCredential FromGoogleOAuthWithTotp(string profileId, string googleEmail, string totpSecret) =>
+        new(profileId, AuthMethod.GoogleOAuth, linkedGoogleEmail: googleEmail, totpSecret: totpSecret);
+
     public static CodexLoginCredential FromDirect(string profileId, string email, string password, string? totpSecret = null) =>
         new(profileId, AuthMethod.Direct, email: email, password: password, totpSecret: totpSecret);
 }

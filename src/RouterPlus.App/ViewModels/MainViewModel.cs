@@ -3942,12 +3942,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
                     cdp = await session.ConnectAnyTargetAsync(cancellationToken);
 
+                    // Create Codex TOTP generator if secret provided
+                    Func<Task<string?>>? codexTotpGenerator = null;
+                    if (!string.IsNullOrWhiteSpace(credential.TotpSecret))
+                    {
+                        codexTotpGenerator = async () =>
+                        {
+                            var secret = credential.TotpSecret!;
+                            var totp = GoogleTotpGenerator.Generate(secret, DateTimeOffset.UtcNow);
+                            ObservabilityHub.Instance.LogEvent(
+                                LogLevel.Debug,
+                                "CodexLogin",
+                                "CodexTotpGenerated",
+                                "Codex TOTP code generated for OAuth flow");
+                            return await Task.FromResult(totp);
+                        };
+                    }
+
                     // Run OAuth automation
                     var automation = new CodexOAuthAutomation(
                         cdp.Client,
                         cdp.SessionId,
                         cdp.TargetId,
-                        credential.LinkedGoogleEmail ?? string.Empty);
+                        credential.LinkedGoogleEmail ?? string.Empty,
+                        codexTotpGenerator);
 
                     DebugLogger.Log(DiagnosticCategories.Security, "Starting Codex OAuth automation");
                     var consentResult = await automation.WaitAndConsentAsync(
@@ -3966,14 +3984,86 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
                 else // Direct login
                 {
-                    // TODO: Implement Direct login automation
-                    // 1. Navigate to OpenAI login page
-                    // 2. Fill email/password
-                    // 3. Handle TOTP if provided
-                    // 4. Detect success
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "CodexLogin",
+                        "DirectLoginStarting",
+                        "Starting Codex direct login with email/password",
+                        new { email = credential.Email });
 
-                    DebugLogger.Log(DiagnosticCategories.Security, "Codex Direct login not implemented yet");
-                    return CodexLoginResult.Failed("Codex Direct login not implemented yet");
+                    var settings = await _settingsStore.LoadAsync();
+
+                    // Navigate to OpenAI login page (not OAuth authorize)
+                    var loginUrl = new Uri("https://chatgpt.com/auth/login");
+
+                    session = await _chromeLauncher.LaunchManagedAsync(
+                        installation,
+                        profile,
+                        loginUrl,
+                        cancellationToken,
+                        settings.UseOriginalProfileForAutoLogin);
+
+                    cdp = await session.ConnectAnyTargetAsync(cancellationToken);
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Debug,
+                        "CodexLogin",
+                        "ChromeLaunched",
+                        "Chrome launched for direct login");
+
+                    // Create TOTP generator if secret provided
+                    Func<Task<string?>>? totpGenerator = null;
+                    if (!string.IsNullOrWhiteSpace(credential.TotpSecret))
+                    {
+                        totpGenerator = async () =>
+                        {
+                            var secret = credential.TotpSecret!;
+                            var totp = GoogleTotpGenerator.Generate(secret, DateTimeOffset.UtcNow);
+                            ObservabilityHub.Instance.LogEvent(
+                                LogLevel.Debug,
+                                "CodexLogin",
+                                "TotpGenerated",
+                                "TOTP code generated for Codex login");
+                            return await Task.FromResult(totp);
+                        };
+                    }
+
+                    // Run direct login automation
+                    var automation = new CodexDirectLoginAutomation(
+                        cdp.Client,
+                        cdp.SessionId,
+                        cdp.TargetId,
+                        credential.Email!,
+                        credential.Password!,
+                        totpGenerator);
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "CodexLogin",
+                        "DirectLoginAutomationStarted",
+                        "Running direct login automation");
+
+                    var directResult = await automation.RunAsync(
+                        timeout: TimeSpan.FromMinutes(3),
+                        cancellationToken);
+
+                    if (directResult.Success)
+                    {
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "CodexLogin",
+                            "DirectLoginSuccess",
+                            "Codex direct login completed successfully");
+                        return CodexLoginResult.Success();
+                    }
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Warning,
+                        "CodexLogin",
+                        "DirectLoginFailed",
+                        "Codex direct login failed",
+                        new { message = directResult.Message });
+                    return CodexLoginResult.Failed(directResult.Message);
                 }
             }
             catch (OperationCanceledException)

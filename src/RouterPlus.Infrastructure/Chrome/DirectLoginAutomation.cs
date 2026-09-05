@@ -1,5 +1,5 @@
 using System.Text.Json;
-using RouterPlus.Infrastructure.Diagnostics;
+using RouterPlus.Core.Observability;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
@@ -40,39 +40,95 @@ public abstract class DirectLoginAutomation
         var deadline = DateTimeOffset.UtcNow + timeout;
         var totpAttempted = false;
 
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "DirectLogin",
+            "RunAsyncStarted",
+            "Direct login automation loop started",
+            new { timeout_seconds = timeout.TotalSeconds });
+
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             // Wait for email field
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "DirectLogin",
+                "WaitingForEmailField",
+                "Waiting for email input field to appear");
+
             if (!await WaitForSelectorAsync(GetEmailSelector(), cancellationToken))
             {
+                // Log current URL when email field not found
+                var currentUrl = await GetCurrentUrlAsync(cancellationToken);
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "DirectLogin",
+                    "EmailFieldNotFound",
+                    "Email field not found, retrying",
+                    new { current_url = currentUrl });
+
                 await Task.Delay(500, cancellationToken);
                 continue;
             }
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "DirectLogin",
+                "EmailFieldFound",
+                "Email field found, filling credentials");
 
             // Fill email
             await FillEmailAsync(cancellationToken);
             await Task.Delay(500, cancellationToken);
 
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "DirectLogin",
+                "EmailFilled",
+                "Email field filled");
+
             // Fill password
             await FillPasswordAsync(cancellationToken);
             await Task.Delay(500, cancellationToken);
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "DirectLogin",
+                "PasswordFilled",
+                "Password field filled");
 
             // Submit
             await SubmitLoginAsync(cancellationToken);
             await Task.Delay(2000, cancellationToken);
 
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "DirectLogin",
+                "LoginSubmitted",
+                "Login form submitted, waiting for response");
+
             // Check if TOTP is required
             if (await IsTotpRequiredAsync(cancellationToken))
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "DirectLogin",
+                    "TotpRequired",
+                    "TOTP challenge detected");
+
                 if (!totpAttempted && _totpGenerator is not null)
                 {
                     totpAttempted = true;
                     var totpCode = await _totpGenerator();
                     if (!string.IsNullOrWhiteSpace(totpCode))
                     {
-                        DebugConsole.WriteLine($"[{GetType().Name}] Auto-filling TOTP code...");
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Debug,
+                            "DirectLogin",
+                            "TotpAutoFilling",
+                            "Auto-filling TOTP code for direct login");
                         await FillTotpAsync(totpCode, cancellationToken);
                         await Task.Delay(1000, cancellationToken);
                         await SubmitTotpAsync(cancellationToken);
@@ -82,11 +138,29 @@ public abstract class DirectLoginAutomation
             }
 
             // Wait for completion
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "DirectLogin",
+                "CheckingCompletion",
+                "Checking if login completed");
+
             if (await IsLoginCompleteAsync(cancellationToken))
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "DirectLogin",
+                    "LoginCompleted",
+                    "Login completion detected");
                 return new DirectLoginResult(Success: true, Message: "Login completed");
             }
         }
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Warning,
+            "DirectLogin",
+            "TimeoutReached",
+            "Direct login automation timed out",
+            new { timeout_seconds = timeout.TotalSeconds });
 
         return new DirectLoginResult(Success: false, Message: "Timeout waiting for login completion");
     }
@@ -282,6 +356,29 @@ public abstract class DirectLoginAutomation
         if (result.TryGetProperty("exceptionDetails", out _))
         {
             throw new InvalidOperationException($"Failed to click element with selector: {selector}");
+        }
+    }
+
+    protected async Task<string> GetCurrentUrlAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = "window.location.href",
+                returnByValue = true
+            }, cancellationToken, _sessionId);
+
+            if (result.TryGetProperty("result", out var resultProp) &&
+                resultProp.TryGetProperty("value", out var valueProp))
+            {
+                return valueProp.GetString() ?? "unknown";
+            }
+            return "unknown";
+        }
+        catch
+        {
+            return "error";
         }
     }
 }

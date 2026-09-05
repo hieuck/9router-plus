@@ -1207,7 +1207,14 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                             ? null
                             : row.TotpSecret.Trim()
                     }
-                    : null
+                    : (!string.IsNullOrWhiteSpace(row.TotpSecret)
+                        ? new ProviderCredential
+                        {
+                            Email = string.Empty,
+                            Password = string.Empty,
+                            TotpSecret = row.TotpSecret.Trim()
+                        }
+                        : null)
             };
 
             await _providerConnectionVaultStore.SaveConnectionAsync(connection, CancellationToken.None);
@@ -1333,7 +1340,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
                 SetStatus($"✓ {row.ProfileName}: Google logged in, starting Codex OAuth...");
 
-                credential = CodexLoginCredential.FromGoogleOAuth(row.ProfileId, row.LinkedGoogleAccount);
+                credential = !string.IsNullOrWhiteSpace(row.TotpSecret)
+                    ? CodexLoginCredential.FromGoogleOAuthWithTotp(row.ProfileId, row.LinkedGoogleAccount, row.TotpSecret.Trim())
+                    : CodexLoginCredential.FromGoogleOAuth(row.ProfileId, row.LinkedGoogleAccount);
             }
             else // Direct method
             {
