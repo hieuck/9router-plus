@@ -188,6 +188,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             }
 
             var existingCredential = _session.Vault.Find(_profile.Id);
+            if (existingCredential == null)
+            {
+                // Legacy compatibility: try profile name fallback
+                existingCredential = _session.Vault.Find(_profile.Name);
+            }
+
             if (existingCredential != null)
             {
                 ObservabilityHub.Instance.LogEvent(
@@ -340,6 +346,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
             // If email changed AND there's an existing record, persist the email change only
             var existingCredential = _session.Vault.Find(_profile.Id);
+            if (existingCredential == null)
+            {
+                // Legacy compatibility: try profile name fallback
+                existingCredential = _session.Vault.Find(_profile.Name);
+            }
+
             if (existingCredential != null && existingCredential.Email != email)
             {
                 ObservabilityHub.Instance.LogEvent(
@@ -590,6 +602,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                 }
 
                 var existingCredential = _session.Vault.Find(_profile.Id);
+                if (existingCredential == null)
+                {
+                    // Legacy compatibility: try profile name fallback
+                    existingCredential = _session.Vault.Find(_profile.Name);
+                }
+
                 if (existingCredential != null)
                 {
                     ObservabilityHub.Instance.LogEvent(

@@ -3599,13 +3599,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             await using (session)
             {
-                // Find credential for this profile
+                // Find credential for this profile: stable Id first, fallback to legacy display name
                 var credential = session.Vault.Find(SelectedProfile.Id);
+                if (credential == null)
+                {
+                    // Legacy compatibility: try profile name if it's unique
+                    var profilesWithSameName = Profiles.Count(p => p.Name == SelectedProfile.Name);
+                    if (profilesWithSameName == 1)
+                    {
+                        credential = session.Vault.Find(SelectedProfile.Name);
+                    }
+                }
+
                 if (credential == null)
                 {
                     StatusText = $"❌ Không tìm thấy thông tin đăng nhập cho {SelectedProfile.Name}. Vui lòng thêm trong Credentials Manager.";
                     ObservabilityHub.Instance.LogEvent(LogLevel.Warning, "MainViewModel", "AutoLoginNoCredentials",
-                        "Cannot auto-login: no credentials found", new { profile_id = SelectedProfile.Id });
+                        "Cannot auto-login: no credentials found", new { profile_id = SelectedProfile.Id, profile_name = SelectedProfile.Name });
                     return;
                 }
 

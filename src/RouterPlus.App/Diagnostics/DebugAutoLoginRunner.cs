@@ -116,10 +116,25 @@ internal static class DebugAutoLoginRunner
 
             Console.WriteLine("Vault unlocked from remembered device.");
 
+            // Find credential: stable Id first, fallback to legacy display name
             var credential = session.Vault.Find(profile.Id);
             if (credential == null)
             {
-                Console.WriteLine($"ERROR: No credential for profile {profile.Id} in vault.");
+                // Legacy compatibility: try profile name if it's unique
+                var profilesWithSameName = profiles.Count(p => p.Name == profile.Name);
+                if (profilesWithSameName == 1)
+                {
+                    credential = session.Vault.Find(profile.Name);
+                    if (credential != null)
+                    {
+                        Console.WriteLine($"Found credential using legacy name key: {profile.Name}");
+                    }
+                }
+            }
+
+            if (credential == null)
+            {
+                Console.WriteLine($"ERROR: No credential for profile Id={profile.Id} Name={profile.Name} in vault.");
                 await session.DisposeAsync();
                 WpfApplication.Current.Shutdown(1);
                 return;
