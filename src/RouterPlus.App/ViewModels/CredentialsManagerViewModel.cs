@@ -7,6 +7,7 @@ using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Infrastructure.Security;
 
@@ -551,11 +552,14 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             return;
         }
 
+        using var trace = TraceScope.Begin("CredentialsManager", "UnlockVault", new { remember, vault_exists = File.Exists(_vaultPaths.VaultPath) });
+
         try
         {
             GoogleAccountVaultSession session;
             if (File.Exists(_vaultPaths.VaultPath))
             {
+                trace.LogCheckpoint("OpeningExistingVault");
                 session = await _googleAccountVaultStore.OpenAsync(
                     _vaultPaths.VaultPath,
                     vaultPassword,
@@ -563,6 +567,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             }
             else
             {
+                trace.LogCheckpoint("CreatingNewVault");
                 session = await _googleAccountVaultStore.CreateAsync(
                     _vaultPaths.VaultPath,
                     vaultPassword,
@@ -577,16 +582,25 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             _vaultSession = session;
             if (remember)
             {
+                trace.LogCheckpoint("RememberingKey");
                 await _vaultSession.RememberAsync(CancellationToken.None);
             }
 
             IsVaultLocked = false;
             await LoadProfileRowsAsync(_vaultSession);
             await LoadProviderConnectionsAsync();
-            SetStatus($"Vault unlocked. Loaded {GoogleAccounts.Count(a => a.HasCredentials)} configured profiles.");
+
+            var configuredCount = GoogleAccounts.Count(a => a.HasCredentials);
+            ObservabilityHub.Instance.RecordGauge("vault.profiles.configured", configuredCount);
+            ObservabilityHub.Instance.IncrementCounter("vault.unlock.success");
+
+            SetStatus($"Vault unlocked. Loaded {configuredCount} configured profiles.");
         }
         catch (Exception ex)
         {
+            ObservabilityHub.Instance.IncrementCounter("vault.unlock.failed", tags: new Dictionary<string, string> { ["error_type"] = ex.GetType().Name });
+            ObservabilityHub.Instance.LogEvent(LogLevel.Error, "CredentialsManager", "VaultUnlockFailed",
+                "Failed to unlock vault", new { error = ex.Message, error_type = ex.GetType().Name });
             SetStatus($"Unable to unlock vault: {GetSafeVaultErrorMessage(ex)}");
         }
     }
@@ -639,6 +653,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             return;
         }
 
+        using var trace = TraceScope.Begin("CredentialsManager", "SaveCredential", new { profile = row.ProfileName, has_totp = !string.IsNullOrWhiteSpace(row.TotpSecret) });
+
         try
         {
             // Resolve the underlying profile: by stable Id first, then by display
@@ -647,6 +663,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             var profile = ResolveRowProfile(row);
             if (profile is null)
             {
+                ObservabilityHub.Instance.IncrementCounter("credentials.save.failed", tags: new Dictionary<string, string> { ["reason"] = "profile_not_found" });
                 SetStatus($"Profile not found for {row.ProfileName}");
                 return;
             }
@@ -659,6 +676,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                 row.Email.Trim(),
                 row.Password,
                 string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
+
+            trace.LogCheckpoint("SavingToVault");
 
             // Upsert into vault (immutable pattern). Remove any prior record keyed
             // by the stable Id AND any legacy record keyed by the display name,
@@ -677,11 +696,15 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             row.HasCredentials = true;
             row.IsEditing = false;
 
+            ObservabilityHub.Instance.IncrementCounter("credentials.save.success");
             OnPropertyChanged(nameof(ConfiguredGoogleAccounts));
             SetStatus($"Saved credentials for {row.ProfileName}");
         }
         catch (Exception ex)
         {
+            ObservabilityHub.Instance.IncrementCounter("credentials.save.failed", tags: new Dictionary<string, string> { ["reason"] = "exception" });
+            ObservabilityHub.Instance.LogEvent(LogLevel.Error, "CredentialsManager", "SaveCredentialFailed",
+                "Failed to save credential", new { profile = row.ProfileName, error = ex.Message });
             SetStatus($"Error saving: {ex.Message}");
         }
     }
@@ -732,9 +755,14 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         SetStatus($"🚀 Logging in {row.ProfileName}...");
 
+        using var trace = TraceScope.Begin("CredentialsManager", "LoginGoogle", new { profile = row.ProfileName, has_totp = !string.IsNullOrWhiteSpace(row.TotpSecret) });
+
         try
         {
             var result = await _runGoogleAuthentication(profile, credential, CancellationToken.None);
+
+            ObservabilityHub.Instance.IncrementCounter("credentials.login.google",
+                tags: new Dictionary<string, string> { ["result"] = result.Category.ToString() });
 
             if (result.Category == GoogleLoginResultCategory.Success)
             {
@@ -751,6 +779,10 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         }
         catch (Exception ex)
         {
+            ObservabilityHub.Instance.IncrementCounter("credentials.login.google.exception",
+                tags: new Dictionary<string, string> { ["error_type"] = ex.GetType().Name });
+            ObservabilityHub.Instance.LogEvent(LogLevel.Error, "CredentialsManager", "GoogleLoginFailed",
+                "Google login failed with exception", new { profile = row.ProfileName, error = ex.Message });
             SetStatus($"❌ {row.ProfileName}: {ex.Message}");
         }
     }
@@ -794,6 +826,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         row.UpdateHealthStatus(CredentialHealthCheckResult.Checking());
         SetStatus($"⟳ Checking health for {row.ProfileName}...");
 
+        using var trace = TraceScope.Begin("CredentialsManager", "CheckHealth", new { profile = row.ProfileName });
+
         try
         {
             var result = await _runGoogleAuthentication(profile, credential, CancellationToken.None);
@@ -801,12 +835,21 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             var healthResult = MapLoginResultToHealthCheck(result);
             row.UpdateHealthStatus(healthResult);
 
+            ObservabilityHub.Instance.IncrementCounter("credentials.health_check.completed",
+                tags: new Dictionary<string, string> { ["status"] = healthResult.Status.ToString() });
+
             SetStatus($"{healthResult.Status.ToEmoji()} {row.ProfileName}: {healthResult.Message}");
         }
         catch (Exception ex)
         {
             var healthResult = CredentialHealthCheckResult.Error($"Health check failed: {ex.Message}", ex);
             row.UpdateHealthStatus(healthResult);
+
+            ObservabilityHub.Instance.IncrementCounter("credentials.health_check.exception",
+                tags: new Dictionary<string, string> { ["error_type"] = ex.GetType().Name });
+            ObservabilityHub.Instance.LogEvent(LogLevel.Error, "CredentialsManager", "HealthCheckFailed",
+                "Health check failed with exception", new { profile = row.ProfileName, error = ex.Message });
+
             SetStatus($"❌ {row.ProfileName}: {ex.Message}");
         }
     }
@@ -904,6 +947,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         var failCount = 0;
         var cancelled = false;
 
+        using var trace = TraceScope.Begin("CredentialsManager", "BatchLogin", new { profile_count = selectedRows.Count });
+
         try
         {
             if (!selectedRows.Any())
@@ -917,6 +962,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                 SetStatus("Vault not unlocked. Please unlock the vault first.");
                 return;
             }
+
+            ObservabilityHub.Instance.LogEvent(LogLevel.Info, "CredentialsManager", "BatchLoginStarted",
+                "Starting batch login operation", new { profile_count = selectedRows.Count });
 
             SetStatus($"Starting batch login for {selectedRows.Count} profile(s)...");
 
@@ -990,12 +1038,17 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                 }
             }
 
+            ObservabilityHub.Instance.IncrementCounter("credentials.batch_login.completed");
+            ObservabilityHub.Instance.RecordGauge("credentials.batch_login.success_count", successCount);
+            ObservabilityHub.Instance.RecordGauge("credentials.batch_login.fail_count", failCount);
+
             SetStatus(cancelled
                 ? $"Batch login cancelled: {successCount} succeeded, {failCount} failed"
                 : $"Batch login completed: {successCount} succeeded, {failCount} failed");
         }
         catch (OperationCanceledException) when (batchCts.IsCancellationRequested)
         {
+            ObservabilityHub.Instance.IncrementCounter("credentials.batch_login.cancelled");
             SetStatus($"Batch login cancelled: {successCount} succeeded, {failCount} failed");
         }
         finally
