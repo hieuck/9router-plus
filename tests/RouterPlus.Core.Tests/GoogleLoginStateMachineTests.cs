@@ -20,6 +20,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -28,6 +29,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -36,6 +38,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: true,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -44,6 +47,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -70,6 +74,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -78,6 +83,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -104,6 +110,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -130,6 +137,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true))
@@ -138,6 +146,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -146,6 +155,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -171,6 +181,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -179,6 +190,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true))
@@ -187,6 +199,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -195,6 +208,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -220,6 +234,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -228,6 +243,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -236,6 +252,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true))
@@ -244,6 +261,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: true,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -252,6 +270,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -277,6 +296,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -285,6 +305,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -293,6 +314,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: true,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -301,6 +323,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true))
@@ -309,6 +332,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -334,6 +358,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -342,6 +367,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: true))
@@ -350,6 +376,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -358,6 +385,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -384,6 +412,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
@@ -411,6 +440,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -419,6 +449,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
@@ -446,6 +477,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true, // Set to true to skip wait loop
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -454,6 +486,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
@@ -479,6 +512,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));
@@ -507,6 +541,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -549,6 +584,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -574,6 +610,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -600,6 +637,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -608,6 +646,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -616,6 +655,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -642,6 +682,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -650,6 +691,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -674,6 +716,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -682,6 +725,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false));
@@ -706,6 +750,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: true,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -714,6 +759,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: true,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
@@ -722,6 +768,7 @@ public class GoogleLoginStateMachineTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: true,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false));

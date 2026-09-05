@@ -16,6 +16,7 @@ public sealed class GoogleLoginCdpBrowserTests
             true,  // HasEmailField
             false, // HasPasswordField
             false, // HasTotpField
+            false, // HasTotpError
             false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
@@ -50,6 +51,7 @@ public sealed class GoogleLoginCdpBrowserTests
             true,  // HasEmailField
             false, // HasPasswordField
             false, // HasTotpField
+            false, // HasTotpError
             false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
@@ -72,6 +74,7 @@ public sealed class GoogleLoginCdpBrowserTests
             false, // HasEmailField
             true,  // HasPasswordField
             false, // HasTotpField
+            false, // HasTotpError
             false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
@@ -94,6 +97,7 @@ public sealed class GoogleLoginCdpBrowserTests
             true,  // HasEmailField
             false, // HasPasswordField
             false, // HasTotpField
+            false, // HasTotpError
             false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge
@@ -125,6 +129,7 @@ public sealed class GoogleLoginCdpBrowserTests
             true,  // HasEmailField
             false, // HasPasswordField
             false, // HasTotpField
+            false, // HasTotpError
             false, // Has2FAMethodPicker
             false, // HasCompletionSignal
             false  // HasManualChallenge

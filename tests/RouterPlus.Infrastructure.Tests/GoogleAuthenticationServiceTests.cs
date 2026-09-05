@@ -16,6 +16,7 @@ public sealed class GoogleAuthenticationServiceTests
                 HasEmailField: false,
                 HasPasswordField: false,
                 HasTotpField: false,
+                HasTotpError: false,
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: true,
                 HasManualChallenge: false)

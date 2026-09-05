@@ -1621,33 +1621,164 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Check health status for a single profile.
+    /// Check health status for a single profile by testing actual Google login.
     /// </summary>
     private async Task CheckProfileHealthAsync(ProfileRowViewModel? row)
     {
-        if (row == null || _profileHealthService == null) return;
+        if (row == null) return;
 
         try
         {
             row.IsCheckingHealth = true;
-            var status = await _profileHealthService.GetHealthStatusAsync(
-                row.Profile,
-                forceRefresh: true);
-            row.HealthStatus = status;
+            StatusText = $"⟳ Checking health for {row.Name}...";
 
-            // Show result notification
-            ShowHealthCheckResult(row, status);
+            using var trace = TraceScope.Begin("MainViewModel", "CheckHealth",
+                new { profile = row.Name, profile_id = row.Profile.Id });
+
+            // Open vault to get credentials (same as auto-login)
+            GoogleAccountVaultSession? session = null;
+            try
+            {
+                session = await _googleLoginVaultStore.TryOpenRememberedAsync(
+                    _googleLoginVaultPaths.VaultPath,
+                    CancellationToken.None);
+            }
+            catch
+            {
+                // Remembered key not available
+            }
+
+            if (session == null)
+            {
+                StatusText = $"❌ {row.Name}: Vault not unlocked. Open Credentials Manager first.";
+                ShowToast(StatusText, ToastType.Error);
+                return;
+            }
+
+            await using (session)
+            {
+                // Find credentials for this profile
+                var credential = session.Vault.Find(row.Profile.Id);
+                if (credential == null)
+                {
+                    ObservabilityHub.Instance.LogEvent(LogLevel.Warning, "MainViewModel", "CheckHealthNoCredentials",
+                        "No credentials found for profile in health check",
+                        new { profile = row.Name, profile_id = row.Profile.Id });
+
+                    ObservabilityHub.Instance.IncrementCounter("profile.health_check.no_credentials",
+                        tags: new Dictionary<string, string> { ["profile_id"] = row.Profile.Id });
+
+                    StatusText = $"⚠ {row.Name}: No credentials configured";
+                    ShowToast(StatusText, ToastType.Warning);
+
+                    var status = ProfileHealthStatus.FromIssues(new[]
+                    {
+                        HealthIssue.Warning(HealthCategory.Credentials,
+                            "No Google credentials saved for this profile",
+                            "Add credentials in Credentials Manager")
+                    });
+                    row.HealthStatus = status;
+                    return;
+                }
+
+                // Run actual Google login to verify credentials
+                var result = await _googleLoginAutomation(row.Profile, credential, CancellationToken.None);
+
+                // Map login result to health status
+                var healthResult = MapLoginResultToHealthStatus(result);
+                row.HealthStatus = healthResult;
+
+                // Log metrics
+                ObservabilityHub.Instance.IncrementCounter("profile.health_check.completed",
+                    tags: new Dictionary<string, string>
+                    {
+                        ["status"] = healthResult.Level.ToString(),
+                        ["result"] = result.Category.ToString()
+                    });
+
+                // Show result
+                ShowHealthCheckResult(row, healthResult);
+            }
         }
         catch (Exception ex)
         {
             DebugLogger.LogError(DiagnosticCategories.Chrome, $"Health check failed for profile {row.Name}", ex);
-            StatusText = $"Health check failed: {ex.Message}";
+            StatusText = $"❌ {row.Name}: Health check failed - {ex.Message}";
             ShowToast(StatusText, ToastType.Error);
+
+            ObservabilityHub.Instance.IncrementCounter("profile.health_check.exception",
+                tags: new Dictionary<string, string> { ["error_type"] = ex.GetType().Name });
+
+            var status = ProfileHealthStatus.FromIssues(new[]
+            {
+                HealthIssue.Error(HealthCategory.Credentials, ex.Message, null)
+            });
+            row.HealthStatus = status;
         }
         finally
         {
             row.IsCheckingHealth = false;
         }
+    }
+
+    /// <summary>
+    /// Map Google login result to profile health status.
+    /// </summary>
+    private static ProfileHealthStatus MapLoginResultToHealthStatus(GoogleLoginResult loginResult)
+    {
+        return loginResult.Category switch
+        {
+            GoogleLoginResultCategory.Success =>
+                ProfileHealthStatus.Healthy("Credentials are valid and login successful"),
+
+            GoogleLoginResultCategory.InvalidCredentials =>
+                ProfileHealthStatus.FromIssues(new[]
+                {
+                    HealthIssue.Error(HealthCategory.Credentials,
+                        "Invalid email, password, or TOTP code",
+                        "Update credentials in Credentials Manager")
+                }),
+
+            GoogleLoginResultCategory.ManualInterventionRequired =>
+                ProfileHealthStatus.FromIssues(new[]
+                {
+                    HealthIssue.Warning(HealthCategory.Credentials,
+                        loginResult.Message,
+                        "Manual intervention may be required")
+                }),
+
+            GoogleLoginResultCategory.Timeout =>
+                ProfileHealthStatus.FromIssues(new[]
+                {
+                    HealthIssue.Error(HealthCategory.Credentials,
+                        "Login attempt timed out",
+                        "Check network connection or try again")
+                }),
+
+            GoogleLoginResultCategory.BrowserDisconnected =>
+                ProfileHealthStatus.FromIssues(new[]
+                {
+                    HealthIssue.Error(HealthCategory.Credentials,
+                        "Browser disconnected during health check",
+                        null)
+                }),
+
+            GoogleLoginResultCategory.UnsupportedPage =>
+                ProfileHealthStatus.FromIssues(new[]
+                {
+                    HealthIssue.Warning(HealthCategory.Credentials,
+                        loginResult.Message,
+                        "Google may have changed their login flow")
+                }),
+
+            _ =>
+                ProfileHealthStatus.FromIssues(new[]
+                {
+                    HealthIssue.Error(HealthCategory.Credentials,
+                        $"Unknown login result: {loginResult.Category}",
+                        null)
+                })
+        };
     }
 
     /// <summary>
