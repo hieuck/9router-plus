@@ -979,6 +979,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _providerVaultStore,
             _vaultPaths,
             automation ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
             (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
         return viewModel;
