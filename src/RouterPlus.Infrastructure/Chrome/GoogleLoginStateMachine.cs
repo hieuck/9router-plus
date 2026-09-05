@@ -1,3 +1,4 @@
+using RouterPlus.Core.Observability;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Diagnostics;
 
@@ -179,6 +180,13 @@ public static class GoogleLoginStateMachine
             // TOTP step
             if (state.HasTotpField)
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleLogin",
+                    "TotpStepStarted",
+                    "Starting TOTP authentication step",
+                    new { page_url = state.PageUri.AbsolutePath });
+
                 // Generate TOTP code just-in-time
                 string totpCode;
                 try
@@ -188,21 +196,73 @@ public static class GoogleLoginStateMachine
                         DateTimeOffset.UtcNow,
                         digits: 6,
                         periodSeconds: 30);
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Debug,
+                        "GoogleLogin",
+                        "TotpCodeGenerated",
+                        "TOTP code generated successfully");
                 }
                 catch
                 {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Error,
+                        "GoogleLogin",
+                        "TotpGenerationFailed",
+                        "Failed to generate TOTP code - invalid secret");
                     return GoogleLoginResult.InvalidCredentials();
                 }
 
                 await FillWithTimeoutAsync(browser, GoogleLoginField.Totp, totpCode, totalCts.Token);
 
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "GoogleLogin",
+                    "TotpFieldFilled",
+                    "TOTP code filled into field");
+
                 // Clear the TOTP code from memory (best effort)
                 totpCode = string.Empty;
 
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleLogin",
+                    "TotpSubmitStarting",
+                    "Starting TOTP submit");
+
                 await SubmitWithTimeoutAsync(browser, GoogleLoginField.Totp, totalCts.Token);
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleLogin",
+                    "TotpSubmitted",
+                    "TOTP code submitted, waiting for response");
 
                 // Read final state.
                 state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+
+                // Check for TOTP error (expired or wrong code)
+                if (state.HasTotpError)
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Error,
+                        "GoogleLogin",
+                        "TotpRejected",
+                        "TOTP code rejected by Google - wrong or expired code",
+                        new { page_url = state.PageUri.AbsolutePath });
+                    return GoogleLoginResult.InvalidCredentials();
+                }
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleLogin",
+                    "TotpAccepted",
+                    "TOTP code accepted",
+                    new {
+                        page_url = state.PageUri.AbsolutePath,
+                        has_completion = state.HasCompletionSignal,
+                        has_challenge = state.HasManualChallenge
+                    });
 
                 // Validate origin
                 if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
@@ -253,6 +313,13 @@ public static class GoogleLoginStateMachine
                 // Now process TOTP step
                 if (state.HasTotpField)
                 {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleLogin",
+                        "TotpStepStarted",
+                        "Starting TOTP authentication step after 2FA method selection",
+                        new { page_url = state.PageUri.AbsolutePath });
+
                     string totpCode;
                     try
                     {
@@ -261,21 +328,73 @@ public static class GoogleLoginStateMachine
                             DateTimeOffset.UtcNow,
                             digits: 6,
                             periodSeconds: 30);
+
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Debug,
+                            "GoogleLogin",
+                            "TotpCodeGenerated",
+                            "TOTP code generated successfully");
                     }
                     catch
                     {
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Error,
+                            "GoogleLogin",
+                            "TotpGenerationFailed",
+                            "Failed to generate TOTP code - invalid secret");
                         return GoogleLoginResult.InvalidCredentials();
                     }
 
                     await FillWithTimeoutAsync(browser, GoogleLoginField.Totp, totpCode, totalCts.Token);
 
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Debug,
+                        "GoogleLogin",
+                        "TotpFieldFilled",
+                        "TOTP code filled into field");
+
                     // Clear the TOTP code from memory (best effort)
                     totpCode = string.Empty;
 
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleLogin",
+                        "TotpSubmitStarting",
+                        "Starting TOTP submit");
+
                     await SubmitWithTimeoutAsync(browser, GoogleLoginField.Totp, totalCts.Token);
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleLogin",
+                        "TotpSubmitted",
+                        "TOTP code submitted, waiting for response");
 
                     // Read final state.
                     state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+
+                    // Check for TOTP error (expired or wrong code)
+                    if (state.HasTotpError)
+                    {
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Error,
+                            "GoogleLogin",
+                            "TotpRejected",
+                            "TOTP code rejected by Google - wrong or expired code",
+                            new { page_url = state.PageUri.AbsolutePath });
+                        return GoogleLoginResult.InvalidCredentials();
+                    }
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleLogin",
+                        "TotpAccepted",
+                        "TOTP code accepted",
+                        new {
+                            page_url = state.PageUri.AbsolutePath,
+                            has_completion = state.HasCompletionSignal,
+                            has_challenge = state.HasManualChallenge
+                        });
 
                     // Validate origin
                     if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
