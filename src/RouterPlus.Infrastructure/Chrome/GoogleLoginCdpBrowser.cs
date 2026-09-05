@@ -1005,6 +1005,12 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
 
         DebugConsole.WriteLine($"[Submit] field={field} submittedByDom={submittedByDom} method={method}");
 
+        // Log page state if submit failed
+        if (!submittedByDom)
+        {
+            await LogPageStateForDebugAsync(field, cancellationToken);
+        }
+
         if (submittedByDom)
         {
             // Find the submit button location and dispatch real mouse events
@@ -1329,6 +1335,90 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         }
 
         throw new InvalidOperationException("Target was closed or is no longer available.");
+    }
+
+    private async Task LogPageStateForDebugAsync(GoogleLoginField field, CancellationToken cancellationToken)
+    {
+        try
+        {
+            const string diagnosticScript = @"
+(function() {
+    const result = { url: window.location.href, pathname: window.location.pathname, buttons: [] };
+
+    // Check all button candidates
+    const buttonSelectors = ['#identifierNext', '#passwordNext', '#totpNext', '[jsname=""LgbsSe""]',
+                             '[jsname=""Njthtb""]', '[data-primary-action-label]', 'button[type=""submit""]'];
+    buttonSelectors.forEach(sel => {
+        const el = document.querySelector(sel);
+        if (el) {
+            const rect = el.getBoundingClientRect();
+            result.buttons.push({
+                selector: sel,
+                text: el.innerText || el.textContent || '',
+                disabled: el.disabled,
+                visible: el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0,
+                width: rect.width,
+                height: rect.height
+            });
+        }
+    });
+
+    // Check text-based buttons
+    const labels = ['next', 'tiếp', 'continue', 'sign in', 'đăng nhập', 'submit'];
+    const candidates = Array.from(document.querySelectorAll('[role=""button""], button'));
+    candidates.forEach(btn => {
+        const label = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
+        if (labels.some(item => label.includes(item))) {
+            const rect = btn.getBoundingClientRect();
+            result.buttons.push({
+                selector: 'text-match',
+                text: btn.innerText || btn.textContent || '',
+                ariaLabel: btn.getAttribute('aria-label'),
+                disabled: btn.disabled,
+                visible: btn.getClientRects().length > 0 && rect.width > 0 && rect.height > 0,
+                width: rect.width,
+                height: rect.height
+            });
+        }
+    });
+
+    return result;
+})()";
+
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = diagnosticScript,
+                returnByValue = true,
+                awaitPromise = false
+            }, cancellationToken, _sessionId);
+
+            if (!result.TryGetProperty("exceptionDetails", out _))
+            {
+                var value = result.GetProperty("result").GetProperty("value");
+                DebugConsole.WriteLine($"[Submit] DIAGNOSTIC for {field}:");
+                DebugConsole.WriteLine($"  URL: {value.GetProperty("url").GetString()}");
+                DebugConsole.WriteLine($"  Pathname: {value.GetProperty("pathname").GetString()}");
+
+                var buttons = value.GetProperty("buttons");
+                DebugConsole.WriteLine($"  Found {buttons.GetArrayLength()} button candidates:");
+
+                foreach (var btn in buttons.EnumerateArray())
+                {
+                    var selector = btn.GetProperty("selector").GetString();
+                    var text = btn.TryGetProperty("text", out var t) ? t.GetString() : "";
+                    var disabled = btn.GetProperty("disabled").GetBoolean();
+                    var visible = btn.GetProperty("visible").GetBoolean();
+                    var width = btn.GetProperty("width").GetDouble();
+                    var height = btn.GetProperty("height").GetDouble();
+
+                    DebugConsole.WriteLine($"    [{selector}] text=\"{text}\" disabled={disabled} visible={visible} size={width}x{height}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugConsole.WriteLine($"[Submit] Failed to log page state: {ex.Message}");
+        }
     }
 
     public async ValueTask DisposeAsync()
