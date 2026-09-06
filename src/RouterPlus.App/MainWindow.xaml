@@ -1129,6 +1129,8 @@
                 </Button>
                 <ToggleButton AutomationProperties.AutomationId="SettingsToggleButton"
                               Content="⚙  Cài đặt" IsChecked="{Binding IsSettingsExpanded, Mode=TwoWay}" />
+                <Button AutomationProperties.AutomationId="DiagnosticsButton"
+                        Content="🔍 Diagnostics" Click="Diagnostics_Click" Margin="8,0,0,0" />
             </StackPanel>
         </Grid>
 

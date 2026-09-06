@@ -153,6 +153,15 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
+    private void Diagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new DiagnosticsWindow
+        {
+            Owner = this
+        };
+        dialog.Show();
+    }
+
     private void OpenCredentialsManager_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("OpenCredentialsManager");

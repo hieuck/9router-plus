@@ -1,0 +1,391 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Windows.Data;
+using System.Windows.Input;
+using Microsoft.Win32;
+using RouterPlus.Infrastructure.Observability;
+
+namespace RouterPlus.App.ViewModels;
+
+/// <summary>
+/// ViewModel for Diagnostics Panel window
+/// </summary>
+public sealed class DiagnosticsViewModel : INotifyPropertyChanged
+{
+    private readonly EventLogReader _logReader;
+    private readonly string _logPath;
+
+    private ObservableCollection<ObservabilityEvent> _events;
+    private ICollectionView _eventsView;
+    private string _selectedCategory;
+    private string _selectedLevel;
+    private string _searchText;
+    private EventMetricsSummary? _metrics;
+    private bool _isLoading;
+    private string _statusMessage;
+    private ObservabilityEvent? _selectedEvent;
+
+    public DiagnosticsViewModel()
+    {
+        _logReader = new EventLogReader();
+
+        // Get log path from ObservabilityHub
+        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var logDir = Path.Combine(appDataPath, "RouterPlus");
+        _logPath = Path.Combine(logDir, "app-debug.log");
+
+        _events = new ObservableCollection<ObservabilityEvent>();
+        _eventsView = CollectionViewSource.GetDefaultView(_events);
+        _eventsView.Filter = FilterEvent;
+
+        _selectedCategory = "All";
+        _selectedLevel = "All";
+        _searchText = string.Empty;
+        _statusMessage = "Ready";
+
+        // Commands
+        RefreshCommand = new AsyncRelayCommand(RefreshAsync);
+        ExportCommand = new AsyncRelayCommand(ExportAsync, () => _events.Any());
+        ClearLogsCommand = new AsyncRelayCommand(ClearLogsAsync);
+        OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
+        CopyEventCommand = new RelayCommand(CopySelectedEvent);
+
+        // Categories and levels
+        Categories = new ObservableCollection<string> { "All" };
+        Levels = new ObservableCollection<string> { "All", "Debug", "Info", "Warning", "Error" };
+
+        // Load initial data
+        _ = LoadInitialDataAsync();
+    }
+
+    public ObservableCollection<ObservabilityEvent> Events
+    {
+        get => _events;
+        private set
+        {
+            _events = value;
+            OnPropertyChanged(nameof(Events));
+        }
+    }
+
+    public ICollectionView EventsView => _eventsView;
+
+    public ObservableCollection<string> Categories { get; }
+    public ObservableCollection<string> Levels { get; }
+
+    public string SelectedCategory
+    {
+        get => _selectedCategory;
+        set
+        {
+            if (_selectedCategory != value)
+            {
+                _selectedCategory = value;
+                OnPropertyChanged(nameof(SelectedCategory));
+                _eventsView.Refresh();
+                UpdateMetrics();
+            }
+        }
+    }
+
+    public string SelectedLevel
+    {
+        get => _selectedLevel;
+        set
+        {
+            if (_selectedLevel != value)
+            {
+                _selectedLevel = value;
+                OnPropertyChanged(nameof(SelectedLevel));
+                _eventsView.Refresh();
+                UpdateMetrics();
+            }
+        }
+    }
+
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (_searchText != value)
+            {
+                _searchText = value;
+                OnPropertyChanged(nameof(SearchText));
+                _eventsView.Refresh();
+                UpdateMetrics();
+            }
+        }
+    }
+
+    public EventMetricsSummary? Metrics
+    {
+        get => _metrics;
+        private set
+        {
+            _metrics = value;
+            OnPropertyChanged(nameof(Metrics));
+        }
+    }
+
+    public bool IsLoading
+    {
+        get => _isLoading;
+        private set
+        {
+            _isLoading = value;
+            OnPropertyChanged(nameof(IsLoading));
+        }
+    }
+
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        private set
+        {
+            _statusMessage = value;
+            OnPropertyChanged(nameof(StatusMessage));
+        }
+    }
+
+    public ObservabilityEvent? SelectedEvent
+    {
+        get => _selectedEvent;
+        set
+        {
+            _selectedEvent = value;
+            OnPropertyChanged(nameof(SelectedEvent));
+        }
+    }
+
+    public ICommand RefreshCommand { get; }
+    public ICommand ExportCommand { get; }
+    public ICommand ClearLogsCommand { get; }
+    public ICommand OpenLogFolderCommand { get; }
+    public ICommand CopyEventCommand { get; }
+
+    private async Task LoadInitialDataAsync()
+    {
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        IsLoading = true;
+        StatusMessage = "Loading events...";
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                var events = _logReader.ReadEvents(_logPath, maxCount: 1000);
+
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    _events.Clear();
+                    foreach (var evt in events)
+                    {
+                        _events.Add(evt);
+                    }
+
+                    // Update categories
+                    var categories = _logReader.GetCategories(_logPath);
+                    Categories.Clear();
+                    Categories.Add("All");
+                    foreach (var cat in categories)
+                    {
+                        Categories.Add(cat);
+                    }
+
+                    UpdateMetrics();
+                });
+            });
+
+            StatusMessage = $"Loaded {_events.Count} events";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error loading events: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private bool FilterEvent(object obj)
+    {
+        if (obj is not ObservabilityEvent evt)
+            return false;
+
+        // Category filter
+        if (SelectedCategory != "All" &&
+            !evt.Category.Equals(SelectedCategory, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Level filter
+        if (SelectedLevel != "All" &&
+            !evt.Level.Equals(SelectedLevel, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Search filter
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            var search = SearchText.ToLowerInvariant();
+            return evt.Message.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                   evt.Operation.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                   evt.Category.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                   evt.FormatContext().Contains(search, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return true;
+    }
+
+    private void UpdateMetrics()
+    {
+        var filtered = _eventsView.Cast<ObservabilityEvent>().ToList();
+        Metrics = _logReader.CalculateMetrics(filtered);
+    }
+
+    private async Task ExportAsync()
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "JSON files (*.json)|*.json|CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            DefaultExt = "json",
+            FileName = $"diagnostics-export-{DateTime.Now:yyyyMMdd-HHmmss}"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                IsLoading = true;
+                StatusMessage = "Exporting...";
+
+                var filtered = _eventsView.Cast<ObservabilityEvent>().ToList();
+
+                await Task.Run(() =>
+                {
+                    if (dialog.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ExportToCsv(filtered, dialog.FileName);
+                    }
+                    else
+                    {
+                        ExportToJson(filtered, dialog.FileName);
+                    }
+                });
+
+                StatusMessage = $"Exported {filtered.Count} events to {Path.GetFileName(dialog.FileName)}";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Export failed: {ex.Message}";
+            }
+            finally
+            {
+                IsLoading = false;
+            }
+        }
+    }
+
+    private void ExportToJson(List<ObservabilityEvent> events, string path)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(events, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+        File.WriteAllText(path, json);
+    }
+
+    private void ExportToCsv(List<ObservabilityEvent> events, string path)
+    {
+        using var writer = new StreamWriter(path);
+
+        // Header
+        writer.WriteLine("Timestamp,Level,Category,Operation,Message,Context");
+
+        // Rows
+        foreach (var evt in events)
+        {
+            writer.WriteLine($"{evt.Timestamp:O},{CsvEscape(evt.Level)},{CsvEscape(evt.Category)},{CsvEscape(evt.Operation)},{CsvEscape(evt.Message)},{CsvEscape(evt.FormatContext())}");
+        }
+    }
+
+    private string CsvEscape(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+        {
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        }
+
+        return value;
+    }
+
+    private Task ClearLogsAsync()
+    {
+        var result = System.Windows.MessageBox.Show(
+            "This will delete all events in app-debug.log. Continue?",
+            "Clear Logs",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+
+        if (result == System.Windows.MessageBoxResult.Yes)
+        {
+            try
+            {
+                if (File.Exists(_logPath))
+                {
+                    File.Delete(_logPath);
+                }
+
+                _events.Clear();
+                UpdateMetrics();
+                StatusMessage = "Logs cleared";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Failed to clear logs: {ex.Message}";
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void OpenLogFolder()
+    {
+        var logDir = Path.GetDirectoryName(_logPath);
+        if (!string.IsNullOrEmpty(logDir) && Directory.Exists(logDir))
+        {
+            Process.Start("explorer.exe", logDir);
+        }
+    }
+
+    private void CopySelectedEvent()
+    {
+        if (SelectedEvent == null)
+            return;
+
+        var text = $"[{SelectedEvent.Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{SelectedEvent.Level}] [{SelectedEvent.Category}] {SelectedEvent.Operation}: {SelectedEvent.Message}";
+        if (!string.IsNullOrEmpty(SelectedEvent.FormatContext()))
+        {
+            text += $"\nContext: {SelectedEvent.FormatContext()}";
+        }
+
+        System.Windows.Clipboard.SetText(text);
+        StatusMessage = "Event copied to clipboard";
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged(string propertyName)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
