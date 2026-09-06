@@ -82,6 +82,27 @@ Làm theo từng mục từ trên xuống dưới. Khi cần báo lỗi, hãy x�
 - Nếu updater health-check thất bại, helper khôi phục bản backup; không xóa `%LOCALAPPDATA%\9RouterPlus\secrets.json`.
 - Không chạy `RouterPlus.Updater.exe` bằng tay với đường dẫn tự chế. Hãy dùng menu `Trợ giúp` hoặc release chính thức.
 - Khi gửi báo lỗi, chỉ gửi version và bước tái hiện đã sanitized; không gửi URL response, profile, key, email hay OAuth value.
+
+## Sử dụng Diagnostics Panel để debug
+
+**Menu:** `Trợ giúp` → `Diagnostics Panel`
+
+Khi gặp lỗi OAuth, connection sync hoặc Chrome automation, Diagnostics Panel giúp xem chi tiết:
+
+1. Mở Diagnostics Panel trước khi thực hiện thao tác bị lỗi
+2. Filter theo mức độ **Error** hoặc **Warning**
+3. Tìm kiếm theo category liên quan:
+   - **OAuthAutoLogin** - OAuth flow issues
+   - **CodexOAuth**, **GitHubOAuth** - Provider-specific OAuth
+   - **ChromeLauncher** - Chrome process issues
+   - **ProviderVault** - Credential encryption/decryption errors
+4. Click vào event để xem structured context (JSON)
+5. Export logs nếu cần gửi kèm bug report
+
+**Lưu ý:** Logs tự động redact sensitive data (email, password, API keys) nhưng vẫn nên review trước khi share.
+
+**Log location:** `C:\Users\{username}\AppData\Local\RouterPlus\Observability\Sessions\{session_id}\events.jsonl`
+
 ## Cần gửi báo lỗi
 
 Dùng [bug report template](https://github.com/hieuck/9router-plus/issues/new?template=bug_report.md). Trước khi gửi:
