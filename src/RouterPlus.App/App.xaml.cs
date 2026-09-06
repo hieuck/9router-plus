@@ -1,6 +1,5 @@
 using System;
 using System.Windows;
-using RouterPlus.App.Diagnostics;
 using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Observability;
 using RouterPlus.Infrastructure.Storage;
@@ -32,13 +31,18 @@ public partial class App : System.Windows.Application
         }
 
         HarnessEnvironment.Trace("OnStartup entered");
-        DebugLogger.LogSeparator(DiagnosticCategories.Startup);
-        DebugLogger.Log(DiagnosticCategories.Startup, "Application startup began");
         base.OnStartup(e);
         HarnessEnvironment.Trace("WPF base startup completed");
 
         // Initialize observability system FIRST (before anything else)
         InitializeObservability();
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Application",
+            "StartupBegan",
+            "Application startup began",
+            new { });
 
         var settingsStore = HarnessEnvironment.CreateSettingsStore();
         HarnessEnvironment.Trace("Settings store created");
@@ -50,7 +54,15 @@ public partial class App : System.Windows.Application
         {
             HarnessEnvironment.Trace("Using synthetic harness settings");
         }
-        DebugLogger.Log(DiagnosticCategories.Startup, $"Initial settings loaded; setup required: {string.IsNullOrWhiteSpace(settings.ChromeExecutablePath) || string.IsNullOrWhiteSpace(settings.ChromeUserDataDirectory)}");
+
+        var setupRequired = string.IsNullOrWhiteSpace(settings.ChromeExecutablePath) ||
+                           string.IsNullOrWhiteSpace(settings.ChromeUserDataDirectory);
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Application",
+            "SettingsLoaded",
+            "Initial settings loaded",
+            new { setup_required = setupRequired });
 
         // Keep the application alive while the setup wizard is the only open window.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -62,7 +74,13 @@ public partial class App : System.Windows.Application
         {
             var wizard = new WelcomeWizardWindow(settingsStore);
             var result = wizard.ShowDialog();
-            DebugLogger.Log(DiagnosticCategories.Startup, $"Setup wizard closed with result: {result}");
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Application",
+                "SetupWizardClosed",
+                "Setup wizard closed",
+                new { result = result?.ToString() ?? "null" });
 
             // If user completed wizard, reload settings
             if (result == true)
@@ -76,7 +94,13 @@ public partial class App : System.Windows.Application
         // Always show main window
         try
         {
-            DebugLogger.Log(DiagnosticCategories.Startup, "Creating main window");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Application",
+                "CreatingMainWindow",
+                "Creating main window",
+                new { });
+
             HarnessEnvironment.Trace("Creating main window");
             var mainWindow = new MainWindow();
             HarnessEnvironment.Trace("Main window constructed");
@@ -84,11 +108,23 @@ public partial class App : System.Windows.Application
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             mainWindow.Show();
             HarnessEnvironment.Trace("Main window shown");
-            DebugLogger.Log(DiagnosticCategories.Startup, "Main window shown");
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Application",
+                "MainWindowShown",
+                "Main window shown",
+                new { });
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Startup, "Main window startup failed", ex);
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "Application",
+                "MainWindowStartupFailed",
+                $"Main window startup failed: {ex.Message}",
+                new { error = ex.Message, error_type = ex.GetType().Name, stack_trace = ex.StackTrace });
+
             System.Windows.MessageBox.Show(
                 $"Error opening main window:\n\n{ex.Message}\n\n{ex.StackTrace}",
                 "Startup Error",
@@ -102,22 +138,42 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            DebugLogger.Log(DiagnosticCategories.Startup, "Initializing observability system");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Observability",
+                "InitializationStarted",
+                "Initializing observability system",
+                new { });
 
             // Check if observability is enabled
             var settings = ObservabilitySettings.Load();
             if (!settings.EnableLogging && !settings.EnableMetrics && !settings.EnableSnapshots)
             {
-                DebugLogger.Log(DiagnosticCategories.Startup, "Observability disabled in settings - skipping initialization");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Observability",
+                    "DisabledInSettings",
+                    "Observability disabled in settings - skipping initialization",
+                    new { });
                 return;
             }
 
             // Create paths and session manager
             var paths = new ObservabilityPaths();
-            DebugLogger.Log(DiagnosticCategories.Startup, $"Observability root: {paths.RootDirectory}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Observability",
+                "PathsCreated",
+                "Observability paths initialized",
+                new { root_directory = paths.RootDirectory });
 
             _sessionManager = new SessionManager(paths);
-            DebugLogger.Log(DiagnosticCategories.Startup, $"Session ID: {_sessionManager.SessionId}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Observability",
+                "SessionCreated",
+                "Session manager created",
+                new { session_id = _sessionManager.SessionId });
 
             // Store session ID for diagnostics access
             CurrentSessionId = _sessionManager.SessionId;
@@ -126,11 +182,21 @@ public partial class App : System.Windows.Application
             try
             {
                 _sessionManager.Initialize();
-                DebugLogger.Log(DiagnosticCategories.Startup, "Session directory created");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Observability",
+                    "SessionInitialized",
+                    "Session directory created",
+                    new { });
             }
             catch (Exception ex)
             {
-                DebugLogger.LogError(DiagnosticCategories.Startup, "Initialize failed", ex);
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Error,
+                    "Observability",
+                    "SessionInitializeFailed",
+                    $"Initialize failed: {ex.Message}",
+                    new { error = ex.Message, error_type = ex.GetType().Name });
                 throw;
             }
 
@@ -141,14 +207,29 @@ public partial class App : System.Windows.Application
             try
             {
                 var writer = new JsonLinesWriter(paths, _sessionManager.SessionId);
-                DebugLogger.Log(DiagnosticCategories.Startup, "JsonLinesWriter created");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Observability",
+                    "WriterCreated",
+                    "JsonLinesWriter created",
+                    new { });
 
                 ObservabilityHub.Instance.SetWriter(writer);
-                DebugLogger.Log(DiagnosticCategories.Startup, "ObservabilityHub writer set");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Observability",
+                    "WriterSet",
+                    "ObservabilityHub writer set",
+                    new { });
             }
             catch (Exception ex)
             {
-                DebugLogger.LogError(DiagnosticCategories.Startup, "Writer setup failed", ex);
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Error,
+                    "Observability",
+                    "WriterSetupFailed",
+                    $"Writer setup failed: {ex.Message}",
+                    new { error = ex.Message, error_type = ex.GetType().Name });
                 throw;
             }
 
@@ -167,18 +248,33 @@ public partial class App : System.Windows.Application
                         dotnet_version = Environment.Version.ToString(),
                         session_id = _sessionManager.SessionId
                     });
-                DebugLogger.Log(DiagnosticCategories.Startup, "ObservabilityHub first event logged");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Observability",
+                    "FirstEventLogged",
+                    "ObservabilityHub first event logged",
+                    new { });
             }
             catch (Exception ex)
             {
-                DebugLogger.LogError(DiagnosticCategories.Startup, "First event log failed", ex);
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Error,
+                    "Observability",
+                    "FirstEventFailed",
+                    $"First event log failed: {ex.Message}",
+                    new { error = ex.Message, error_type = ex.GetType().Name });
                 throw;
             }
         }
         catch (Exception ex)
         {
             // Never crash app due to observability failure
-            DebugLogger.LogError(DiagnosticCategories.Startup, "Observability initialization failed", ex);
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "Observability",
+                "InitializationFailed",
+                $"Observability initialization failed: {ex.Message}",
+                new { error = ex.Message, error_type = ex.GetType().Name, stack_trace = ex.StackTrace });
         }
     }
 

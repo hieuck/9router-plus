@@ -7,9 +7,9 @@ using System.Windows.Input;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Observability;
 using RouterPlus.App.ViewModels;
 using RouterPlus.App.Views;
-using RouterPlus.App.Diagnostics;
 using RouterPlus.App.Testing;
 using WpfButton = System.Windows.Controls.Button;
 
@@ -39,13 +39,25 @@ public partial class MainWindow : Window
 
     private async void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Startup, "Window_OnLoaded");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "MainWindow",
+            "WindowLoaded",
+            "Main window loaded, starting initialization",
+            new { });
 
         // Initialize testing hooks for E2E automation
         TestingHooks.Initialize(ViewModel);
 
         await ViewModel.InitializeAsync();
         ViewModel.StartQuotaPolling();
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "MainWindow",
+            "InitializationComplete",
+            "Main window initialization complete",
+            new { });
     }
 
     private async void Window_OnStateChanged(object? sender, EventArgs e)
@@ -55,7 +67,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        DebugLogger.Log(DiagnosticCategories.UI, $"Window state changed: {WindowState}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "MainWindow",
+            "WindowStateChanged",
+            "Window state changed",
+            new { window_state = WindowState.ToString() });
+
         try
         {
             if (WindowState == WindowState.Minimized)
@@ -69,11 +87,21 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            DebugLogger.Log(DiagnosticCategories.UI, "Window state transition cancelled");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "MainWindow",
+                "StateTransitionCancelled",
+                "Window state transition cancelled",
+                new { });
         }
         catch (Exception exception)
         {
-            DebugLogger.LogError(DiagnosticCategories.UI, "Window state transition failed", exception);
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "MainWindow",
+                "StateTransitionFailed",
+                $"Window state transition failed: {exception.Message}",
+                new { error = exception.Message, error_type = exception.GetType().Name });
             // Swallow background polling errors to avoid crashing the app.
         }
     }
@@ -260,7 +288,13 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.UI, "ProfileList double-click failed", ex);
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "MainWindow",
+                "ProfileDoubleClickFailed",
+                $"ProfileList double-click failed: {ex.Message}",
+                new { error = ex.Message, error_type = ex.GetType().Name });
+
             System.Windows.MessageBox.Show(
                 this,
                 $"Lỗi khi mở profile:\n\n{ex.Message}\n\nStack trace:\n{ex.StackTrace}",
@@ -272,8 +306,7 @@ public partial class MainWindow : Window
 
     private void ProfileList_OnPreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.UX, "ProfileList_RightClick");
-        // Simplified - no logic, just measure
+        // No-op - performance measurement removed
     }
 
     private void ProfileList_OnContextMenuOpening(object sender, System.Windows.Controls.ContextMenuEventArgs e)
@@ -390,7 +423,13 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            DebugLogger.LogError(DiagnosticCategories.UI, "Failed to open profile folder", exception);
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "MainWindow",
+                "OpenProfileFolderFailed",
+                $"Failed to open profile folder: {exception.Message}",
+                new { error = exception.Message, error_type = exception.GetType().Name, profile_name = profile.Name });
+
             ViewModel.MarkProfileActionFailed(exception);
         }
     }
@@ -426,7 +465,13 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            DebugLogger.LogError(DiagnosticCategories.UI, "Failed to copy profile name", exception);
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "MainWindow",
+                "CopyProfileNameFailed",
+                $"Failed to copy profile name: {exception.Message}",
+                new { error = exception.Message, error_type = exception.GetType().Name, profile_name = profile.Name });
+
             ViewModel.MarkProfileActionFailed(exception);
         }
     }
@@ -456,7 +501,13 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            DebugLogger.LogError(DiagnosticCategories.UI, "Failed to check profile health", exception);
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "MainWindow",
+                "CheckProfileHealthFailed",
+                $"Failed to check profile health: {exception.Message}",
+                new { error = exception.Message, error_type = exception.GetType().Name, profile_name = row.Profile.Name });
+
             ViewModel.MarkProfileActionFailed(exception);
         }
     }
@@ -495,11 +546,22 @@ public partial class MainWindow : Window
 
         if (result != MessageBoxResult.Yes)
         {
-            DebugLogger.Log(DiagnosticCategories.UI, "Delete profile cancelled by user");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "MainWindow",
+                "DeleteProfileCancelled",
+                "Delete profile cancelled by user",
+                new { profile_name = profile.Name });
             return;
         }
 
-        DebugLogger.Log(DiagnosticCategories.UI, $"Deleting profile: {profile.Name}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "MainWindow",
+            "DeletingProfile",
+            "Deleting profile",
+            new { profile_name = profile.Name, profile_path = profile.ProfilePath });
+
         await ViewModel.DeleteSelectedProfileAsync();
     }
 
