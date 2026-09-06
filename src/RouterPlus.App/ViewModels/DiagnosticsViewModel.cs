@@ -268,6 +268,12 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             StatusMessage = $"Error loading events: {ex.Message}";
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "Diagnostics",
+                "RefreshError",
+                $"Exception in RefreshAsync: {ex.GetType().Name}: {ex.Message}",
+                new { session_id = _sessionId, exception_type = ex.GetType().FullName, stack_trace = ex.StackTrace });
         }
         finally
         {

@@ -17,6 +17,7 @@ public sealed class ObservabilityEvent
     /// <summary>
     /// Level as readable string (Debug=0, Info=1, Warning=2, Error=3)
     /// </summary>
+    [JsonIgnore]
     public string Level => LevelInt switch
     {
         0 => "Debug",
