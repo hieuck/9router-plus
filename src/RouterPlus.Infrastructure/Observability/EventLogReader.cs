@@ -138,6 +138,8 @@ public sealed class EventLogReader
                 ? lines.Length - maxCount.Value
                 : 0;
 
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: Processing lines {startIndex} to {lines.Length - 1}");
+
             for (int i = startIndex; i < lines.Length; i++)
             {
                 var line = lines[i].Trim();
@@ -150,6 +152,10 @@ public sealed class EventLogReader
                     if (evt != null)
                     {
                         events.Add(evt);
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"EventLogReader: Deserialized to null at line {i}");
                     }
                 }
                 catch (JsonException ex)
