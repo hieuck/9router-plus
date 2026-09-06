@@ -15,7 +15,8 @@ namespace RouterPlus.App.ViewModels;
 public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 {
     private readonly EventLogReader _logReader;
-    private readonly string _logPath;
+    private readonly ObservabilityPaths _paths;
+    private readonly string? _sessionId;
 
     private ObservableCollection<ObservabilityEvent> _events;
     private ICollectionView _eventsView;
@@ -29,12 +30,9 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
     public DiagnosticsViewModel()
     {
-        _logReader = new EventLogReader();
-
-        // Get log path from ObservabilityHub
-        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var logDir = Path.Combine(appDataPath, "RouterPlus");
-        _logPath = Path.Combine(logDir, "app-debug.log");
+        _paths = new ObservabilityPaths();
+        _logReader = new EventLogReader(_paths);
+        _sessionId = App.CurrentSessionId;
 
         _events = new ObservableCollection<ObservabilityEvent>();
         _eventsView = CollectionViewSource.GetDefaultView(_events);
@@ -173,6 +171,12 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
     private async Task RefreshAsync()
     {
+        if (string.IsNullOrEmpty(_sessionId))
+        {
+            StatusMessage = "Observability not initialized";
+            return;
+        }
+
         IsLoading = true;
         StatusMessage = "Loading events...";
 
@@ -180,7 +184,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         {
             await Task.Run(() =>
             {
-                var events = _logReader.ReadEvents(_logPath, maxCount: 1000);
+                var events = _logReader.ReadEventsFromSession(_sessionId, maxCount: 1000);
 
                 System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 {
@@ -191,7 +195,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
                     }
 
                     // Update categories
-                    var categories = _logReader.GetCategories(_logPath);
+                    var categories = _logReader.GetCategories(_sessionId);
                     Categories.Clear();
                     Categories.Add("All");
                     foreach (var cat in categories)
@@ -330,8 +334,14 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
     private Task ClearLogsAsync()
     {
+        if (string.IsNullOrEmpty(_sessionId))
+        {
+            StatusMessage = "Observability not initialized";
+            return Task.CompletedTask;
+        }
+
         var result = System.Windows.MessageBox.Show(
-            "This will delete all events in app-debug.log. Continue?",
+            "This will delete all events in the current session. Continue?",
             "Clear Logs",
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Warning);
@@ -340,9 +350,10 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         {
             try
             {
-                if (File.Exists(_logPath))
+                var eventsPath = _paths.GetEventsFilePath(_sessionId);
+                if (File.Exists(eventsPath))
                 {
-                    File.Delete(_logPath);
+                    File.Delete(eventsPath);
                 }
 
                 _events.Clear();
@@ -360,10 +371,16 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
     private void OpenLogFolder()
     {
-        var logDir = Path.GetDirectoryName(_logPath);
-        if (!string.IsNullOrEmpty(logDir) && Directory.Exists(logDir))
+        if (string.IsNullOrEmpty(_sessionId))
         {
-            Process.Start("explorer.exe", logDir);
+            StatusMessage = "Observability not initialized";
+            return;
+        }
+
+        var sessionDir = _paths.GetSessionDirectory(_sessionId);
+        if (Directory.Exists(sessionDir))
+        {
+            Process.Start("explorer.exe", sessionDir);
         }
     }
 

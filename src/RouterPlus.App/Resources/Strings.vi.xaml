@@ -44,4 +44,7 @@
     <sys:String x:Key="GoogleAutoLoginSave">Lưu thông tin</sys:String>
     <sys:String x:Key="GoogleAutoLoginCancel">Hủy</sys:String>
     <sys:String x:Key="GoogleAutoLoginAutoLogin">Tự động đăng nhập</sys:String>
+
+    <!-- Diagnostics Panel -->
+    <sys:String x:Key="DiagnosticsButtonText">🔍 Chẩn đoán</sys:String>
 </ResourceDictionary>

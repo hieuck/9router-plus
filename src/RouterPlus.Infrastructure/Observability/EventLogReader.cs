@@ -58,10 +58,17 @@ public sealed class ObservabilityEvent
 }
 
 /// <summary>
-/// Reads and parses observability events from app-debug.log
+/// Reads and parses observability events from session events.jsonl
 /// </summary>
 public sealed class EventLogReader
 {
+    private readonly ObservabilityPaths _paths;
+
+    public EventLogReader(ObservabilityPaths paths)
+    {
+        _paths = paths ?? throw new ArgumentNullException(nameof(paths));
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -69,12 +76,24 @@ public sealed class EventLogReader
     };
 
     /// <summary>
-    /// Read events from log file
+    /// Read events from current session
     /// </summary>
-    /// <param name="logPath">Path to app-debug.log</param>
+    /// <param name="sessionId">Current session ID</param>
     /// <param name="maxCount">Maximum number of events to read (null = all)</param>
     /// <returns>List of parsed events, newest first</returns>
-    public List<ObservabilityEvent> ReadEvents(string logPath, int? maxCount = null)
+    public List<ObservabilityEvent> ReadEventsFromSession(string sessionId, int? maxCount = null)
+    {
+        var eventsPath = _paths.GetEventsFilePath(sessionId);
+        return ReadEvents(eventsPath, maxCount);
+    }
+
+    /// <summary>
+    /// Read events from log file
+    /// </summary>
+    /// <param name="logPath">Path to events.jsonl</param>
+    /// <param name="maxCount">Maximum number of events to read (null = all)</param>
+    /// <returns>List of parsed events, newest first</returns>
+    private List<ObservabilityEvent> ReadEvents(string logPath, int? maxCount = null)
     {
         if (!File.Exists(logPath))
             return new List<ObservabilityEvent>();
@@ -127,13 +146,13 @@ public sealed class EventLogReader
     /// <summary>
     /// Read events from a specific time range
     /// </summary>
-    /// <param name="logPath">Path to app-debug.log</param>
+    /// <param name="sessionId">Current session ID</param>
     /// <param name="duration">How far back to read</param>
     /// <returns>Events within the time range, newest first</returns>
-    public List<ObservabilityEvent> ReadRecentEvents(string logPath, TimeSpan duration)
+    public List<ObservabilityEvent> ReadRecentEvents(string sessionId, TimeSpan duration)
     {
         var cutoff = DateTime.UtcNow - duration;
-        var allEvents = ReadEvents(logPath, maxCount: null);
+        var allEvents = ReadEventsFromSession(sessionId, maxCount: null);
 
         return allEvents
             .Where(e => e.Timestamp >= cutoff)
@@ -145,7 +164,7 @@ public sealed class EventLogReader
     /// Read events matching filter criteria
     /// </summary>
     public List<ObservabilityEvent> ReadFilteredEvents(
-        string logPath,
+        string sessionId,
         string? category = null,
         string? level = null,
         string? searchText = null,
@@ -153,7 +172,7 @@ public sealed class EventLogReader
         DateTime? endTime = null,
         int? maxCount = null)
     {
-        var events = ReadEvents(logPath, maxCount);
+        var events = ReadEventsFromSession(sessionId, maxCount);
 
         // Apply filters
         IEnumerable<ObservabilityEvent> filtered = events;
@@ -193,9 +212,9 @@ public sealed class EventLogReader
     /// <summary>
     /// Get unique categories from log
     /// </summary>
-    public List<string> GetCategories(string logPath)
+    public List<string> GetCategories(string sessionId)
     {
-        var events = ReadEvents(logPath, maxCount: 5000);
+        var events = ReadEventsFromSession(sessionId, maxCount: 5000);
         return events
             .Select(e => e.Category)
             .Where(c => !string.IsNullOrEmpty(c))

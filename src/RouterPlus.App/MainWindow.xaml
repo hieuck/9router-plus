@@ -1110,10 +1110,14 @@
                 <TextBlock Text="{Binding UpdateStatusText}" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel.Resources>
+                    <Style TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}" />
+                    <Style TargetType="ToggleButton" BasedOn="{StaticResource ToolbarToggleButtonStyle}" />
+                </StackPanel.Resources>
                 <Button Content="↻  Đồng bộ" Command="{Binding RefreshConnectionStatusesCommand}" />
                 <Button AutomationProperties.AutomationId="CredentialsManagerButton"
-                        Content="🔐  Credentials" VerticalAlignment="Center" ToolTip="Quản lý credentials" Click="OpenCredentialsManager_Click" />
-                <Button Content="?  Trợ giúp" VerticalAlignment="Center" ToolTip="Trợ giúp và cập nhật" Click="HelpMenu_Click">
+                        Content="🔐  Credentials" ToolTip="Quản lý credentials" Click="OpenCredentialsManager_Click" />
+                <Button Content="?  Trợ giúp" ToolTip="Trợ giúp và cập nhật" Click="HelpMenu_Click">
                     <Button.ContextMenu>
                         <ContextMenu Placement="Bottom">
                             <MenuItem Header="Kiểm tra cập nhật" Command="{Binding CheckForUpdatesCommand}" />
@@ -1130,7 +1134,8 @@
                 <ToggleButton AutomationProperties.AutomationId="SettingsToggleButton"
                               Content="⚙  Cài đặt" IsChecked="{Binding IsSettingsExpanded, Mode=TwoWay}" />
                 <Button AutomationProperties.AutomationId="DiagnosticsButton"
-                        Content="🔍 Diagnostics" Click="Diagnostics_Click" Margin="8,0,0,0" />
+                        Content="{DynamicResource DiagnosticsButtonText}"
+                        Click="Diagnostics_Click" />
             </StackPanel>
         </Grid>
 

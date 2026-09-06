@@ -11,6 +11,11 @@ public partial class App : System.Windows.Application
 {
     private SessionManager? _sessionManager;
 
+    /// <summary>
+    /// Gets the current session ID for observability (null if observability disabled)
+    /// </summary>
+    public static string? CurrentSessionId { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         // Debug-only path: ROUTERPLUS_DEBUG_AUTOLOGIN=1 runs the production
@@ -113,6 +118,9 @@ public partial class App : System.Windows.Application
 
             _sessionManager = new SessionManager(paths);
             DebugLogger.Log(DiagnosticCategories.Startup, $"Session ID: {_sessionManager.SessionId}");
+
+            // Store session ID for diagnostics access
+            CurrentSessionId = _sessionManager.SessionId;
 
             // Initialize session directory and metadata
             try

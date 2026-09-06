@@ -44,4 +44,7 @@
     <sys:String x:Key="GoogleAutoLoginSave">Save information</sys:String>
     <sys:String x:Key="GoogleAutoLoginCancel">Cancel</sys:String>
     <sys:String x:Key="GoogleAutoLoginAutoLogin">Auto sign in</sys:String>
+
+    <!-- Diagnostics Panel -->
+    <sys:String x:Key="DiagnosticsButtonText">🔍 Diagnostics</sys:String>
 </ResourceDictionary>

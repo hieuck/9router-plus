@@ -10,7 +10,16 @@
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
             <converters:NullToFalseConverter x:Key="NullToFalseConverter" />
             <ResourceDictionary.MergedDictionaries>
+                <!-- Theme must be first (defines base styles) -->
                 <ResourceDictionary Source="Styles/Theme.xaml" />
+
+                <!-- Feature-specific styles -->
+                <ResourceDictionary Source="Styles/Common.xaml" />
+                <ResourceDictionary Source="Styles/Toolbar.xaml" />
+                <ResourceDictionary Source="Styles/Dialog.xaml" />
+                <ResourceDictionary Source="Styles/Diagnostics.xaml" />
+
+                <!-- Localization last -->
                 <ResourceDictionary Source="Resources/Strings.vi.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
