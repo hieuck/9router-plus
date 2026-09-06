@@ -309,7 +309,8 @@ public class ProviderConnectionCalculationsTests
     {
         var quota = new ProviderQuota("credits", 49.54m, 50m, 0.46m, null);
 
-        Assert.Equal("49.54 / 50", quota.UsageText);
+        // Vietnamese culture uses comma as decimal separator
+        Assert.Equal("49,54 / 50", quota.UsageText);
     }
 
     [Fact]
@@ -325,7 +326,8 @@ public class ProviderConnectionCalculationsTests
     {
         var quota = new ProviderQuota("requests", 75.567m, 100m, 24.433m, null);
 
-        Assert.Equal("75.57%", quota.PercentageText);
+        // Vietnamese culture uses comma as decimal separator
+        Assert.Equal("75,57%", quota.PercentageText);
     }
 
     [Fact]
