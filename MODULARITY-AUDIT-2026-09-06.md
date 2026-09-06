@@ -212,8 +212,8 @@ OAuth automation already uses inheritance well:
 1. **Vault Stores** (security-critical):
    - ✅ VaultStoreBase - 12 tests added (concurrency, disposal, cancellation)
    - ✅ DpapiSecretVault - 24 tests added (encryption roundtrip, concurrent access, validation)
-   - ❌ GoogleAccountVaultStore - business logic untested
-   - ❌ ProviderConnectionVaultStore - business logic untested
+   - ✅ GoogleAccountVaultStore - 14 tests added (AES-256-GCM, PBKDF2, wrong password detection)
+   - ✅ ProviderConnectionVaultStore - 23 tests added (DPAPI encryption, profile isolation)
    
 2. **OAuth Automation** (complex, fragile):
    - All 9 OAuth/DirectLogin classes (0% coverage)
