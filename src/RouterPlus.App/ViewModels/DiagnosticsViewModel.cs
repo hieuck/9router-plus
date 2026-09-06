@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows.Data;
 using System.Windows.Input;
 using Microsoft.Win32;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Observability;
 
 namespace RouterPlus.App.ViewModels;
@@ -33,6 +34,13 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         _paths = new ObservabilityPaths();
         _logReader = new EventLogReader(_paths);
         _sessionId = App.CurrentSessionId;
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "Diagnostics",
+            "ViewModelCreated",
+            $"DiagnosticsViewModel created with sessionId: {_sessionId ?? "NULL"}",
+            new { session_id = _sessionId ?? "null", has_value = !string.IsNullOrEmpty(_sessionId) });
 
         _events = new ObservableCollection<ObservabilityEvent>();
         _eventsView = CollectionViewSource.GetDefaultView(_events);
@@ -171,9 +179,22 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
     private async Task RefreshAsync()
     {
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "Diagnostics",
+            "RefreshStarted",
+            $"RefreshAsync called with sessionId: {_sessionId ?? "NULL"}",
+            new { session_id = _sessionId ?? "null" });
+
         if (string.IsNullOrEmpty(_sessionId))
         {
             StatusMessage = "Observability not initialized";
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Diagnostics",
+                "RefreshFailed",
+                "SessionId is null or empty",
+                new { });
             return;
         }
 
@@ -184,7 +205,22 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         {
             await Task.Run(() =>
             {
+                var eventsPath = _paths.GetEventsFilePath(_sessionId);
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "Diagnostics",
+                    "ReadingEvents",
+                    $"About to read events from session: {_sessionId}, path: {eventsPath}",
+                    new { session_id = _sessionId, events_path = eventsPath, file_exists = System.IO.File.Exists(eventsPath) });
+
                 var events = _logReader.ReadEventsFromSession(_sessionId, maxCount: 1000);
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "Diagnostics",
+                    "EventsRead",
+                    $"Read {events.Count} events from session",
+                    new { session_id = _sessionId, event_count = events.Count });
 
                 System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 {

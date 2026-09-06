@@ -12,12 +12,24 @@ public sealed class ObservabilityEvent
     public DateTime Timestamp { get; init; }
 
     [JsonPropertyName("level")]
-    public string Level { get; init; } = string.Empty;
+    public int LevelInt { get; init; }
+
+    /// <summary>
+    /// Level as readable string (Debug=0, Info=1, Warning=2, Error=3)
+    /// </summary>
+    public string Level => LevelInt switch
+    {
+        0 => "Debug",
+        1 => "Info",
+        2 => "Warning",
+        3 => "Error",
+        _ => "Unknown"
+    };
 
     [JsonPropertyName("category")]
     public string Category { get; init; } = string.Empty;
 
-    [JsonPropertyName("operation")]
+    [JsonPropertyName("event")]
     public string Operation { get; init; } = string.Empty;
 
     [JsonPropertyName("message")]
@@ -96,7 +108,10 @@ public sealed class EventLogReader
     private List<ObservabilityEvent> ReadEvents(string logPath, int? maxCount = null)
     {
         if (!File.Exists(logPath))
+        {
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: File not found: {logPath}");
             return new List<ObservabilityEvent>();
+        }
 
         var events = new List<ObservabilityEvent>();
 
@@ -104,6 +119,7 @@ public sealed class EventLogReader
         {
             // Read all lines
             var lines = File.ReadAllLines(logPath);
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: Read {lines.Length} lines from {logPath}");
 
             // Process from end (newest first) if maxCount specified
             var startIndex = maxCount.HasValue && lines.Length > maxCount.Value
@@ -124,19 +140,24 @@ public sealed class EventLogReader
                         events.Add(evt);
                     }
                 }
-                catch (JsonException)
+                catch (JsonException ex)
                 {
                     // Skip malformed JSON lines
+                    System.Diagnostics.Debug.WriteLine($"EventLogReader: Failed to parse line {i}: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"EventLogReader: Line content: {line.Substring(0, Math.Min(100, line.Length))}");
                     continue;
                 }
             }
 
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: Parsed {events.Count} events");
+
             // Reverse to get newest first
             events.Reverse();
         }
-        catch (IOException)
+        catch (IOException ex)
         {
             // File in use or inaccessible
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: IOException: {ex.Message}");
             return new List<ObservabilityEvent>();
         }
 
