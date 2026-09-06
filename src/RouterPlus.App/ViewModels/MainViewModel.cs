@@ -12,7 +12,6 @@ using RouterPlus.Core.Security;
 using RouterPlus.Core.Updates;
 using RouterPlus.App;
 using RouterPlus.App.Views;
-using RouterPlus.App.Diagnostics;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Router;
 using RouterPlus.Infrastructure.Diagnostics;
@@ -322,15 +321,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _selectedProfile;
         set
         {
-            using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.ViewModel, "SelectedProfile.set");
-
             if (Equals(_selectedProfile, value))
             {
-                DebugLogger.Log(DiagnosticCategories.ViewModel, "SelectedProfile unchanged, skipping");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "ViewModel",
+                    "SelectedProfileUnchanged",
+                    "SelectedProfile unchanged, skipping",
+                    new { });
                 return;
             }
 
-            DebugLogger.Log(DiagnosticCategories.ViewModel, $"SelectedProfile changing to: {value?.Name ?? "null"}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "ViewModel",
+                "SelectedProfileChanging",
+                "SelectedProfile changing",
+                new { profile_name = value?.Name ?? "null" });
             _selectedProfile = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(SelectedProfileRow));
@@ -1375,7 +1382,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task LaunchProfileAsync(ChromeProfile? profile)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Chrome, "LaunchProfile");
         if (profile is null)
         {
             StatusText = "Profile không hợp lệ.";
@@ -1468,8 +1474,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task InitializeCoreAsync()
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Startup, "MainViewModel.InitializeAsync");
-
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Info,
             "Startup",
@@ -1584,8 +1588,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             // Vault loading is optional - don't fail initialization
-            DebugLogger.LogWarning(DiagnosticCategories.Startup,
-                $"Could not load Google account vault for health checks: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Startup",
+                "VaultLoadFailed",
+                "Could not load Google account vault for health checks",
+                new { error_message = ex.Message });
         }
         finally
         {
