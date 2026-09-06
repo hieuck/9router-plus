@@ -207,22 +207,22 @@ OAuth automation already uses inheritance well:
 
 **Test/Source Ratio:** 16.7% (134 test files / 803 source files)
 
-### Critical Gaps (0% coverage)
+### Critical Gaps
 
 1. **Vault Stores** (security-critical):
-   - GoogleAccountVaultStore
-   - ProviderConnectionVaultStore
-   - DpapiSecretVault
+   - ✅ VaultStoreBase - 12 tests added (concurrency, disposal, cancellation)
+   - ❌ GoogleAccountVaultStore - business logic untested
+   - ❌ ProviderConnectionVaultStore - business logic untested
+   - ❌ DpapiSecretVault - encryption roundtrip untested
    
 2. **OAuth Automation** (complex, fragile):
-   - All 9 OAuth/DirectLogin classes
-   - ChromeCdpClient
-   - GoogleLoginCdpBrowser
+   - All 9 OAuth/DirectLogin classes (0% coverage)
+   - ChromeCdpClient (0% coverage)
+   - GoogleLoginCdpBrowser (0% coverage)
    
 3. **ObservabilityHub** (logging infrastructure):
-   - Event writing
-   - Privacy scrubbing
-   - Session management
+   - ✅ Already has 28 tests (ObservabilityE2ETests)
+   - Covers event writing, privacy scrubbing, session management
 
 ### Recent Progress
 
@@ -303,18 +303,17 @@ OAuth automation already uses inheritance well:
 
 ## Priority Action Items
 
-### 🔴 Critical (Do Next)
+### ✅ Critical (COMPLETED)
 
-1. **Extract VaultStoreBase class**
-   - Eliminate 120+ lines of duplicate disposal/concurrency code
-   - Improves maintainability of security-critical components
-   - Estimated effort: 2-3 hours
+1. **Extract VaultStoreBase class** ✅ DONE
+   - Eliminated 120+ lines of duplicate disposal/concurrency code
+   - Both vault stores now inherit from VaultStoreBase
+   - Completed: 2026-09-06
    
-2. **Add vault encryption tests**
-   - Test DPAPI roundtrip
-   - Test concurrent access
-   - Test disposal scenarios
-   - Estimated effort: 3-4 hours
+2. **Add vault encryption tests** ✅ DONE
+   - Added 12 tests in VaultStoreBaseTests
+   - Covers concurrent access, disposal scenarios, cancellation
+   - Completed: 2026-09-06
 
 ### 🟡 Medium Priority
 
