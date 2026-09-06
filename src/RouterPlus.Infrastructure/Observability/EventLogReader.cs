@@ -12,12 +12,24 @@ public sealed class ObservabilityEvent
     public DateTime Timestamp { get; init; }
 
     [JsonPropertyName("level")]
-    public string Level { get; init; } = string.Empty;
+    public int LevelInt { get; init; }
+
+    /// <summary>
+    /// Level as readable string (Debug=0, Info=1, Warning=2, Error=3)
+    /// </summary>
+    public string Level => LevelInt switch
+    {
+        0 => "Debug",
+        1 => "Info",
+        2 => "Warning",
+        3 => "Error",
+        _ => "Unknown"
+    };
 
     [JsonPropertyName("category")]
     public string Category { get; init; } = string.Empty;
 
-    [JsonPropertyName("operation")]
+    [JsonPropertyName("event")]
     public string Operation { get; init; } = string.Empty;
 
     [JsonPropertyName("message")]
@@ -96,19 +108,37 @@ public sealed class EventLogReader
     private List<ObservabilityEvent> ReadEvents(string logPath, int? maxCount = null)
     {
         if (!File.Exists(logPath))
+        {
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: File not found: {logPath}");
             return new List<ObservabilityEvent>();
+        }
 
         var events = new List<ObservabilityEvent>();
 
         try
         {
-            // Read all lines
-            var lines = File.ReadAllLines(logPath);
+            // Read all lines with FileShare.Read to allow reading while writer has lock
+            string[] lines;
+            using (var fileStream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fileStream))
+            {
+                var linesList = new List<string>();
+                string? line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    linesList.Add(line);
+                }
+                lines = linesList.ToArray();
+            }
+
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: Read {lines.Length} lines from {logPath}");
 
             // Process from end (newest first) if maxCount specified
             var startIndex = maxCount.HasValue && lines.Length > maxCount.Value
                 ? lines.Length - maxCount.Value
                 : 0;
+
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: Processing lines {startIndex} to {lines.Length - 1}");
 
             for (int i = startIndex; i < lines.Length; i++)
             {
@@ -123,20 +153,29 @@ public sealed class EventLogReader
                     {
                         events.Add(evt);
                     }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"EventLogReader: Deserialized to null at line {i}");
+                    }
                 }
-                catch (JsonException)
+                catch (JsonException ex)
                 {
                     // Skip malformed JSON lines
+                    System.Diagnostics.Debug.WriteLine($"EventLogReader: Failed to parse line {i}: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"EventLogReader: Line content: {line.Substring(0, Math.Min(100, line.Length))}");
                     continue;
                 }
             }
 
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: Parsed {events.Count} events");
+
             // Reverse to get newest first
             events.Reverse();
         }
-        catch (IOException)
+        catch (IOException ex)
         {
             // File in use or inaccessible
+            System.Diagnostics.Debug.WriteLine($"EventLogReader: IOException: {ex.Message}");
             return new List<ObservabilityEvent>();
         }
 
