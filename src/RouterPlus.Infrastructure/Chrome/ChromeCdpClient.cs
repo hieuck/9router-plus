@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -170,7 +171,12 @@ public sealed class ChromeCdpClient : IAsyncDisposable
                         {
                             var errorMessage = errorProp.TryGetProperty("message", out var msg) ? msg.GetString() : "Unknown error";
                             var errorCode = errorProp.TryGetProperty("code", out var code) ? code.GetInt32() : 0;
-                            DebugConsole.WriteLine($"[ChromeCdpClient] CDP error for {pendingRequest.Method}: code={errorCode}, message={errorMessage}");
+                            ObservabilityHub.Instance.LogEvent(
+                                LogLevel.Error,
+                                "ChromeCdpClient",
+                                "CdpError",
+                                "CDP method error",
+                                new { method = pendingRequest.Method, error_code = errorCode, error_message = errorMessage });
                             pendingRequest.Completion.SetException(
                                 new InvalidOperationException($"CDP method '{pendingRequest.Method}' failed: {errorMessage} (code {errorCode})"));
                         }

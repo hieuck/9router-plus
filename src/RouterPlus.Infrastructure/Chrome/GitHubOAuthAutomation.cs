@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -109,14 +110,21 @@ public sealed class GitHubOAuthAutomation : GoogleOAuthFlowAutomation
         if (providerState == null)
             return;
 
-        DebugConsole.WriteLine($"[GitHubOAuth] URL: {state.CurrentUrl}");
-        DebugConsole.WriteLine($"[GitHubOAuth] IsGoogleOAuth: {state.IsGoogleOAuthPage}");
-        DebugConsole.WriteLine($"[GitHubOAuth] IsGitHubOAuth: {providerState.IsGitHubOAuthPage}");
-        DebugConsole.WriteLine($"[GitHubOAuth] HasConsentButton: {state.HasGoogleConsentButton}");
-        DebugConsole.WriteLine($"[GitHubOAuth] HasGitHubAuthButton: {providerState.HasGitHubAuthButton}");
-        DebugConsole.WriteLine($"[GitHubOAuth] IsTargetService: {providerState.IsTargetService}");
-        DebugConsole.WriteLine($"[GitHubOAuth] HasAccountPicker: {state.HasAccountPicker}");
-        DebugConsole.WriteLine($"[GitHubOAuth] HasGoogleTotpInput: {state.HasGoogleTotpInput}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "GitHubOAuth",
+            "PageStateDetailed",
+            "Detailed GitHub OAuth page state",
+            new {
+                url = state.CurrentUrl,
+                is_google_oauth = state.IsGoogleOAuthPage,
+                is_github_oauth = providerState.IsGitHubOAuthPage,
+                has_consent_button = state.HasGoogleConsentButton,
+                has_github_auth_button = providerState.HasGitHubAuthButton,
+                is_target_service = providerState.IsTargetService,
+                has_account_picker = state.HasAccountPicker,
+                has_google_totp = state.HasGoogleTotpInput
+            });
     }
 
     // ========== Override virtual methods for GitHub-specific behavior ==========
@@ -169,7 +177,12 @@ public sealed class GitHubOAuthAutomation : GoogleOAuthFlowAutomation
                 resultProp.TryGetProperty("value", out var clickedProp) &&
                 clickedProp.GetBoolean())
             {
-                DebugConsole.WriteLine("[GitHubOAuth] Clicked GitHub authorization button");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GitHubOAuth",
+                    "AuthorizationButtonClicked",
+                    "Clicked GitHub authorization button",
+                    new { url = state.CurrentUrl });
                 return true;
             }
 

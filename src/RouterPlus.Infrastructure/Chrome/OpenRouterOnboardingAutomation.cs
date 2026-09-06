@@ -1,3 +1,4 @@
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -69,7 +70,12 @@ public static class OpenRouterOnboardingAutomation
                     return wizardResult;
                 }
 
-                DebugConsole.WriteLine("[OpenRouterOnboarding] Wizard did not expose a key; falling back to New Key.");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "OpenRouterOnboarding",
+                    "WizardNoKey",
+                    "Wizard did not expose a key; falling back to New Key",
+                    null);
             }
 
             // Phase D: create a key via the keys-page "New Key" popup.
@@ -153,13 +159,23 @@ public static class OpenRouterOnboardingAutomation
             else
             {
                 // Wizard is present but in an unrecognized step — give up on it.
-                DebugConsole.WriteLine("[OpenRouterOnboarding] Wizard is in an unrecognized step; falling back.");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "OpenRouterOnboarding",
+                    "WizardUnrecognizedStep",
+                    "Wizard is in an unrecognized step; falling back",
+                    null);
                 return null;
             }
 
             if (!clicked)
             {
-                DebugConsole.WriteLine("[OpenRouterOnboarding] Wizard step could not be clicked; falling back.");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "OpenRouterOnboarding",
+                    "WizardClickFailed",
+                    "Wizard step could not be clicked; falling back",
+                    null);
                 return null;
             }
 

@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
-using RouterPlus.Infrastructure.Diagnostics;
+using RouterPlus.Core.Observability;
 
 namespace RouterPlus.Infrastructure.Security;
 
@@ -90,8 +90,16 @@ public sealed class ProviderConnectionVaultStore : IDisposable
 
         await SaveAsync(cancellationToken);
 
-        DebugConsole.WriteLine(
-            $"[ProviderConnectionVault] Saved connection: profile={connection.ProfileName}, provider={connection.Provider}, method={connection.PreferredMethod}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "ProviderConnectionVault",
+            "ConnectionSaved",
+            "Provider connection saved",
+            new {
+                profile = connection.ProfileName,
+                provider = connection.Provider.ToString(),
+                method = connection.PreferredMethod.ToString()
+            });
     }
 
     /// <summary>
@@ -117,8 +125,12 @@ public sealed class ProviderConnectionVaultStore : IDisposable
 
                 await SaveAsync(cancellationToken);
 
-                DebugConsole.WriteLine(
-                    $"[ProviderConnectionVault] Removed connection: profile={profileName}, provider={provider}");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "ProviderConnectionVault",
+                    "ConnectionRemoved",
+                    "Provider connection removed",
+                    new { profile = profileName, provider = provider.ToString() });
             }
         }
     }
@@ -179,7 +191,11 @@ public sealed class ProviderConnectionVaultStore : IDisposable
         {
             if (!File.Exists(_vaultPath))
             {
-                DebugConsole.WriteLine("[ProviderConnectionVault] Vault file does not exist, initializing empty vault");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "ProviderConnectionVault",
+                    "VaultInitialized",
+                    "Vault file does not exist, initializing empty vault");
                 _connections = new Dictionary<string, Dictionary<ProviderKind, ProviderAuthConnection>>(
                     StringComparer.Ordinal);
                 return;
@@ -212,7 +228,12 @@ public sealed class ProviderConnectionVaultStore : IDisposable
                         }
                         else
                         {
-                            DebugConsole.WriteLine($"[ProviderConnectionVault] Ignoring unknown provider kind: {(int)kind}");
+                            ObservabilityHub.Instance.LogEvent(
+                                LogLevel.Warning,
+                                "ProviderConnectionVault",
+                                "UnknownProviderIgnored",
+                                "Ignoring unknown provider kind in vault",
+                                new { provider_id = (int)kind });
                         }
                     }
                     if (validProviders.Count > 0)
@@ -223,14 +244,26 @@ public sealed class ProviderConnectionVaultStore : IDisposable
 
                 _connections = filtered;
 
-                DebugConsole.WriteLine(
-                    $"[ProviderConnectionVault] Loaded vault: {_connections.Count} profiles, {_connections.Values.Sum(p => p.Count)} connections");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "ProviderConnectionVault",
+                    "VaultLoaded",
+                    "Vault loaded successfully",
+                    new {
+                        profile_count = _connections.Count,
+                        connection_count = _connections.Values.Sum(p => p.Count)
+                    });
             }
             catch (Exception ex) when (ex is JsonException or CryptographicException or FormatException)
             {
                 _loadFailed = true;
                 _loadException = ex;
-                DebugConsole.WriteLine($"[ProviderConnectionVault] ERROR loading vault: {ex.Message}");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Error,
+                    "ProviderConnectionVault",
+                    "VaultLoadFailed",
+                    "Failed to load vault",
+                    new { error = ex.Message });
                 throw new CryptographicException("Invalid vault format", ex);
             }
         }, cancellationToken);
@@ -270,8 +303,15 @@ public sealed class ProviderConnectionVaultStore : IDisposable
                 // Atomic replace
                 File.Move(tempPath, _vaultPath, overwrite: true);
 
-                DebugConsole.WriteLine(
-                    $"[ProviderConnectionVault] Saved vault: {_connections!.Count} profiles, {_connections.Values.Sum(p => p.Count)} connections");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "ProviderConnectionVault",
+                    "VaultSaved",
+                    "Vault saved successfully",
+                    new {
+                        profile_count = _connections!.Count,
+                        connection_count = _connections.Values.Sum(p => p.Count)
+                    });
             }
             finally
             {

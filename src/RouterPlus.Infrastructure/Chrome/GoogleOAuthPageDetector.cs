@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -106,7 +107,12 @@ public static class GoogleOAuthPageDetector
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)
         {
-            DebugConsole.WriteLine($"[GoogleOAuthDetector] Failed to read Google OAuth state: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "GoogleOAuthDetector",
+                "ReadStateFailed",
+                "Failed to read Google OAuth state",
+                new { error = ex.Message });
             return null;
         }
     }
@@ -198,7 +204,12 @@ public static class GoogleOAuthPageDetector
                 var clicked = valueProp.GetProperty("clicked").GetBoolean();
                 if (clicked)
                 {
-                    DebugConsole.WriteLine($"[GoogleOAuthDetector] Account '{profileEmail}' clicked successfully");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleOAuthDetector",
+                        "AccountClicked",
+                        "Google account clicked successfully",
+                        new { email = profileEmail });
                     return true;
                 }
             }
@@ -207,7 +218,12 @@ public static class GoogleOAuthPageDetector
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[GoogleOAuthDetector] Click account error: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "GoogleOAuthDetector",
+                "ClickAccountError",
+                "Click account error",
+                new { email = profileEmail, error = ex.Message });
             return false;
         }
     }
@@ -270,7 +286,12 @@ public static class GoogleOAuthPageDetector
                 resultProp.TryGetProperty("value", out var filledProp) &&
                 filledProp.GetBoolean())
             {
-                DebugConsole.WriteLine("[GoogleOAuthDetector] TOTP filled and submitted");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleOAuthDetector",
+                    "TotpFilled",
+                    "TOTP filled and submitted",
+                    null);
                 return true;
             }
 
@@ -323,7 +344,12 @@ public static class GoogleOAuthPageDetector
                 resultProp.TryGetProperty("value", out var clickedProp) &&
                 clickedProp.GetBoolean())
             {
-                DebugConsole.WriteLine("[GoogleOAuthDetector] Google consent button clicked");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleOAuthDetector",
+                    "ConsentButtonClicked",
+                    "Google consent button clicked",
+                    null);
                 return true;
             }
 

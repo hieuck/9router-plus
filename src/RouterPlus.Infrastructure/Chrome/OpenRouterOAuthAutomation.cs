@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -139,15 +140,22 @@ public sealed class OpenRouterOAuthAutomation : GoogleOAuthFlowAutomation
         if (providerState == null)
             return;
 
-        DebugConsole.WriteLine($"[OpenRouterOAuth] URL: {state.CurrentUrl}");
-        DebugConsole.WriteLine($"[OpenRouterOAuth] IsGoogleOAuth: {state.IsGoogleOAuthPage}");
-        DebugConsole.WriteLine($"[OpenRouterOAuth] IsOpenRouterOAuth: {providerState.IsOpenRouterOAuthPage}");
-        DebugConsole.WriteLine($"[OpenRouterOAuth] HasConsentButton: {state.HasGoogleConsentButton}");
-        DebugConsole.WriteLine($"[OpenRouterOAuth] IsTargetService: {providerState.IsTargetService}");
-        DebugConsole.WriteLine($"[OpenRouterOAuth] HasAccountPicker: {state.HasAccountPicker}");
-        DebugConsole.WriteLine($"[OpenRouterOAuth] HasGoogleTotpInput: {state.HasGoogleTotpInput}");
-        DebugConsole.WriteLine($"[OpenRouterOAuth] HasGoogleLoginButton: {providerState.HasGoogleLoginButton}");
-        DebugConsole.WriteLine($"[OpenRouterOAuth] HasTermsConsentButton: {providerState.HasTermsConsentButton}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "OpenRouterOAuth",
+            "PageStateDetailed",
+            "Detailed OpenRouter OAuth page state",
+            new {
+                url = state.CurrentUrl,
+                is_google_oauth = state.IsGoogleOAuthPage,
+                is_openrouter_oauth = providerState.IsOpenRouterOAuthPage,
+                has_consent_button = state.HasGoogleConsentButton,
+                is_target_service = providerState.IsTargetService,
+                has_account_picker = state.HasAccountPicker,
+                has_google_totp = state.HasGoogleTotpInput,
+                has_google_login_button = providerState.HasGoogleLoginButton,
+                has_terms_consent_button = providerState.HasTermsConsentButton
+            });
     }
 
     // ========== OpenRouter-specific consent steps ==========
@@ -217,7 +225,12 @@ public sealed class OpenRouterOAuthAutomation : GoogleOAuthFlowAutomation
                 var clicked = valueProp.ValueKind == JsonValueKind.True;
                 if (clicked)
                 {
-                    DebugConsole.WriteLine("[OpenRouterOAuth] Clicked 'Continue with Google' button");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "OpenRouterOAuth",
+                        "GoogleLoginButtonClicked",
+                        "Clicked 'Continue with Google' button",
+                        new { url = state.CurrentUrl });
                 }
                 return clicked;
             }
@@ -226,7 +239,12 @@ public sealed class OpenRouterOAuthAutomation : GoogleOAuthFlowAutomation
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[OpenRouterOAuth] Click Google login button error: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "OpenRouterOAuth",
+                "GoogleLoginButtonError",
+                "Click Google login button error",
+                new { url = state.CurrentUrl, error = ex.Message });
             return false;
         }
     }
@@ -286,7 +304,12 @@ public sealed class OpenRouterOAuthAutomation : GoogleOAuthFlowAutomation
                 var clicked = valueProp.ValueKind == JsonValueKind.True;
                 if (clicked)
                 {
-                    DebugConsole.WriteLine("[OpenRouterOAuth] Clicked 'Agree & Continue' terms button");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "OpenRouterOAuth",
+                        "TermsConsentButtonClicked",
+                        "Clicked 'Agree & Continue' terms button",
+                        new { url = state.CurrentUrl });
                 }
                 return clicked;
             }
@@ -295,7 +318,12 @@ public sealed class OpenRouterOAuthAutomation : GoogleOAuthFlowAutomation
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[OpenRouterOAuth] Click terms consent error: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "OpenRouterOAuth",
+                "TermsConsentButtonError",
+                "Click terms consent error",
+                new { url = state.CurrentUrl, error = ex.Message });
             return false;
         }
     }

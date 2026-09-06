@@ -1,3 +1,4 @@
+using RouterPlus.Core.Observability;
 using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Diagnostics;
 using RouterPlus.Infrastructure.Services;
@@ -48,7 +49,12 @@ public sealed class OAuthAutoLoginOrchestrator : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(targetServiceUri);
         ArgumentNullException.ThrowIfNull(profileEmail);
 
-        DebugConsole.WriteLine($"[OAuthAutoLogin] Navigating to auth URL: {authUrl}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "OAuthAutoLogin",
+            "NavigatingToAuthUrl",
+            "Navigating to auth URL",
+            new { auth_url = authUrl, provider = _provider.ToString() });
         System.Diagnostics.Debug.WriteLine($"[OAuthAutoLogin] FULL URL: {authUrl}");
         await ChromeManagedSession.NavigateAsync(_cdpSession, authUrl, cancellationToken);
 
@@ -69,14 +75,24 @@ public sealed class OAuthAutoLoginOrchestrator : IAsyncDisposable
 
         if (consent.Success)
         {
-            DebugConsole.WriteLine($"[OAuthAutoLogin] Success: {consent.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "OAuthAutoLogin",
+                "Success",
+                "OAuth auto-login succeeded",
+                new { message = consent.Message, provider = _provider.ToString() });
             return new OAuthAutoLoginResult(
                 OAuthAutoLoginOutcome.Success,
                 consent.Message,
                 AlreadyAuthorized: consent.AlreadyAuthorized);
         }
 
-        DebugConsole.WriteLine($"[OAuthAutoLogin] Failed: {consent.Message}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Warning,
+            "OAuthAutoLogin",
+            "Failed",
+            "OAuth auto-login failed",
+            new { message = consent.Message, provider = _provider.ToString() });
         return new OAuthAutoLoginResult(
             OAuthAutoLoginOutcome.ConsentFailed,
             consent.Message,

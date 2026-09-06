@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -126,15 +127,22 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
         if (providerState == null)
             return;
 
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] URL: {state.CurrentUrl}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsAwsBuilderIdPage: {providerState.IsAwsBuilderIdPage}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsGoogleOAuthPage: {state.IsGoogleOAuthPage}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasContinueWithGoogle: {providerState.HasContinueWithGoogleButton}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOauth] HasAccountPicker: {state.HasAccountPicker}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasGoogleTotpInput: {state.HasGoogleTotpInput}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasGoogleConsent: {state.HasGoogleConsentButton}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] HasAwsConsent: {providerState.HasAwsConsentButton}");
-        DebugConsole.WriteLine($"[AwsBuilderIdOAuth] IsCompletionPage: {providerState.IsCompletionPage}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "AwsBuilderIdOAuth",
+            "PageStateDetailed",
+            "Detailed AWS Builder ID OAuth page state",
+            new {
+                url = state.CurrentUrl,
+                is_aws_builder_id_page = providerState.IsAwsBuilderIdPage,
+                is_google_oauth = state.IsGoogleOAuthPage,
+                has_continue_with_google = providerState.HasContinueWithGoogleButton,
+                has_account_picker = state.HasAccountPicker,
+                has_google_totp = state.HasGoogleTotpInput,
+                has_google_consent = state.HasGoogleConsentButton,
+                has_aws_consent = providerState.HasAwsConsentButton,
+                is_completion_page = providerState.IsCompletionPage
+            });
     }
 
     // ========== Override virtual methods for AWS-specific behavior ==========
@@ -150,7 +158,12 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
 
     protected override async Task<bool> TryClickProviderInitialButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
     {
-        DebugConsole.WriteLine("[AwsBuilderIdOAuth] Clicking 'Continue with Google'...");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AwsBuilderIdOAuth",
+            "ClickingContinueWithGoogle",
+            "Clicking 'Continue with Google' button",
+            new { url = state.CurrentUrl });
 
         const string script = @"
 (function() {
@@ -184,7 +197,12 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
                 resultProp.TryGetProperty("value", out var clickedProp) &&
                 clickedProp.GetBoolean())
             {
-                DebugConsole.WriteLine("[AwsBuilderIdOAuth] 'Continue with Google' clicked");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AwsBuilderIdOAuth",
+                    "ContinueWithGoogleClicked",
+                    "'Continue with Google' button clicked",
+                    new { url = state.CurrentUrl });
                 return true;
             }
 
@@ -207,7 +225,12 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
 
     protected override async Task<bool> TryClickProviderConsentButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
     {
-        DebugConsole.WriteLine("[AwsBuilderIdOAuth] Clicking AWS Builder ID consent button...");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AwsBuilderIdOAuth",
+            "ClickingConsentButton",
+            "Clicking AWS Builder ID consent button",
+            new { url = state.CurrentUrl });
 
         const string script = @"
 (function() {
@@ -243,7 +266,12 @@ public sealed class AwsBuilderIdOAuthAutomation : GoogleOAuthFlowAutomation
                 resultProp.TryGetProperty("value", out var clickedProp) &&
                 clickedProp.GetBoolean())
             {
-                DebugConsole.WriteLine("[AwsBuilderIdOAuth] AWS Builder ID consent button clicked");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "AwsBuilderIdOAuth",
+                    "ConsentButtonClicked",
+                    "AWS Builder ID consent button clicked",
+                    new { url = state.CurrentUrl });
                 return true;
             }
 

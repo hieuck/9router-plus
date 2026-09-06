@@ -71,7 +71,12 @@ public sealed class AutoLoginOrchestrator
         trace.LogCheckpoint("TryingPrimaryMethod", new { method = primaryMethod.ToString() });
 
         // Try primary method
-        DebugConsole.WriteLine($"[AutoLogin] Trying primary method: {primaryMethod}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AutoLogin",
+            "TryingPrimaryMethod",
+            "Trying primary login method",
+            new { method = primaryMethod.ToString(), provider = provider.ToString() });
         var primaryResult = await TryMethodAsync(connection, primaryMethod, provider, startUri, timeout, cancellationToken);
         if (primaryResult.Success)
         {
@@ -86,7 +91,12 @@ public sealed class AutoLoginOrchestrator
             return primaryResult;
         }
 
-        DebugConsole.WriteLine($"[AutoLogin] Primary method failed: {primaryResult.ErrorMessage}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Warning,
+            "AutoLogin",
+            "PrimaryMethodFailed",
+            "Primary method failed",
+            new { method = primaryMethod.ToString(), error = primaryResult.ErrorMessage });
 
         // Try fallback if alternative credentials exist
         var fallbackAvailable = primaryMethod == AuthMethod.GoogleOAuth
@@ -108,7 +118,12 @@ public sealed class AutoLoginOrchestrator
 
         trace.LogCheckpoint("TryingFallbackMethod", new { method = fallbackMethod.ToString() });
 
-        DebugConsole.WriteLine($"[AutoLogin] Attempting fallback: {fallbackMethod}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AutoLogin",
+            "AttemptingFallback",
+            "Attempting fallback method",
+            new { method = fallbackMethod.ToString(), provider = provider.ToString() });
         var fallbackResult = await TryMethodAsync(connection, fallbackMethod, provider, startUri, timeout, cancellationToken);
 
         if (fallbackResult.Success)

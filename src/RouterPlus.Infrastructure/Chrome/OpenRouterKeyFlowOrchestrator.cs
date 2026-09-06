@@ -1,3 +1,4 @@
+using RouterPlus.Core.Observability;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Diagnostics;
 using RouterPlus.Infrastructure.Services;
@@ -58,12 +59,22 @@ public static class OpenRouterKeyFlowOrchestrator
         }
 
         // Phase 3: Google autologin using the vault credential.
-        DebugConsole.WriteLine($"[OpenRouterKeyFlow] Running Google autologin for {credential.Email}...");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "OpenRouterKeyFlow",
+            "GoogleAutoLoginStarted",
+            "Running Google autologin",
+            new { email = credential.Email });
         var googleAuthentication = googleAuthenticationService ?? new GoogleAuthenticationService();
         var loginResult = await googleAuthentication.AuthenticateAsync(
             new GoogleAuthenticationRequest(credential, googleLogin),
             cancellationToken);
-        DebugConsole.WriteLine($"[OpenRouterKeyFlow] Google login category: {loginResult.Category}, message: {loginResult.Message}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "OpenRouterKeyFlow",
+            "GoogleAutoLoginCompleted",
+            "Google login completed",
+            new { category = loginResult.Category.ToString(), message = loginResult.Message });
         if (loginResult.Category != GoogleLoginResultCategory.Success)
         {
             return new OpenRouterKeyFlowResult(false, null, $"Google sign-in failed: {loginResult.Message}");
