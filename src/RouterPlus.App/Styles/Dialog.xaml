@@ -11,4 +11,11 @@
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+
+    <!-- Credentials List Item Style -->
+    <Style x:Key="CredentialsListItemStyle" TargetType="{x:Type ListViewItem}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
 </ResourceDictionary>

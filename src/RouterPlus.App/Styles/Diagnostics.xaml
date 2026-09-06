@@ -9,10 +9,25 @@
         <Setter Property="Margin" Value="0,0,8,0" />
         <Setter Property="MinWidth" Value="60" />
         <Setter Property="HorizontalAlignment" Value="Center" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Level}" Value="Error">
+                <Setter Property="Background" Value="#DC3545"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Level}" Value="Warning">
+                <Setter Property="Background" Value="#FFC107"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Level}" Value="Info">
+                <Setter Property="Background" Value="#17A2B8"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Level}" Value="Debug">
+                <Setter Property="Background" Value="#6C757D"/>
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Level Text Style -->
     <Style x:Key="LevelTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="White" />
         <Setter Property="FontSize" Value="10" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalAlignment" Value="Center" />

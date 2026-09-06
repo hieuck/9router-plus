@@ -16,6 +16,9 @@
                 <!-- Feature-specific styles -->
                 <ResourceDictionary Source="Styles/Common.xaml" />
                 <ResourceDictionary Source="Styles/Toolbar.xaml" />
+                <ResourceDictionary Source="Styles/Sidebar.xaml" />
+                <ResourceDictionary Source="Styles/Provider.xaml" />
+                <ResourceDictionary Source="Styles/Settings.xaml" />
                 <ResourceDictionary Source="Styles/Dialog.xaml" />
                 <ResourceDictionary Source="Styles/Diagnostics.xaml" />
 
