@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Common shared styles: badges, pills, cards, borders -->
+
+    <!-- Success Pill Style -->
+    <Style x:Key="SuccessPillStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="8,4" />
+    </Style>
+
+    <!-- Info Pill Style -->
+    <Style x:Key="InfoPillStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource InfoSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="8,4" />
+    </Style>
+
+    <!-- Warning Pill Style -->
+    <Style x:Key="WarningPillStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="8,4" />
+    </Style>
+
+    <!-- Hero Border Style (for main content cards) -->
+    <Style x:Key="HeroBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="16" />
+    </Style>
+
+    <!-- Input Border Style (for text inputs) -->
+    <Style x:Key="InputBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="9,7" />
+    </Style>
+</ResourceDictionary>
