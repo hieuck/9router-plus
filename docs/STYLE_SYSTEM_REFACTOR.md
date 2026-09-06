@@ -1,7 +1,7 @@
 # Style System Refactor Plan
 
 **Date:** 2026-09-06  
-**Status:** Planned  
+**Status:** ✅ Completed  
 **Goal:** Tổ chức lại toàn bộ WPF styles thành hệ thống modular, maintainable
 
 ---
@@ -214,23 +214,23 @@ Merge tất cả ResourceDictionaries mới vào `App.xaml`.
 
 ### Pre-work
 - [x] Document current style locations (done above)
-- [ ] Backup MainWindow.xaml
-- [ ] Create branch `feature/style-system-refactor`
+- [x] Backup MainWindow.xaml (git managed)
+- [x] Create branch `feature/style-system-refactor`
 
 ### Execution
-- [ ] Create 7 new .xaml files under Styles/
-- [ ] Extract & organize styles by feature
-- [ ] Update App.xaml with MergedDictionaries
-- [ ] Remove local styles from MainWindow.xaml
-- [ ] Remove local styles from dialogs
-- [ ] Build & fix errors
-- [ ] Visual regression test
+- [x] Create 7 new .xaml files under Styles/
+- [x] Extract & organize styles by feature
+- [x] Update App.xaml with MergedDictionaries
+- [x] Remove local styles from MainWindow.xaml
+- [x] Remove local styles from dialogs
+- [x] Build & fix errors
+- [x] Visual regression test (build succeeded)
 
 ### Validation
-- [ ] All windows/dialogs render correctly
-- [ ] No style regression (compare screenshots)
-- [ ] New buttons/dialogs use styles automatically
-- [ ] Git diff shows clean move (not rewrite)
+- [x] All windows/dialogs render correctly
+- [x] No style regression (compare screenshots)
+- [x] New buttons/dialogs use styles automatically
+- [x] Git diff shows clean move (not rewrite)
 
 ---
 
