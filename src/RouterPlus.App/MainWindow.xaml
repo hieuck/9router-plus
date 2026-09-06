@@ -724,6 +724,7 @@
                             <MenuItem Header="Chạy lại thiết lập ban đầu..." Click="RunSetupWizard_Click" />
                             <MenuItem Header="Mở hướng dẫn" Command="{Binding OpenHelpCommand}" />
                             <MenuItem Header="Báo cáo lỗ hổng" Command="{Binding OpenSecurityCommand}" />
+                            <MenuItem Header="{DynamicResource DiagnosticsButtonText}" Click="Diagnostics_Click" />
                             <Separator />
                             <MenuItem Header="Giới thiệu…" Click="About_Click" />
                         </ContextMenu>
@@ -731,9 +732,6 @@
                 </Button>
                 <ToggleButton AutomationProperties.AutomationId="SettingsToggleButton"
                               Content="⚙  Cài đặt" IsChecked="{Binding IsSettingsExpanded, Mode=TwoWay}" />
-                <Button AutomationProperties.AutomationId="DiagnosticsButton"
-                        Content="{DynamicResource DiagnosticsButtonText}"
-                        Click="Diagnostics_Click" />
             </StackPanel>
         </Grid>
 
