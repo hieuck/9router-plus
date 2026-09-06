@@ -256,7 +256,7 @@
 
     <Style TargetType="Button">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        <Setter Property="Background" Value="{DynamicResource PanelLightBrush}" />
+        <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="12,8" />
@@ -273,7 +273,8 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="10"
                             Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                        <ContentPresenter x:Name="ButtonContent"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                           TextElement.Foreground="{TemplateBinding Foreground}"
                                           RecognizesAccessKey="True" />
@@ -285,7 +286,7 @@
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentDarkBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
+                            <Setter TargetName="ButtonContent" Property="TextElement.Foreground" Value="{DynamicResource AccentContentBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
