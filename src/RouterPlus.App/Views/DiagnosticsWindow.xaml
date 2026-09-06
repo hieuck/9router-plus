@@ -100,9 +100,10 @@
                     <!-- Events DataGrid -->
                     <DataGrid Grid.Row="1" ItemsSource="{Binding EventsView}" AutoGenerateColumns="False"
                               IsReadOnly="True" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
-                              HeadersVisibility="Column" RowHeight="32" CanUserResizeRows="False"
+                              HeadersVisibility="Column" RowHeight="40" CanUserResizeRows="False"
                               Background="{DynamicResource PanelBrush}" BorderThickness="0" SelectionMode="Single"
-                              SelectedItem="{Binding SelectedEvent}"
+                              SelectedItem="{Binding SelectedEvent}" AlternatingRowBackground="{DynamicResource PanelLightBrush}"
+                              AlternationCount="2"
                               MouseDoubleClick="DataGrid_MouseDoubleClick">
                         <DataGrid.Resources>
                             <Style TargetType="DataGridColumnHeader">
@@ -113,12 +114,19 @@
                                 <Setter Property="BorderThickness" Value="0,0,0,2"/>
                                 <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
                             </Style>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource InfoSoftBrush}"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
                             <Style TargetType="DataGridCell">
                                 <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="Padding" Value="12,8"/>
+                                <Setter Property="Padding" Value="12,10"/>
                                 <Style.Triggers>
                                     <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Background" Value="{DynamicResource InfoSoftBrush}"/>
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
                                         <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                                     </Trigger>
                                 </Style.Triggers>
@@ -126,7 +134,13 @@
                         </DataGrid.Resources>
 
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Timestamp" Binding="{Binding Timestamp, StringFormat='yyyy-MM-dd HH:mm:ss.fff'}" Width="180"/>
+                            <DataGridTextColumn Header="Timestamp" Binding="{Binding Timestamp, StringFormat='HH:mm:ss.fff'}" Width="110">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip" Value="{Binding Timestamp, StringFormat='yyyy-MM-dd HH:mm:ss.fff'}"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
 
                             <DataGridTemplateColumn Header="Level" Width="90">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -150,9 +164,27 @@
                         </DataGrid.ContextMenu>
                     </DataGrid>
 
+                    <!-- Empty State -->
+                    <Border Grid.Row="1" Background="{DynamicResource PanelBrush}"
+                            Visibility="{Binding EventsView.IsEmpty, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <StackPanel Margin="32">
+                            <TextBlock Text="📋" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                            <TextBlock Text="No Events Yet" FontSize="18" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="Events will appear here as the application runs" FontSize="13"
+                                       Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="Try clicking Refresh or performing actions in the app" FontSize="12"
+                                       Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" FontStyle="Italic"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Loading Overlay -->
-                    <Border Grid.Row="1" Background="#80FFFFFF" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                    <Border Grid.Row="1" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
                             HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <Border.Background>
+                            <SolidColorBrush Color="{DynamicResource SurfaceColor}" Opacity="0.9"/>
+                        </Border.Background>
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                             <TextBlock Text="⏳ Loading..." FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
                         </StackPanel>
@@ -249,7 +281,27 @@
 
         <!-- Status Bar -->
         <Border Grid.Row="2" Background="{DynamicResource PanelLightBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,8">
-            <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,16,0">
+                        <Run Text="Session: "/>
+                        <Run Text="{Binding SessionId, Mode=OneWay}" FontFamily="Consolas"/>
+                    </TextBlock>
+                    <TextBlock FontSize="11" Foreground="{DynamicResource MutedTextBrush}">
+                        <Run Text="Events: "/>
+                        <Run Text="{Binding EventsView.Count, Mode=OneWay}" FontWeight="SemiBold"/>
+                        <Run Text="/"/>
+                        <Run Text="{Binding TotalEventCount, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

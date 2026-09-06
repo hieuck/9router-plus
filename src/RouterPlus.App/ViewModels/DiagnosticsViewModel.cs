@@ -166,6 +166,10 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         }
     }
 
+    public string SessionId => _sessionId ?? "unknown";
+
+    public int TotalEventCount => _events.Count;
+
     public ICommand RefreshCommand { get; }
     public ICommand ExportCommand { get; }
     public ICommand ClearLogsCommand { get; }
@@ -229,6 +233,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
                     {
                         _events.Add(evt);
                     }
+                    OnPropertyChanged(nameof(TotalEventCount));
 
                     // Update categories
                     var categories = _logReader.GetCategories(_sessionId);
@@ -393,6 +398,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
                 }
 
                 _events.Clear();
+                OnPropertyChanged(nameof(TotalEventCount));
                 UpdateMetrics();
                 StatusMessage = "Logs cleared";
             }
