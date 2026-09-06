@@ -20,6 +20,7 @@ public partial class MainWindow : Window
 {
     private const double MinimumVisibleWindowSize = 64d;
     private bool _isClosing;
+    private DiagnosticsWindow? _diagnosticsWindow;
 
     public MainWindow()
     {
@@ -184,11 +185,36 @@ public partial class MainWindow : Window
 
     private void Diagnostics_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new DiagnosticsWindow
+        // If already open, focus existing window
+        if (_diagnosticsWindow != null)
+        {
+            try
+            {
+                // Check if window is still alive by accessing a property
+                if (_diagnosticsWindow.IsVisible || _diagnosticsWindow.IsLoaded)
+                {
+                    _diagnosticsWindow.Activate();
+                    _diagnosticsWindow.Focus();
+                    return;
+                }
+            }
+            catch
+            {
+                // Window was closed, create new one
+                _diagnosticsWindow = null;
+            }
+        }
+
+        // Create new window
+        _diagnosticsWindow = new DiagnosticsWindow
         {
             Owner = this
         };
-        dialog.Show();
+
+        // Clear reference when closed
+        _diagnosticsWindow.Closed += (s, args) => _diagnosticsWindow = null;
+
+        _diagnosticsWindow.Show();
     }
 
     private void OpenCredentialsManager_Click(object sender, RoutedEventArgs e)
