@@ -169,7 +169,38 @@ Không gửi API key vào issue, chat, screenshot, clipboard log hoặc file bac
 - Nếu có bản mới, app chỉ cho cài sau khi metadata release stable `v...`, host HTTPS được allow, checksum SHA-256 và archive layout được xác minh. Người dùng phải xác nhận trước khi app đóng.
 - Build unsigned vẫn hỗ trợ self-update; chỉ release stable có tag `v...` và checksum hợp lệ mới được chọn làm bản cập nhật, không có fallback tải executable từ URL tùy ý.
 - Updater riêng đổi live directory sang backup, đưa staging vào vị trí live và rollback nếu bản mới không khởi động được. Settings và DPAPI secrets nằm ngoài package update.
-## 9. Theme, font và settings
+
+## 9. Diagnostics Panel - Xem log và debug
+
+**Menu:** `Trợ giúp` → `Diagnostics Panel`
+
+Diagnostics Panel cho phép xem log chi tiết của app trong thời gian thực:
+
+- **Filter theo mức độ:** Error, Warning, Info, Debug
+- **Tìm kiếm:** Lọc theo category, event hoặc message
+- **Xem context:** Click vào event để xem structured JSON context
+- **Export logs:** Lưu logs ra file để báo bug hoặc phân tích
+- **Chọn session:** Xem logs từ các lần chạy app trước
+
+### Log file location
+
+Logs được lưu tự động tại:
+```
+C:\Users\{username}\AppData\Local\RouterPlus\Observability\Sessions\{session_id}\events.jsonl
+```
+
+Mỗi dòng là một JSON event với timestamp, level, category, event name và context data.
+
+### Khi nào dùng Diagnostics Panel
+
+- **Debug OAuth flow:** Xem chi tiết từng bước khi login Codex/GitHub/OpenRouter bị lỗi
+- **Troubleshoot connection issues:** Xem lỗi khi sync provider connections
+- **Report bugs:** Export logs để gửi kèm bug report
+- **Xem performance:** Kiểm tra timing của các operations
+
+**Lưu ý privacy:** Logs tự động redact sensitive data (email, password, TOTP, API keys) trước khi ghi file.
+
+## 10. Theme, font và settings
 
 - Nhấn `⚙ Cài đặt` để mở/thu gọn settings.
 - Chọn theme sáng/tối.
@@ -177,7 +208,7 @@ Không gửi API key vào issue, chat, screenshot, clipboard log hoặc file bac
 - Nhấn `Lưu cài đặt` sau khi đổi đường dẫn hoặc dashboard URL.
 - Vị trí cửa sổ được lưu khi đóng app và áp dụng lại lần sau nếu còn hợp lệ.
 
-## 10. Dữ liệu cục bộ và chuyển máy
+## 11. Dữ liệu cục bộ và chuyển máy
 
 RouterPlus lưu:
 
@@ -186,7 +217,7 @@ RouterPlus lưu:
 
 Khi chuyển sang Windows user khác, `secrets.json` không tự giải mã được. Nếu cần chuyển máy, hãy tạo key mới trên user đích thay vì copy secrets như file văn bản thông thường.
 
-## 11. Gỡ ứng dụng
+## 12. Gỡ ứng dụng
 
 1. Đóng RouterPlus và Chrome.
 2. Xóa thư mục đã giải nén của RouterPlus.
