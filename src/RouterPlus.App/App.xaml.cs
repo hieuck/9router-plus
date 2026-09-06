@@ -3,6 +3,8 @@ using System.Windows;
 using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Observability;
 using RouterPlus.Infrastructure.Storage;
+using RouterPlus.App.Testing;
+using RouterPlus.App.Diagnostics;
 
 namespace RouterPlus.App;
 

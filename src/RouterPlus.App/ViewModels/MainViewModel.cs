@@ -1733,7 +1733,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Chrome, $"Health check failed for profile {row.Name}", ex);
+            ObservabilityHub.Instance.LogError(
+                "Chrome",
+                "HealthCheckFailed",
+                ex,
+                new { profile_name = row.Name });
             StatusText = $"❌ {row.Name}: Health check failed - {ex.Message}";
             ShowToast(StatusText, ToastType.Error);
 
@@ -1846,7 +1850,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task CheckForUpdatesAsync()
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Updates, "CheckForUpdatesAsync");
         if (IsUpdateChecking)
         {
             return;
@@ -1858,7 +1861,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var release = await _updateService.CheckAsync();
-            DebugLogger.Log(DiagnosticCategories.Updates, $"Update check completed; available: {release.IsUpdateAvailable}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Updates",
+                "UpdateCheckCompleted",
+                "Update check completed",
+                new { is_update_available = release.IsUpdateAvailable, available_version = release.AvailableVersion });
             _latestRelease = release;
             OnPropertyChanged(nameof(IsUpdateAvailable));
             OnPropertyChanged(nameof(AvailableVersion));
@@ -1904,7 +1912,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task<bool> InstallUpdateAsync(bool confirmedByUser)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Updates, "InstallUpdateAsync");
         if (!confirmedByUser || !CanInstallUpdate || _latestRelease is null)
         {
             return false;
@@ -1916,9 +1923,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         InstallUpdateCommand.RaiseCanExecuteChanged();
         try
         {
-            DebugLogger.Log(DiagnosticCategories.Updates, "Downloading and staging update package");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Updates",
+                "DownloadingUpdate",
+                "Downloading and staging update package",
+                new { version = _latestRelease.AvailableVersion });
             var package = await _updateService.DownloadAndStageAsync(_latestRelease);
-            DebugLogger.Log(DiagnosticCategories.Updates, "Update package staged; launching updater");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Updates",
+                "UpdateStaged",
+                "Update package staged; launching updater",
+                new { archive_path = package.ArchivePath, staging_path = package.StagingPath });
             UpdateState = UpdateState.Installing;
             UpdateStatusText = "Bản cập nhật đã được xác minh. Đang chuẩn bị khởi động lại…";
             if (!await _updateService.LaunchUpdaterAsync(package))
@@ -1953,7 +1970,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void RefreshProfiles()
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Chrome, "RefreshProfiles");
         var previousProfileId = SelectedProfile?.Id;
 
         ObservabilityHub.Instance.LogEvent(
@@ -2053,7 +2069,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenProviderDashboardCommand.RaiseCanExecuteChanged();
         TestConnectionCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
-        DebugLogger.Log(DiagnosticCategories.Chrome, $"Harness profile refresh loaded {profiles.Count} synthetic profiles");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Chrome",
+            "HarnessProfilesLoaded",
+            "Harness profile refresh loaded synthetic profiles",
+            new { profile_count = profiles.Count });
     }
 
     public async Task AddProfileAsync()
@@ -2294,10 +2315,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(
-                DiagnosticCategories.ViewModel,
-                $"Failed to check vault credentials for {profile.Name}: {ex.Message}",
-                ex);
+            ObservabilityHub.Instance.LogError(
+                "ViewModel",
+                "VaultCredentialsCheckFailed",
+                ex,
+                new { profile_name = profile.Name });
             return false;
         }
     }
@@ -2413,10 +2435,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     row.State = BatchLoginState.Failed;
                     row.StatusMessage = ex.Message;
                     row.Duration = sw.Elapsed;
-                    DebugLogger.LogError(
-                        DiagnosticCategories.ViewModel,
-                        $"Batch login failed for {profile.Name}: {ex.Message}",
-                        ex);
+                    ObservabilityHub.Instance.LogError(
+                        "ViewModel",
+                        "BatchLoginFailed",
+                        ex,
+                        new { profile_name = profile.Name });
                 }
                 finally
                 {
@@ -2441,10 +2464,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             StatusText = $"Lỗi batch: {ex.Message}";
-            DebugLogger.LogError(
-                DiagnosticCategories.ViewModel,
-                $"Batch auto-login failed: {ex.Message}",
-                ex);
+            ObservabilityHub.Instance.LogError(
+                "ViewModel",
+                "BatchAutoLoginFailed",
+                ex,
+                new { });
         }
         finally
         {
@@ -2541,10 +2565,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             catch (Exception ex)
             {
                 row.StatusMessage = $"{kind}: {ex.Message}";
-                DebugLogger.LogError(
-                    DiagnosticCategories.ViewModel,
-                    $"Provider {kind} login failed for {profile.Name}: {ex.Message}",
-                    ex);
+                ObservabilityHub.Instance.LogError(
+                    "ViewModel",
+                    "ProviderLoginFailed",
+                    ex,
+                    new { provider_kind = kind.ToString(), profile_name = profile.Name });
             }
         }
 
@@ -2624,8 +2649,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         bool forceLog = false,
         CancellationToken cancellationToken = default)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Providers, "RefreshConnectionStatusesAsync");
-        DebugLogger.Log(DiagnosticCategories.Providers, $"Provider sync requested; profiles: {ProfileRows.Count}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Providers",
+            "ConnectionRefreshRequested",
+            "Provider sync requested",
+            new { profile_count = ProfileRows.Count });
         await _connectionRefreshGate.WaitAsync(cancellationToken);
         try
         {
@@ -2639,10 +2668,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task LoadSelectedProfileApiKeysAsync()
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "LoadSelectedProfileApiKeysAsync");
         var loadVersion = Interlocked.Increment(ref _apiKeyLoadVersion);
         var profile = SelectedProfile;
-        DebugLogger.Log(DiagnosticCategories.Security, $"Loading saved provider credentials for profile selected: {profile is not null}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "Security",
+            "LoadingProfileCredentials",
+            "Loading saved provider credentials for profile",
+            new { has_profile = profile is not null });
         foreach (var card in ProviderCards.Where(card => card.Workflow == WorkflowKind.ApiKey))
         {
             card.LoadSavedApiKey(null);
@@ -2672,11 +2705,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 GetProviderCard(value.Kind).LoadSavedApiKey(value.Value);
             }
 
-            DebugLogger.Log(DiagnosticCategories.Security, $"Saved provider credentials loaded for {values.Length} providers");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Security",
+                "ProfileCredentialsLoaded",
+                "Saved provider credentials loaded",
+                new { provider_count = values.Length });
         }
         catch (Exception exception)
         {
-            DebugLogger.LogError(DiagnosticCategories.Security, "Saved provider credentials could not be loaded", exception);
+            ObservabilityHub.Instance.LogError(
+                "Security",
+                "ProfileCredentialsLoadFailed",
+                exception,
+                new { profile_name = profile.Name });
             if (loadVersion == Volatile.Read(ref _apiKeyLoadVersion))
             {
                 AppendLog("WARN", $"Không thể đọc API key đã lưu: {SafeError(exception)}");
@@ -2705,9 +2747,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var api = await CreateApiClientAsync();
-            DebugLogger.Log(DiagnosticCategories.Providers, "Loading provider connections");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Providers",
+                "LoadingConnections",
+                "Loading provider connections",
+                new { });
             var connections = await api.ListAllConnectionsAsync(cancellationToken);
-            DebugLogger.Log(DiagnosticCategories.Providers, $"Provider connections loaded: {connections.Count}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Providers",
+                "ConnectionsLoaded",
+                "Provider connections loaded",
+                new { connection_count = connections.Count });
             var exhaustedConnections = connections
                 .Where(connection =>
                     connection.IsActive &&
@@ -3076,7 +3128,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void UpdateProviderCardStatuses()
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.ViewModel, "UpdateProviderCardStatuses");
         var row = SelectedProfileRow;
         foreach (var card in ProviderCards)
         {
@@ -3095,7 +3146,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         var definition = ProviderCatalog.Get(provider);
         using var trace = TraceScope.Begin("Providers", "OpenProvider", new { provider = provider.ToString(), workflow = definition.Workflow.ToString() });
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Providers, "OpenProviderAsync");
 
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Info,
@@ -3384,9 +3434,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ChromeManagedSession? chromeSession = null;
         try
         {
-            DebugLogger.Log(
-                DiagnosticCategories.Providers,
-                $"Device code automation start for profile {SelectedProfile.Name}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Providers",
+                "DeviceCodeAutomationStarted",
+                "Device code automation start",
+                new { profile_name = SelectedProfile.Name });
 
             chromeSession = await _chromeLauncher.LaunchManagedAsync(
                 _installation,
@@ -3417,7 +3470,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         var totpSecret = credential.TotpSecret;
                         totpGenerator = () => Task.FromResult<string?>(
                             GoogleTotpGenerator.Generate(totpSecret, DateTimeOffset.UtcNow));
-                        DebugLogger.Log(DiagnosticCategories.Providers, "TOTP generator created from vault");
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "Providers",
+                            "TotpGeneratorCreated",
+                            "TOTP generator created from vault",
+                            new { });
                     }
                 }
             }
@@ -3436,7 +3494,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             // Connection detected! Now we can cleanup
             StatusText = "Đã nhận connection. Đang lưu…";
-            DebugLogger.Log(DiagnosticCategories.Providers, "Device code polling succeeded");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Providers",
+                "DeviceCodePollingSucceeded",
+                "Device code polling succeeded",
+                new { });
 
             // Try to get automation result (may still be running)
             OAuthConsentResult automationResult;
@@ -3451,11 +3514,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             if (automationResult.Success)
             {
-                DebugLogger.Log(DiagnosticCategories.Providers, $"Device code automation success: {automationResult.Message}");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Providers",
+                    "DeviceCodeAutomationSuccess",
+                    "Device code automation success",
+                    new { message = automationResult.Message });
             }
             else
             {
-                DebugLogger.Log(DiagnosticCategories.Providers, $"Device code automation incomplete: {automationResult.Message}");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "Providers",
+                    "DeviceCodeAutomationIncomplete",
+                    "Device code automation incomplete",
+                    new { message = automationResult.Message });
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -3464,7 +3537,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Providers, $"Device code automation failed: {ex.Message}", ex);
+            ObservabilityHub.Instance.LogError(
+                "Providers",
+                "DeviceCodeAutomationFailed",
+                ex,
+                new { });
             StatusText = $"Tự động hóa lỗi: {ex.Message}. Đang chờ hoàn tất thủ công…";
 
             // Continue polling even if automation fails
@@ -3828,8 +3905,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IGoogleLoginBrowser? browser = null;
             try
             {
-                DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login started for profile: {profile.DirectoryName}");
-                DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launch requested");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Security",
+                    "GoogleAutoLoginStarted",
+                    "Google auto-login started",
+                    new { profile_directory = profile.DirectoryName });
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Chrome",
+                    "GoogleAutoLoginChromeLaunchRequested",
+                    "Google auto-login Chrome launch requested",
+                    new { });
 
                 var settings = await _settingsStore.LoadAsync();
 
@@ -3841,11 +3928,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     settings.UseOriginalProfileForAutoLogin,
                     minimized);
 
-                DebugLogger.Log(DiagnosticCategories.Chrome, "Google auto-login Chrome launched and CDP endpoint is available");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Chrome",
+                    "GoogleAutoLoginChromeLaunched",
+                    "Google auto-login Chrome launched and CDP endpoint is available",
+                    new { });
 
                 browser = await session.ConnectGoogleLoginAsync(cancellationToken);
 
-                DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login CDP connected; checking session cookies");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Security",
+                    "GoogleAutoLoginCdpConnected",
+                    "Google auto-login CDP connected; checking session cookies",
+                    new { });
 
                 // Check if already logged in via session cookies
                 var initialState = await browser.ReadStateAsync(cancellationToken);
@@ -3854,17 +3951,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 if (initialState.HasCompletionSignal)
                 {
                     result = GoogleLoginResult.Success();
-                    DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login: session cookies authenticated successfully");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Security",
+                        "GoogleAutoLoginSessionCookiesSuccess",
+                        "Google auto-login: session cookies authenticated successfully",
+                        new { });
                 }
                 else
                 {
-                    DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login: session cookies did not authenticate, starting state machine");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Security",
+                        "GoogleAutoLoginStateMachineStarting",
+                        "Google auto-login: session cookies did not authenticate, starting state machine",
+                        new { });
                     result = await _googleAuthenticationService.AuthenticateAsync(
                         new GoogleAuthenticationRequest(credential, browser),
                         cancellationToken);
                 }
 
-                DebugLogger.Log(DiagnosticCategories.Security, $"Google auto-login state machine completed: {result.Category}");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Security",
+                    "GoogleAutoLoginCompleted",
+                    "Google auto-login state machine completed",
+                    new { result_category = result.Category.ToString() });
 
                 // Dispose session to close the profile after successful login
                 if (result.Category is GoogleLoginResultCategory.Success)
@@ -3909,7 +4021,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             catch (OperationCanceledException)
             {
-                DebugLogger.Log(DiagnosticCategories.Security, "Google auto-login cancelled");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Security",
+                    "GoogleAutoLoginCancelled",
+                    "Google auto-login cancelled",
+                    new { });
                 if (browser is not null)
                 {
                     await browser.DisposeAsync();
@@ -3922,7 +4039,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
-                DebugLogger.LogError(DiagnosticCategories.Security, "Google auto-login failed", ex);
+                ObservabilityHub.Instance.LogError(
+                    "Security",
+                    "GoogleAutoLoginFailed",
+                    ex,
+                    new { profile_directory = profile.DirectoryName });
                 ObservabilityHub.Instance.LogEvent(
                     LogLevel.Error,
                     "MainViewModel",
@@ -3976,12 +4097,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             try
             {
-                DebugLogger.Log(DiagnosticCategories.Security, $"Codex login started for profile: {profile.DirectoryName}, method: {credential.Method}");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Security",
+                    "CodexLoginStarted",
+                    "Codex login started",
+                    new { profile_directory = profile.DirectoryName, method = credential.Method.ToString() });
 
                 if (credential.Method == Core.Models.AuthMethod.GoogleOAuth)
                 {
                     // Google OAuth: Launch Chrome and run OAuth automation
-                    DebugLogger.Log(DiagnosticCategories.Security, "Launching Chrome for Codex OAuth");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Security",
+                        "CodexOAuthLaunchingChrome",
+                        "Launching Chrome for Codex OAuth",
+                        new { });
                     var settings = await _settingsStore.LoadAsync();
 
                     var codexOAuthUrl = new Uri("https://auth.openai.com/authorize?client_id=chatgpt-web&scope=openid%20profile%20email&response_type=code&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fcodex");
@@ -4007,7 +4138,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                                 LogLevel.Debug,
                                 "CodexLogin",
                                 "CodexTotpGenerated",
-                                "Codex TOTP code generated for OAuth flow");
+                                "Codex TOTP code generated for OAuth flow",
+                                new { });
                             return await Task.FromResult(totp);
                         };
                     }
@@ -4020,7 +4152,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         credential.LinkedGoogleEmail ?? string.Empty,
                         codexTotpGenerator);
 
-                    DebugLogger.Log(DiagnosticCategories.Security, "Starting Codex OAuth automation");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Security",
+                        "CodexOAuthAutomationStarting",
+                        "Starting Codex OAuth automation",
+                        new { });
                     var consentResult = await automation.WaitAndConsentAsync(
                         codexOAuthUrl,
                         timeout: TimeSpan.FromMinutes(3),
@@ -4028,11 +4165,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
                     if (consentResult.Success)
                     {
-                        DebugLogger.Log(DiagnosticCategories.Security, "Codex OAuth completed successfully");
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "Security",
+                            "CodexOAuthCompleted",
+                            "Codex OAuth completed successfully",
+                            new { });
                         return CodexLoginResult.Success();
                     }
 
-                    DebugLogger.Log(DiagnosticCategories.Security, $"Codex OAuth failed: {consentResult.Message}");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Warning,
+                        "Security",
+                        "CodexOAuthFailed",
+                        "Codex OAuth failed",
+                        new { message = consentResult.Message });
                     return CodexLoginResult.Failed(consentResult.Message);
                 }
                 else // Direct login
@@ -4121,12 +4268,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             catch (OperationCanceledException)
             {
-                DebugLogger.Log(DiagnosticCategories.Security, "Codex login cancelled");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Security",
+                    "CodexLoginCancelled",
+                    "Codex login cancelled",
+                    new { });
                 return CodexLoginResult.Cancelled();
             }
             catch (Exception ex)
             {
-                DebugLogger.LogError(DiagnosticCategories.Security, "Codex login failed", ex);
+                ObservabilityHub.Instance.LogError(
+                    "Security",
+                    "CodexLoginFailed",
+                    ex,
+                    new { method = credential.Method.ToString() });
                 return CodexLoginResult.Failed($"{ex.GetType().Name}: {ex.Message}");
             }
             finally
@@ -4648,9 +4804,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ChromeManagedSession? chromeSession = null;
         try
         {
-            DebugLogger.Log(
-                DiagnosticCategories.Providers,
-                $"OAuth auto-login start for profile {SelectedProfile.Name}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Providers",
+                "OAuthAutoLoginStarted",
+                "OAuth auto-login start",
+                new { profile_name = SelectedProfile.Name });
 
             chromeSession = await _chromeLauncher.LaunchManagedAsync(
                 _installation,
@@ -4680,11 +4839,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     StatusText = result.AlreadyAuthorized
                         ? "Đã đăng nhập sẵn. Đang lưu connection…"
                         : "Đã hoàn tất OAuth consent. Đang lưu connection…";
-                    DebugLogger.Log(DiagnosticCategories.Providers, $"OAuth auto-login success: {result.Message}");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Providers",
+                        "OAuthAutoLoginSuccess",
+                        "OAuth auto-login success",
+                        new { message = result.Message });
                     break;
                 default:
                     StatusText = "Auto-login chưa hoàn tất. Vui lòng click cho phép trong cửa sổ Chrome…";
-                    DebugLogger.Log(DiagnosticCategories.Providers, $"OAuth auto-login fallback: {result.Message}");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Providers",
+                        "OAuthAutoLoginFallback",
+                        "OAuth auto-login fallback",
+                        new { message = result.Message });
                     break;
             }
         }
@@ -4694,7 +4863,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Providers, $"OAuth auto-login failed: {ex.Message}", ex);
+            ObservabilityHub.Instance.LogError(
+                "Providers",
+                "OAuthAutoLoginFailed",
+                ex,
+                new { });
             StatusText = $"Auto-login lỗi: {ex.Message}. Vui lòng hoàn tất thủ công.";
             // Do not rethrow — manual flow / OAuth proxy continues.
         }
@@ -4802,12 +4975,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
-                DebugLogger.Log(DiagnosticCategories.Providers, $"9Router login failed: {error}");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "Providers",
+                    "NineRouterLoginFailed",
+                    "9Router login failed",
+                    new { error });
             }
         }
         catch (Exception ex)
         {
-            DebugLogger.Log(DiagnosticCategories.Providers, $"9Router login error: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Providers",
+                "NineRouterLoginError",
+                "9Router login error",
+                new { error_message = ex.Message });
         }
     }
 

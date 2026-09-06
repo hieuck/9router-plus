@@ -1,5 +1,4 @@
 using System.Windows.Input;
-using RouterPlus.App.Diagnostics;
 
 namespace RouterPlus.App.ViewModels;
 
@@ -24,7 +23,6 @@ public sealed class RelayCommand : ICommand
 
     public void Execute(object? parameter)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Commands, "RelayCommand.Execute");
         _execute();
     }
 

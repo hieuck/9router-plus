@@ -1,7 +1,6 @@
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
 using RouterPlus.Core.Observability;
-using RouterPlus.App.Diagnostics;
 using RouterPlus.Infrastructure.Security;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -145,7 +144,6 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
     public async Task UnlockVaultAsync(string vaultPassword, bool remember, CancellationToken cancellationToken)
     {
         using var trace = TraceScope.Begin("AutoLogin", "UnlockVault", new { profile_id = _profile.Id, profile_name = _profile.Name, remember_on_device = remember });
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "UnlockVaultAsync");
         ArgumentException.ThrowIfNullOrWhiteSpace(vaultPassword);
 
         ObservabilityHub.Instance.LogEvent(
@@ -259,7 +257,6 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task SaveInformationAsync(string email, string password, string totpSecret, CancellationToken cancellationToken)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "SaveInformationAsync");
         if (_session == null)
             throw new InvalidOperationException("Vault is not unlocked");
 
@@ -318,7 +315,6 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task<GoogleLoginResult> AutoLoginAsync(string email, string password, string totpSecret, CancellationToken cancellationToken)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "AutoLoginAsync");
         if (_session == null)
             throw new InvalidOperationException("Vault is not unlocked");
 
@@ -416,7 +412,6 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task ImportAsync(string sourcePath, string sourcePassword, CancellationToken cancellationToken)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "ImportVaultAsync");
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePassword);
 
@@ -470,7 +465,6 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task ExportAsync(string destinationPath, string exportPassword, CancellationToken cancellationToken)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "ExportVaultAsync");
         if (_session == null)
             throw new InvalidOperationException("Vault is not unlocked");
 
@@ -516,7 +510,12 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
 
     public async Task LockVaultAsync(CancellationToken cancellationToken)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Security, "LockVaultAsync");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "AutoLogin",
+            "VaultLockRequested",
+            "User locking vault",
+            new { profile_name = _profile.Name });
         if (_session != null)
         {
             await _session.DisposeAsync();

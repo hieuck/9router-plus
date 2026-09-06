@@ -10,6 +10,12 @@ namespace RouterPlus.App.Diagnostics;
 /// All logging is compiled out in Release builds via conditional compilation.
 /// In Debug builds, logs are also written to app-debug.log in the working directory.
 /// </summary>
+/// <remarks>
+/// DEPRECATED: This class is obsolete. Use ObservabilityHub instead for unified logging
+/// that works in both Debug and Release builds. ObservabilityHub provides structured
+/// logging with privacy scrubbing and session-based log files.
+/// </remarks>
+[Obsolete("Use ObservabilityHub instead. DebugLogger is deprecated and will be removed in a future version.")]
 public static class DebugLogger
 {
     private static readonly Stopwatch AppStopwatch = Stopwatch.StartNew();

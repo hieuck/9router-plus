@@ -1,4 +1,5 @@
 using RouterPlus.Infrastructure.Chrome;
+using RouterPlus.Core.Observability;
 using RouterPlus.App.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -72,10 +73,19 @@ public partial class ChromeSelectionDialog : Window, INotifyPropertyChanged
 
     private void Rescan_Click(object sender, RoutedEventArgs e)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Chrome, "ChromeSelection.Rescan");
-        UIEventLogger.LogClick("ChromeSelection.Rescan");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Chrome",
+            "ChromeRescanRequested",
+            "User rescanning for Chrome installations",
+            new { });
         var installations = _chromeLocator.FindAll();
-        DebugLogger.Log(DiagnosticCategories.Chrome, $"Chrome rescan found {installations.Count} installation(s)");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Chrome",
+            "ChromeRescanCompleted",
+            "Chrome rescan completed",
+            new { installation_count = installations.Count });
         LoadInstallations(installations);
 
         if (Installations.Count == 0)

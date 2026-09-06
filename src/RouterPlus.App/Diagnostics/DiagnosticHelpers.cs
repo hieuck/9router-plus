@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using RouterPlus.Core.Observability;
 
 namespace RouterPlus.App.Diagnostics;
 
@@ -28,53 +29,85 @@ public static class DiagnosticCategories
 /// </summary>
 public static class UIEventLogger
 {
-    [Conditional("DEBUG")]
     public static void LogClick(string element, string? details = null)
     {
-        DebugLogger.Log(DiagnosticCategories.UI, $"CLICK {element}{(details != null ? $" - {details}" : "")}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "UI",
+            "Click",
+            $"CLICK {element}",
+            new { element, details });
     }
 
-    [Conditional("DEBUG")]
     public static void LogRightClick(string element, string? details = null)
     {
-        DebugLogger.Log(DiagnosticCategories.UI, $"RIGHT-CLICK {element}{(details != null ? $" - {details}" : "")}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "UI",
+            "RightClick",
+            $"RIGHT-CLICK {element}",
+            new { element, details });
     }
 
-    [Conditional("DEBUG")]
     public static void LogDoubleClick(string element, string? details = null)
     {
-        DebugLogger.Log(DiagnosticCategories.UI, $"DOUBLE-CLICK {element}{(details != null ? $" - {details}" : "")}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "UI",
+            "DoubleClick",
+            $"DOUBLE-CLICK {element}",
+            new { element, details });
     }
 
-    [Conditional("DEBUG")]
     public static void LogSelection(string element, string? selectedValue)
     {
-        DebugLogger.Log(DiagnosticCategories.UI, $"SELECTION {element} = {selectedValue ?? "null"}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "UI",
+            "Selection",
+            $"SELECTION {element}",
+            new { element, selected_value = selectedValue ?? "null" });
     }
 
-    [Conditional("DEBUG")]
     public static void LogTextInput(string element, int length)
     {
-        DebugLogger.Log(DiagnosticCategories.UI, $"TEXT-INPUT {element} (length: {length})");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "UI",
+            "TextInput",
+            $"TEXT-INPUT {element}",
+            new { element, length });
     }
 
-    [Conditional("DEBUG")]
     public static void LogContextMenuOpen(string element)
     {
-        DebugLogger.Log(DiagnosticCategories.UI, $"CONTEXT-MENU-OPEN {element}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "UI",
+            "ContextMenuOpen",
+            $"CONTEXT-MENU-OPEN {element}",
+            new { element });
     }
 
-    [Conditional("DEBUG")]
     public static void LogDialogOpen(string dialogName)
     {
-        DebugLogger.Log(DiagnosticCategories.UI, $"DIALOG-OPEN {dialogName}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "UI",
+            "DialogOpen",
+            $"DIALOG-OPEN {dialogName}",
+            new { dialog_name = dialogName });
     }
 
-    [Conditional("DEBUG")]
     public static void LogDialogClose(string dialogName, bool? result = null)
     {
         var resultStr = result.HasValue ? (result.Value ? "OK" : "Cancel") : "Closed";
-        DebugLogger.Log(DiagnosticCategories.UI, $"DIALOG-CLOSE {dialogName} ({resultStr})");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "UI",
+            "DialogClose",
+            $"DIALOG-CLOSE {dialogName}",
+            new { dialog_name = dialogName, result = resultStr });
     }
 }
 
@@ -83,29 +116,44 @@ public static class UIEventLogger
 /// </summary>
 public static class ViewModelLogger
 {
-    [Conditional("DEBUG")]
     public static void LogPropertyChanged(string viewModel, string propertyName)
     {
-        DebugLogger.Log(DiagnosticCategories.ViewModel, $"{viewModel}.{propertyName} changed");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "ViewModel",
+            "PropertyChanged",
+            $"{viewModel}.{propertyName} changed",
+            new { view_model = viewModel, property_name = propertyName });
     }
 
-    [Conditional("DEBUG")]
     public static void LogCommandExecute(string viewModel, string commandName, string? parameter = null)
     {
-        var paramStr = parameter != null ? $" (param: {parameter})" : "";
-        DebugLogger.Log(DiagnosticCategories.Commands, $"{viewModel}.{commandName} executed{paramStr}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "Commands",
+            "CommandExecute",
+            $"{viewModel}.{commandName} executed",
+            new { view_model = viewModel, command_name = commandName, parameter });
     }
 
-    [Conditional("DEBUG")]
     public static void LogCommandCanExecuteChanged(string viewModel, string commandName, bool canExecute)
     {
-        DebugLogger.Log(DiagnosticCategories.Commands, $"{viewModel}.{commandName} CanExecute = {canExecute}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "Commands",
+            "CommandCanExecuteChanged",
+            $"{viewModel}.{commandName} CanExecute changed",
+            new { view_model = viewModel, command_name = commandName, can_execute = canExecute });
     }
 
-    [Conditional("DEBUG")]
     public static void LogDataLoad(string viewModel, string dataType, int count)
     {
-        DebugLogger.Log(DiagnosticCategories.ViewModel, $"{viewModel} loaded {count} {dataType}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "ViewModel",
+            "DataLoaded",
+            $"{viewModel} loaded {dataType}",
+            new { view_model = viewModel, data_type = dataType, count });
     }
 }
 
@@ -114,27 +162,43 @@ public static class ViewModelLogger
 /// </summary>
 public static class ChromeLogger
 {
-    [Conditional("DEBUG")]
     public static void LogProfileScan(int profileCount, long elapsedMs)
     {
-        DebugLogger.Log(DiagnosticCategories.Chrome, $"Profile scan completed: {profileCount} profiles in {elapsedMs}ms");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Chrome",
+            "ProfileScanCompleted",
+            "Profile scan completed",
+            new { profile_count = profileCount, elapsed_ms = elapsedMs });
     }
 
-    [Conditional("DEBUG")]
     public static void LogProfileLaunch(string profileName)
     {
-        DebugLogger.Log(DiagnosticCategories.Chrome, $"Launching profile: {profileName}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Chrome",
+            "ProfileLaunchStarted",
+            "Launching profile",
+            new { profile_name = profileName });
     }
 
-    [Conditional("DEBUG")]
     public static void LogProfileLaunchSuccess(string profileName, long elapsedMs)
     {
-        DebugLogger.Log(DiagnosticCategories.Chrome, $"Profile launched successfully: {profileName} ({elapsedMs}ms)");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "Chrome",
+            "ProfileLaunchSuccess",
+            "Profile launched successfully",
+            new { profile_name = profileName, elapsed_ms = elapsedMs });
     }
 
-    [Conditional("DEBUG")]
     public static void LogProfileLaunchFailed(string profileName, string reason)
     {
-        DebugLogger.LogError(DiagnosticCategories.Chrome, $"Profile launch failed: {profileName} - {reason}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Error,
+            "Chrome",
+            "ProfileLaunchFailed",
+            $"Profile launch failed: {reason}",
+            new { profile_name = profileName, reason });
     }
 }

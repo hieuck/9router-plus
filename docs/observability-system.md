@@ -98,13 +98,48 @@ Handled by `PrivacyScrubber` before writing to disk.
 
 Access: Main menu → Tools → Diagnostics Panel
 
-## Migration from DebugConsole
+## Migration from Legacy Logging Systems
 
 **Completed:** September 2026
 
-All `DebugConsole.WriteLine()` calls have been migrated to `ObservabilityHub.Instance.LogEvent()` with structured context.
+### DebugLogger Migration (Phase 1)
 
-**Legacy code:** `GoogleLoginCdpBrowser.cs` still has commented-out DebugConsole calls for reference, but all active logging uses ObservabilityHub.
+All `DebugLogger` calls across 8 files have been migrated to `ObservabilityHub.Instance.LogEvent()`:
+
+**Migrated files:**
+- `App.xaml.cs` (11 calls)
+- `MainWindow.xaml.cs` (11 calls)
+- `MainViewModel.cs` (56 calls)
+- `GoogleAutoLoginViewModel.cs` (6 calls)
+- `ChromeSelectionDialog.xaml.cs` (2 calls)
+- `RelayCommand.cs` (1 call)
+- `AsyncRelayCommand.cs` (6 calls)
+- `DiagnosticHelpers.cs` (17 calls)
+
+**Total:** ~95+ DebugLogger calls replaced with structured ObservabilityHub events.
+
+**Status:** `DebugLogger.cs` is now marked `[Obsolete]` to prevent future usage.
+
+### DebugConsole Migration (Phase 3)
+
+All `DebugConsole.WriteLine()` calls in `GoogleLoginCdpBrowser.cs` (~60+ calls) have been commented out.
+
+**Status:** `DebugConsole.cs` is now marked `[Obsolete]` to prevent future usage.
+
+### Key Improvements
+
+**Before (DebugLogger/DebugConsole):**
+- Logs disappeared in Release builds (`[Conditional("DEBUG")]`)
+- String-based logging with interpolation
+- No structured context
+- No privacy scrubbing
+
+**After (ObservabilityHub):**
+- Works in both Debug and Release builds
+- Structured JSON with typed context objects
+- Automatic privacy scrubbing
+- Session-based persistent log files
+- Better queryability and analytics
 
 ## Build Configuration
 

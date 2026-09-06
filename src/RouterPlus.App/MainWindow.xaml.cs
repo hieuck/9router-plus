@@ -11,6 +11,7 @@ using RouterPlus.Core.Observability;
 using RouterPlus.App.ViewModels;
 using RouterPlus.App.Views;
 using RouterPlus.App.Testing;
+using RouterPlus.App.Diagnostics;
 using WpfButton = System.Windows.Controls.Button;
 
 namespace RouterPlus.App;

@@ -1,5 +1,5 @@
 using System.Windows.Input;
-using RouterPlus.App.Diagnostics;
+using RouterPlus.Core.Observability;
 
 namespace RouterPlus.App.ViewModels;
 
@@ -23,10 +23,14 @@ public sealed class AsyncRelayCommand : ICommand
 
     public async void Execute(object? parameter)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Commands, "AsyncRelayCommand.Execute");
         if (!CanExecute(parameter))
         {
-            DebugLogger.Log(DiagnosticCategories.Commands, "Async command skipped because CanExecute returned false");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "Commands",
+                "AsyncCommandSkipped",
+                "Async command skipped because CanExecute returned false",
+                new { });
             return;
         }
 
@@ -38,7 +42,11 @@ public sealed class AsyncRelayCommand : ICommand
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Commands, "Async command failed", ex);
+            ObservabilityHub.Instance.LogError(
+                "Commands",
+                "AsyncCommandFailed",
+                ex,
+                new { });
             // Handle unhandled exceptions from async commands to prevent app crash
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
@@ -78,10 +86,14 @@ public sealed class AsyncRelayCommand<T> : ICommand
 
     public async void Execute(object? parameter)
     {
-        using var perf = DebugLogger.MeasurePerformance(DiagnosticCategories.Commands, "AsyncRelayCommand<T>.Execute");
         if (parameter is not T value || !CanExecute(parameter))
         {
-            DebugLogger.Log(DiagnosticCategories.Commands, "Generic async command skipped because parameter or CanExecute was invalid");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "Commands",
+                "GenericAsyncCommandSkipped",
+                "Generic async command skipped because parameter or CanExecute was invalid",
+                new { });
             return;
         }
 
@@ -93,7 +105,11 @@ public sealed class AsyncRelayCommand<T> : ICommand
         }
         catch (Exception ex)
         {
-            DebugLogger.LogError(DiagnosticCategories.Commands, "Generic async command failed", ex);
+            ObservabilityHub.Instance.LogError(
+                "Commands",
+                "GenericAsyncCommandFailed",
+                ex,
+                new { });
             // Handle unhandled exceptions from async commands to prevent app crash
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
