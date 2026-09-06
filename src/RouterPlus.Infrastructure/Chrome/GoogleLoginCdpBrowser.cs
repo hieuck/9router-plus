@@ -262,7 +262,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 var hasEmail = vobj.GetProperty("hasEmailField").GetBoolean();
                 // DebugConsole.WriteLine($"[ReadState] path={path?.Substring(0, Math.Min(60, path?.Length ?? 0))} Email={hasEmail} 2FA={has2FA} Pwd={hasPwd} Totp={hasTotp}");
             }
-            catch { }
+            catch
+            {
+                // Intentionally swallow: optional debug diagnostic, not critical to login flow
+            }
         }
 
         try
@@ -753,7 +756,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     // DebugConsole.WriteLine($"[GoogleLogin] Page is loading, waiting for spinner to disappear...");
                 }
             }
-            catch { }
+            catch
+            {
+                // Intentionally swallow: spinner check is optional, page may load without spinner
+            }
 
             await Task.Delay(500, cancellationToken);
         }
@@ -940,7 +946,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 var placeholder = focusValue.TryGetProperty("placeholder", out var p) ? p.GetString() : "";
                 // DebugConsole.WriteLine($"[Fill] {field} - Found: tagName={tagName} type={type} name={name} id={id} placeholder={placeholder}");
             }
-            catch { }
+            catch
+            {
+                // Intentionally swallow: optional debug info about focused element
+            }
         }
 
         // DebugConsole.WriteLine($"[Fill] {field} - Field focused, waiting 500ms before clear...");
@@ -988,7 +997,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 var valueLength = checkValue.TryGetProperty("valueLength", out var vl) ? vl.GetInt32() : 0;
                 // DebugConsole.WriteLine($"[Fill] {field} - After Ctrl+A, field value length: {valueLength}");
             }
-            catch { }
+            catch
+            {
+                // Intentionally swallow: optional debug info about field value length
+            }
         }
 
         // Insert text using Input.insertText (does not use clipboard)
@@ -1030,7 +1042,10 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 // DebugConsole.WriteLine($"[Fill] {field} - Waiting 1000ms for field to stabilize before submit...");
                 await Task.Delay(1000, cancellationToken);
             }
-            catch { }
+            catch
+            {
+                // Intentionally swallow: optional debug info about final value length
+            }
         }
     }
 

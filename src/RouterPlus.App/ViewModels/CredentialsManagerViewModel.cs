@@ -1768,10 +1768,10 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         try
         {
-            // TODO: Implement provider direct login automation
-            // For now, just show not implemented message
-            SetStatus($"⚠ {provider} login not implemented yet for {row.ProfileName}");
-            await Task.Delay(100); // Remove warning
+            // Direct login automation is implemented per-provider in their respective automation classes
+            // (e.g., CodexDirectLoginAutomation). This stub exists for future provider integrations.
+            SetStatus($"⚠ {provider} direct login not yet integrated for {row.ProfileName}");
+            await Task.Delay(100);
         }
         catch (Exception ex)
         {
