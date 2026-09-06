@@ -203,7 +203,8 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
         try
         {
-            await Task.Run(() =>
+            // Add timeout to prevent infinite hang
+            var readTask = Task.Run(() =>
             {
                 var eventsPath = _paths.GetEventsFilePath(_sessionId);
                 ObservabilityHub.Instance.LogEvent(
@@ -221,6 +222,14 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
                     "EventsRead",
                     $"Read {events.Count} events from session",
                     new { session_id = _sessionId, event_count = events.Count });
+
+                return events;
+            });
+
+            if (await Task.WhenAny(readTask, Task.Delay(5000)) == readTask)
+            {
+                // Read completed within timeout
+                var events = await readTask;
 
                 System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 {
@@ -241,13 +250,30 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
                     UpdateMetrics();
                 });
-            });
 
-            StatusMessage = $"Loaded {_events.Count} events";
+                StatusMessage = $"Loaded {_events.Count} events";
+            }
+            else
+            {
+                // Timeout - EventLogReader is hanging
+                StatusMessage = "Timeout: Event reader is not responding";
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Error,
+                    "Diagnostics",
+                    "ReadTimeout",
+                    "EventLogReader.ReadEventsFromSession() timed out after 5 seconds",
+                    new { session_id = _sessionId });
+            }
         }
         catch (Exception ex)
         {
             StatusMessage = $"Error loading events: {ex.Message}";
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "Diagnostics",
+                "RefreshError",
+                $"Exception in RefreshAsync: {ex.GetType().Name}: {ex.Message}",
+                new { session_id = _sessionId, exception_type = ex.GetType().FullName, stack_trace = ex.StackTrace });
         }
         finally
         {
