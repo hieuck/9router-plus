@@ -488,7 +488,7 @@
             <DataTrigger Binding="{Binding FilterState}" Value="{x:Static vm:ProviderFilterState.Has}">
                 <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource AccentContentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
             </DataTrigger>
             <!-- NotHas state: Orange -->
             <DataTrigger Binding="{Binding FilterState}" Value="{x:Static vm:ProviderFilterState.NotHas}">
