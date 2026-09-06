@@ -33,14 +33,10 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="🔄 Refresh" Command="{Binding RefreshCommand}" Padding="12,6" Margin="0,0,8,0"
-                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
-                    <Button Content="📤 Export" Command="{Binding ExportCommand}" Padding="12,6" Margin="0,0,8,0"
-                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
-                    <Button Content="🗑️ Clear" Command="{Binding ClearLogsCommand}" Padding="12,6" Margin="0,0,8,0"
-                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
-                    <Button Content="📁 Open Folder" Command="{Binding OpenLogFolderCommand}" Padding="12,6"
-                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
+                    <Button Content="🔄 Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource ToolbarButtonStyle}"/>
+                    <Button Content="📤 Export" Command="{Binding ExportCommand}" Style="{StaticResource ToolbarButtonStyle}"/>
+                    <Button Content="🗑️ Clear" Command="{Binding ClearLogsCommand}" Style="{StaticResource ToolbarButtonStyle}"/>
+                    <Button Content="📁 Open Folder" Command="{Binding OpenLogFolderCommand}" Style="{StaticResource ToolbarButtonStyle}" Margin="0"/>
                 </StackPanel>
             </Grid>
         </Border>
