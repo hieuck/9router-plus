@@ -24,17 +24,11 @@ namespace RouterPlus.Infrastructure.Security;
 /// File: provider-connections.vault (DPAPI encrypted)
 /// User request: "dùng ProviderConnectionVaultStore" - Phase 1 Step 1.2
 /// </summary>
-public sealed class ProviderConnectionVaultStore : IDisposable
+public sealed class ProviderConnectionVaultStore : VaultStoreBase
 {
     private static readonly byte[] DpapiEntropy = Encoding.UTF8.GetBytes("9RouterPlus.ProviderConnectionVault.v1");
 
     private readonly string _vaultPath;
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private readonly SemaphoreSlim _operationGate = new(1, 1);
-    private readonly object _disposalLock = new();
-    private int _pendingOperations;
-    private bool _disposalStarted;
-    private bool _disposed;
     private bool _loadFailed;
     private Exception? _loadException;
 
@@ -271,27 +265,26 @@ public sealed class ProviderConnectionVaultStore : IDisposable
 
     private async Task SaveAsync(CancellationToken cancellationToken)
     {
-        await ExecuteOperationAsync(async () =>
+        await ExecuteWriteOperationAsync(async () =>
         {
-            await _writeLock.WaitAsync(cancellationToken);
+            var json = JsonSerializer.Serialize(_connections, new JsonSerializerOptions
+            {
+                WriteIndented = false
+            });
+
+            var encryptedBytes = EncryptPayload(json);
+
+            // Ensure directory exists
+            var directory = Path.GetDirectoryName(_vaultPath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            // Atomic write: write to temp file, then replace
+            var tempPath = _vaultPath + ".tmp";
             try
             {
-                var json = JsonSerializer.Serialize(_connections, new JsonSerializerOptions
-                {
-                    WriteIndented = false
-                });
-
-                var encryptedBytes = EncryptPayload(json);
-
-                // Ensure directory exists
-                var directory = Path.GetDirectoryName(_vaultPath);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                // Atomic write: write to temp file, then replace
-                var tempPath = _vaultPath + ".tmp";
                 await File.WriteAllBytesAsync(tempPath, encryptedBytes, cancellationToken);
 
                 // Flush to ensure data is on disk
@@ -315,9 +308,7 @@ public sealed class ProviderConnectionVaultStore : IDisposable
             }
             finally
             {
-                _writeLock.Release();
                 // Clean up temp file if it still exists
-                var tempPath = _vaultPath + ".tmp";
                 if (File.Exists(tempPath))
                 {
                     try { File.Delete(tempPath); } catch { /* best effort */ }
@@ -338,97 +329,5 @@ public sealed class ProviderConnectionVaultStore : IDisposable
         // Simple DPAPI encryption (matching GoogleAccountVaultStore pattern)
         var plaintextBytes = Encoding.UTF8.GetBytes(json);
         return ProtectedData.Protect(plaintextBytes, DpapiEntropy, DataProtectionScope.CurrentUser);
-    }
-
-    private async Task<T> ExecuteOperationAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken)
-    {
-        EnterOperation();
-        try
-        {
-            await EnterGateAsync(cancellationToken);
-            return await operation();
-        }
-        finally
-        {
-            ExitOperation();
-        }
-    }
-
-    private async Task ExecuteOperationAsync(Func<Task> operation, CancellationToken cancellationToken)
-    {
-        EnterOperation();
-        try
-        {
-            await EnterGateAsync(cancellationToken);
-            await operation();
-        }
-        finally
-        {
-            ExitOperation();
-        }
-    }
-
-    private async Task EnterGateAsync(CancellationToken cancellationToken)
-    {
-        await _operationGate.WaitAsync(cancellationToken);
-        try
-        {
-            lock (_disposalLock)
-            {
-                if (_disposalStarted)
-                {
-                    throw new ObjectDisposedException(nameof(ProviderConnectionVaultStore));
-                }
-            }
-        }
-        finally
-        {
-            _operationGate.Release();
-        }
-    }
-
-    private void EnterOperation()
-    {
-        lock (_disposalLock)
-        {
-            if (_disposalStarted)
-            {
-                throw new ObjectDisposedException(nameof(ProviderConnectionVaultStore));
-            }
-            _pendingOperations++;
-        }
-    }
-
-    private void ExitOperation()
-    {
-        lock (_disposalLock)
-        {
-            _pendingOperations--;
-            if (_pendingOperations == 0 && _disposalStarted)
-            {
-                Monitor.PulseAll(_disposalLock);
-            }
-        }
-    }
-
-    public void Dispose()
-    {
-        lock (_disposalLock)
-        {
-            if (_disposed)
-                return;
-
-            _disposalStarted = true;
-
-            while (_pendingOperations > 0)
-            {
-                Monitor.Wait(_disposalLock);
-            }
-
-            _disposed = true;
-        }
-
-        _writeLock.Dispose();
-        _operationGate.Dispose();
     }
 }

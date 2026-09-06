@@ -8,7 +8,7 @@ namespace RouterPlus.Infrastructure.Security;
 /// <summary>
 /// Encrypted vault store using AES-256-GCM, PBKDF2-HMAC-SHA256, and DPAPI remembered unlock.
 /// </summary>
-public sealed class GoogleAccountVaultStore : IGoogleAccountVaultStore, IDisposable
+public sealed class GoogleAccountVaultStore : VaultStoreBase, IGoogleAccountVaultStore
 {
     private const int CurrentVersion = 1;
     private const string KdfAlgorithmName = "PBKDF2-HMAC-SHA256";
@@ -20,87 +20,11 @@ public sealed class GoogleAccountVaultStore : IGoogleAccountVaultStore, IDisposa
     private static readonly byte[] DpapiEntropy = Encoding.UTF8.GetBytes("9RouterPlus.GoogleAccountVault.v1");
 
     private readonly GoogleAccountVaultPaths _paths;
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private readonly SemaphoreSlim _operationGate = new(1, 1);
-    private readonly object _disposalLock = new();
-    private int _pendingOperations;
-    private bool _disposalStarted;
-    private bool _disposed;
 
     public GoogleAccountVaultStore(GoogleAccountVaultPaths paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
         _paths = paths;
-    }
-
-    private async Task<T> ExecuteOperationAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken)
-    {
-        EnterOperation();
-        try
-        {
-            await EnterGateAsync(cancellationToken);
-            return await operation();
-        }
-        finally
-        {
-            ExitOperation();
-        }
-    }
-
-    private async Task ExecuteOperationAsync(Func<Task> operation, CancellationToken cancellationToken)
-    {
-        EnterOperation();
-        try
-        {
-            await EnterGateAsync(cancellationToken);
-            await operation();
-        }
-        finally
-        {
-            ExitOperation();
-        }
-    }
-
-    private void EnterOperation()
-    {
-        lock (_disposalLock)
-        {
-            ThrowIfDisposalStarted();
-            _pendingOperations++;
-        }
-    }
-
-    private async Task EnterGateAsync(CancellationToken cancellationToken)
-    {
-        await _operationGate.WaitAsync(cancellationToken);
-        try
-        {
-            lock (_disposalLock)
-            {
-                ThrowIfDisposalStarted();
-            }
-        }
-        finally
-        {
-            _operationGate.Release();
-        }
-    }
-
-    private void ThrowIfDisposalStarted()
-    {
-        if (_disposalStarted)
-        {
-            throw new ObjectDisposedException(GetType().Name);
-        }
-    }
-
-    private void ExitOperation()
-    {
-        lock (_disposalLock)
-        {
-            _pendingOperations--;
-            Monitor.PulseAll(_disposalLock);
-        }
     }
 
     public async Task<GoogleAccountVaultSession> CreateAsync(
@@ -526,8 +450,7 @@ public sealed class GoogleAccountVaultStore : IGoogleAccountVaultStore, IDisposa
 
     private async Task WriteAtomicAsync(string path, string content, CancellationToken cancellationToken)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
+        await ExecuteWriteOperationAsync(async () =>
         {
             var directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(directory))
@@ -548,11 +471,7 @@ public sealed class GoogleAccountVaultStore : IGoogleAccountVaultStore, IDisposa
                     File.Delete(tempPath);
                 }
             }
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        }, cancellationToken);
     }
 
     private async Task RemoveRememberedFileAsync(CancellationToken cancellationToken)
@@ -695,41 +614,5 @@ public sealed class GoogleAccountVaultStore : IGoogleAccountVaultStore, IDisposa
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
         public string TotpSecret { get; set; } = string.Empty;
-    }
-
-    public void Dispose()
-    {
-        lock (_disposalLock)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            if (_disposalStarted)
-            {
-                while (!_disposed)
-                {
-                    Monitor.Wait(_disposalLock);
-                }
-
-                return;
-            }
-
-            _disposalStarted = true;
-            while (_pendingOperations > 0)
-            {
-                Monitor.Wait(_disposalLock);
-            }
-        }
-
-        _writeLock.Dispose();
-        _operationGate.Dispose();
-
-        lock (_disposalLock)
-        {
-            _disposed = true;
-            Monitor.PulseAll(_disposalLock);
-        }
     }
 }
