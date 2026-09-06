@@ -11,16 +11,16 @@
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Level}" Value="Error">
-                <Setter Property="Background" Value="#DC3545"/>
+                <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
             </DataTrigger>
             <DataTrigger Binding="{Binding Level}" Value="Warning">
-                <Setter Property="Background" Value="#FFC107"/>
+                <Setter Property="Background" Value="{DynamicResource WarningBrush}"/>
             </DataTrigger>
             <DataTrigger Binding="{Binding Level}" Value="Info">
-                <Setter Property="Background" Value="#17A2B8"/>
+                <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             </DataTrigger>
             <DataTrigger Binding="{Binding Level}" Value="Debug">
-                <Setter Property="Background" Value="#6C757D"/>
+                <Setter Property="Background" Value="{DynamicResource DebugBrush}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>
