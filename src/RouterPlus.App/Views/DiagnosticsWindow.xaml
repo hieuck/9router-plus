@@ -9,7 +9,7 @@
         Title="Diagnostics - RouterPlus"
         Height="700" Width="1200"
         WindowStartupLocation="CenterScreen"
-        Background="#F5F5F5">
+        Background="{DynamicResource SurfaceBrush}">
 
 
     <Grid>
@@ -20,7 +20,7 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <Border Grid.Row="0" Background="White" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="16">
+        <Border Grid.Row="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -28,25 +28,25 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="Diagnostics Panel" FontSize="20" FontWeight="SemiBold" Foreground="#212529"/>
-                    <TextBlock Text="View and export observability events" FontSize="12" Foreground="#6C757D" Margin="0,4,0,0"/>
+                    <TextBlock Text="Diagnostics Panel" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
+                    <TextBlock Text="View and export observability events" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" Margin="0,4,0,0"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="🔄 Refresh" Command="{Binding RefreshCommand}" Padding="12,6" Margin="0,0,8,0"
-                            Background="White" BorderBrush="#CCC" BorderThickness="1"/>
+                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
                     <Button Content="📤 Export" Command="{Binding ExportCommand}" Padding="12,6" Margin="0,0,8,0"
-                            Background="White" BorderBrush="#CCC" BorderThickness="1"/>
+                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
                     <Button Content="🗑️ Clear" Command="{Binding ClearLogsCommand}" Padding="12,6" Margin="0,0,8,0"
-                            Background="White" BorderBrush="#CCC" BorderThickness="1"/>
+                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
                     <Button Content="📁 Open Folder" Command="{Binding OpenLogFolderCommand}" Padding="12,6"
-                            Background="White" BorderBrush="#CCC" BorderThickness="1"/>
+                            Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- Main Content -->
-        <TabControl Grid.Row="1" Background="White" BorderThickness="0" Padding="0">
+        <TabControl Grid.Row="1" Background="{DynamicResource PanelBrush}" BorderThickness="0" Padding="0">
             <!-- Events Tab -->
             <TabItem Header="Events" Padding="12,6">
                 <Grid>
@@ -56,7 +56,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- Filters -->
-                    <Border Grid.Row="0" Background="#F8F9FA" Padding="16" Margin="0,0,0,8">
+                    <Border Grid.Row="0" Background="{DynamicResource PanelLightBrush}" Padding="16" Margin="0,0,0,8">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
@@ -84,7 +84,7 @@
                                                     <Setter.Value>
                                                         <VisualBrush Stretch="None" AlignmentX="Left">
                                                             <VisualBrush.Visual>
-                                                                <TextBlock Text="🔍 Search events..." Foreground="#ADB5BD" Margin="8,0,0,0"/>
+                                                                <TextBlock Text="🔍 Search events..." Foreground="{DynamicResource MutedTextBrush}" Margin="8,0,0,0"/>
                                                             </VisualBrush.Visual>
                                                         </VisualBrush>
                                                     </Setter.Value>
@@ -99,27 +99,27 @@
 
                     <!-- Events DataGrid -->
                     <DataGrid Grid.Row="1" ItemsSource="{Binding EventsView}" AutoGenerateColumns="False"
-                              IsReadOnly="True" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E9ECEF"
+                              IsReadOnly="True" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
                               HeadersVisibility="Column" RowHeight="32" CanUserResizeRows="False"
-                              Background="White" BorderThickness="0" SelectionMode="Single"
+                              Background="{DynamicResource PanelBrush}" BorderThickness="0" SelectionMode="Single"
                               SelectedItem="{Binding SelectedEvent}"
                               MouseDoubleClick="DataGrid_MouseDoubleClick">
                         <DataGrid.Resources>
                             <Style TargetType="DataGridColumnHeader">
-                                <Setter Property="Background" Value="#F8F9FA"/>
-                                <Setter Property="Foreground" Value="#495057"/>
+                                <Setter Property="Background" Value="{DynamicResource PanelLightBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
                                 <Setter Property="Padding" Value="12,8"/>
                                 <Setter Property="BorderThickness" Value="0,0,0,2"/>
-                                <Setter Property="BorderBrush" Value="#DEE2E6"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
                             </Style>
                             <Style TargetType="DataGridCell">
                                 <Setter Property="BorderThickness" Value="0"/>
                                 <Setter Property="Padding" Value="12,8"/>
                                 <Style.Triggers>
                                     <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Background" Value="#E7F3FF"/>
-                                        <Setter Property="Foreground" Value="#212529"/>
+                                        <Setter Property="Background" Value="{DynamicResource InfoSoftBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                                     </Trigger>
                                 </Style.Triggers>
                             </Style>
@@ -154,7 +154,7 @@
                     <Border Grid.Row="1" Background="#80FFFFFF" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
                             HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Text="⏳ Loading..." FontSize="16" FontWeight="SemiBold" Foreground="#495057"/>
+                            <TextBlock Text="⏳ Loading..." FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -174,54 +174,54 @@
 
                             <!-- Summary Cards -->
                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                <Border Background="White" BorderBrush="#DEE2E6" BorderThickness="1" Padding="16" Margin="0,0,0,8" CornerRadius="4">
+                                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="16" Margin="0,0,0,8" CornerRadius="4">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Total Events" FontSize="14" Foreground="#6C757D"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding TotalEvents}" FontSize="24" FontWeight="Bold" Foreground="#212529"/>
+                                        <TextBlock Grid.Column="0" Text="Total Events" FontSize="14" Foreground="{DynamicResource MutedTextBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding TotalEvents}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
                                     </Grid>
                                 </Border>
 
-                                <Border Background="White" BorderBrush="#DEE2E6" BorderThickness="1" Padding="16" Margin="0,0,0,8" CornerRadius="4">
+                                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="16" Margin="0,0,0,8" CornerRadius="4">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Errors" FontSize="14" Foreground="#DC3545"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding ErrorCount}" FontSize="24" FontWeight="Bold" Foreground="#DC3545"/>
+                                        <TextBlock Grid.Column="0" Text="Errors" FontSize="14" Foreground="{DynamicResource DangerBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding ErrorCount}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource DangerBrush}"/>
                                     </Grid>
                                 </Border>
 
-                                <Border Background="White" BorderBrush="#DEE2E6" BorderThickness="1" Padding="16" Margin="0,0,0,8" CornerRadius="4">
+                                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="16" Margin="0,0,0,8" CornerRadius="4">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Warnings" FontSize="14" Foreground="#FFC107"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding WarningCount}" FontSize="24" FontWeight="Bold" Foreground="#FFC107"/>
+                                        <TextBlock Grid.Column="0" Text="Warnings" FontSize="14" Foreground="{DynamicResource WarningBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding WarningCount}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource WarningBrush}"/>
                                     </Grid>
                                 </Border>
 
-                                <Border Background="White" BorderBrush="#DEE2E6" BorderThickness="1" Padding="16" CornerRadius="4">
+                                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="16" CornerRadius="4">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Info" FontSize="14" Foreground="#17A2B8"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding InfoCount}" FontSize="24" FontWeight="Bold" Foreground="#17A2B8"/>
+                                        <TextBlock Grid.Column="0" Text="Info" FontSize="14" Foreground="{DynamicResource AccentBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding InfoCount}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
                                     </Grid>
                                 </Border>
                             </StackPanel>
 
                             <!-- Category Breakdown -->
                             <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                                <Border Background="White" BorderBrush="#DEE2E6" BorderThickness="1" Padding="16" CornerRadius="4">
+                                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="16" CornerRadius="4">
                                     <StackPanel>
                                         <TextBlock Text="Events by Category" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
                                         <ItemsControl ItemsSource="{Binding CategoryCounts}">
@@ -232,8 +232,8 @@
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Text="{Binding Key}" FontSize="13" Foreground="#495057"/>
-                                                        <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="13" FontWeight="SemiBold" Foreground="#212529"/>
+                                                        <TextBlock Grid.Column="0" Text="{Binding Key}" FontSize="13" Foreground="{DynamicResource MutedTextBrush}"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -248,8 +248,8 @@
         </TabControl>
 
         <!-- Status Bar -->
-        <Border Grid.Row="2" Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="0,1,0,0" Padding="16,8">
-            <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="#6C757D"/>
+        <Border Grid.Row="2" Background="{DynamicResource PanelLightBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,8">
+            <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}"/>
         </Border>
     </Grid>
 </Window>
