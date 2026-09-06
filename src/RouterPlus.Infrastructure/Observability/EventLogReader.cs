@@ -117,8 +117,20 @@ public sealed class EventLogReader
 
         try
         {
-            // Read all lines
-            var lines = File.ReadAllLines(logPath);
+            // Read all lines with FileShare.Read to allow reading while writer has lock
+            string[] lines;
+            using (var fileStream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fileStream))
+            {
+                var linesList = new List<string>();
+                string? line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    linesList.Add(line);
+                }
+                lines = linesList.ToArray();
+            }
+
             System.Diagnostics.Debug.WriteLine($"EventLogReader: Read {lines.Length} lines from {logPath}");
 
             // Process from end (newest first) if maxCount specified
