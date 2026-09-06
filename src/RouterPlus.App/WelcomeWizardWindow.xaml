@@ -111,6 +111,13 @@
                                  Text="http://localhost:20128"
                                  Padding="8"
                                  FontFamily="Consolas"/>
+                        <TextBlock Text="Password (optional):"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,10,0,5"/>
+                        <PasswordBox x:Name="DashboardPasswordBox"
+                                     Padding="8"
+                                     ToolTip="Password for 9Router dashboard authentication (leave empty if no password)"/>
                         <Button x:Name="CheckRouterButton"
                                 Content="🔍 Kiểm tra 9Router"
                                 Click="CheckRouterButton_Click"

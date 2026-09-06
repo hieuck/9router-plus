@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using RouterPlus.Core.Chrome;
@@ -97,6 +98,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _useLightTheme = true;
     private bool _useOriginalProfileForAutoLogin = false;
     private string _savedDashboardBaseUrl = "http://localhost:20128";
+    private string? _dashboardAuthPassword;
+    private string? _savedDashboardAuthPassword;
     private string _savedChromeExecutablePath = string.Empty;
     private string _savedChromeUserDataDirectory = string.Empty;
     private double _savedFontScale = 1d;
@@ -855,6 +858,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public string? DashboardAuthPassword
+    {
+        get => _dashboardAuthPassword;
+        set
+        {
+            if (string.Equals(_dashboardAuthPassword, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _dashboardAuthPassword = value;
+            OnPropertyChanged();
+            NotifySettingsStateChanged();
+        }
+    }
+
     public string ChromeExecutablePath
     {
         get => _chromeExecutablePath;
@@ -1112,7 +1131,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            var api = CreateApiClient();
+            var api = await CreateApiClientAsync();
             var current = (await api.ListAllConnectionsAsync(cancellationToken))
                 .FirstOrDefault(connection => string.Equals(connection.Id, connectionId, StringComparison.Ordinal));
             if (current is null || current.Provider != marker.Provider || current.IsActive)
@@ -1464,6 +1483,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _quotaAutoDisableMarkers = settings.QuotaAutoDisableMarkers ?? [];
             _quotaMarkersLoaded = true;
             DashboardBaseUrl = settings.DashboardBaseUrl;
+            DashboardAuthPassword = settings.DashboardAuthPassword;
             ChromeExecutablePath = settings.ChromeExecutablePath ?? string.Empty;
             ChromeUserDataDirectory = settings.ChromeUserDataDirectory ?? string.Empty;
             FontScale = settings.FontScale;
@@ -2676,7 +2696,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            var api = CreateApiClient();
+            var api = await CreateApiClientAsync();
             DebugLogger.Log(DiagnosticCategories.Providers, "Loading provider connections");
             var connections = await api.ListAllConnectionsAsync(cancellationToken);
             DebugLogger.Log(DiagnosticCategories.Providers, $"Provider connections loaded: {connections.Count}");
@@ -2990,7 +3010,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            var api = CreateApiClient();
+            var api = await CreateApiClientAsync();
             var existing = await api.ListConnectionsAsync(provider);
             var existingConnection = existing.FirstOrDefault(connection =>
                 string.Equals(connection.Name?.Trim(), profile.Name.Trim(), StringComparison.OrdinalIgnoreCase));
@@ -3103,7 +3123,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var cancellationToken = workflowCancellation.Token;
             WaitForConnectionCommand.RaiseCanExecuteChanged();
-            var api = CreateApiClient();
+            var api = await CreateApiClientAsync();
             switch (definition.Workflow)
             {
                 case WorkflowKind.ApiKey:
@@ -3615,7 +3635,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var cancellationToken = cancellation.Token;
             var provider = _currentWorkflowProvider.Value;
-            var api = CreateApiClient();
+            var api = await CreateApiClientAsync();
             StatusText = $"Đang chờ {ProviderCatalog.Get(provider).DisplayName} báo connection mới…";
             var connection = await api.WaitForNewConnectionAsync(
                 provider,
@@ -3895,8 +3915,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
             catch (Exception ex)
             {
                 DebugLogger.LogError(DiagnosticCategories.Security, "Google auto-login failed", ex);
-                DebugConsole.WriteLine($"[MainViewModel] Google auto-login exception: {ex.GetType().Name}: {ex.Message}");
-                DebugConsole.WriteLine($"[MainViewModel] StackTrace: {ex.StackTrace}");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Error,
+                    "MainViewModel",
+                    "GoogleAutoLoginException",
+                    "Google auto-login exception",
+                    new {
+                        exception_type = ex.GetType().Name,
+                        message = ex.Message,
+                        stack_trace = ex.StackTrace
+                    });
 
                 if (browser is not null)
                 {
@@ -4458,7 +4486,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var definition = ProviderCatalog.Get(provider);
-            var api = CreateApiClient();
+            var api = await CreateApiClientAsync();
             var matchingConnections = (await api.ListConnectionsAsync(provider))
                 .Where(connection => string.Equals(
                     connection.Name?.Trim(),
@@ -4513,7 +4541,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var definition = ProviderCatalog.Get(provider);
-            var api = CreateApiClient();
+            var api = await CreateApiClientAsync();
             var matchingConnections = (await api.ListConnectionsAsync(provider))
                 .Where(connection => string.Equals(
                     connection.Name?.Trim(),
@@ -4730,7 +4758,50 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private RouterApiClient CreateApiClient() => new(_httpClient, DashboardBaseUrl);
+    private async Task<RouterApiClient> CreateApiClientAsync()
+    {
+        // 9Router uses JWT cookie authentication, not Basic Auth
+        // If password is provided, we need to login to get the JWT token cookie
+        if (!string.IsNullOrWhiteSpace(DashboardAuthPassword))
+        {
+            var handler = new HttpClientHandler
+            {
+                CookieContainer = new System.Net.CookieContainer(),
+                UseCookies = true
+            };
+            var authClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+
+            // Login to 9Router to get JWT token in cookie
+            await LoginTo9RouterAsync(authClient, DashboardAuthPassword.Trim());
+
+            return new RouterApiClient(authClient, DashboardBaseUrl);
+        }
+
+        return new RouterApiClient(_httpClient, DashboardBaseUrl);
+    }
+
+    private async Task LoginTo9RouterAsync(HttpClient client, string password)
+    {
+        try
+        {
+            var loginPayload = new { password };
+            var loginUri = new Uri(new Uri(DashboardBaseUrl), "api/auth/login");
+            var response = await client.PostAsync(
+                loginUri,
+                JsonContent.Create(loginPayload),
+                CancellationToken.None);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                DebugLogger.Log(DiagnosticCategories.Providers, $"9Router login failed: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Log(DiagnosticCategories.Providers, $"9Router login error: {ex.Message}");
+        }
+    }
 
     private static bool IsManagedProfileFor(ManagedChromeProfile managedProfile, ChromeProfile profile) =>
         string.Equals(managedProfile.DirectoryName.Trim(), profile.DirectoryName.Trim(), StringComparison.OrdinalIgnoreCase)
@@ -4748,6 +4819,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var placement = windowPlacement ?? _savedWindowPlacement;
         return new(
         DashboardBaseUrl.Trim(),
+        string.IsNullOrWhiteSpace(DashboardAuthPassword) ? null : DashboardAuthPassword.Trim(),
         string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath.Trim(),
         string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory.Trim(),
         FontScale,
@@ -4806,6 +4878,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private bool SettingsMatchSavedValues() =>
         string.Equals(DashboardBaseUrl.Trim(), _savedDashboardBaseUrl, StringComparison.Ordinal)
+        && string.Equals(DashboardAuthPassword?.Trim(), _savedDashboardAuthPassword, StringComparison.Ordinal)
         && string.Equals(ChromeExecutablePath.Trim(), _savedChromeExecutablePath, StringComparison.Ordinal)
         && string.Equals(ChromeUserDataDirectory.Trim(), _savedChromeUserDataDirectory, StringComparison.Ordinal)
         && Math.Abs(FontScale - _savedFontScale) < 0.001d
@@ -4841,6 +4914,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void MarkSettingsSaved()
     {
         _savedDashboardBaseUrl = DashboardBaseUrl.Trim();
+        _savedDashboardAuthPassword = DashboardAuthPassword?.Trim();
         _savedChromeExecutablePath = ChromeExecutablePath.Trim();
         _savedChromeUserDataDirectory = ChromeUserDataDirectory.Trim();
         _savedFontScale = FontScale;

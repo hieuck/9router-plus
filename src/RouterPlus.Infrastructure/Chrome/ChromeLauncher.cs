@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Management;
 using System.Runtime.InteropServices;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -82,12 +83,22 @@ public sealed class ChromeLauncher
             userDataDirectory = installation.UserDataDirectory;
 
             // Close any Chrome processes using this profile
-            DebugConsole.WriteLine($"[ChromeLauncher] Closing Chrome processes using profile: {profile.DirectoryName}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "ChromeLauncher",
+                "ClosingChromeProcesses",
+                "Closing Chrome processes using profile",
+                new { profile_name = profile.DirectoryName });
             var killed = CloseProcessesUsingProfile(installation.ExecutablePath, profile.DirectoryName);
 
             if (!killed)
             {
-                DebugConsole.WriteLine($"[ChromeLauncher] WARNING: No processes killed. Profile may be open in another Chrome variant or browser.");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "ChromeLauncher",
+                    "NoProcessesKilled",
+                    "No processes killed. Profile may be open in another Chrome variant or browser",
+                    new { profile_name = profile.DirectoryName });
             }
         }
         else
@@ -316,7 +327,12 @@ public sealed class ChromeLauncher
 
                             // Skip pure network/storage services without profile lock (they may be from another instance)
                             // But for safety, kill them anyway since they share user-data-dir
-                            DebugConsole.WriteLine($"[ChromeLauncher] Killing process {process.Id} to release user-data-dir locks");
+                            ObservabilityHub.Instance.LogEvent(
+                                LogLevel.Info,
+                                "ChromeLauncher",
+                                "KillingProcess",
+                                "Killing process to release user-data-dir locks",
+                                new { process_id = process.Id });
                             process.Kill();
                             killedCount++;
                             break;
@@ -338,7 +354,12 @@ public sealed class ChromeLauncher
                 }
             }
 
-            DebugConsole.WriteLine($"[ChromeLauncher] Killed {killedCount} Chrome process(es), skipped {skippedCount} crashpad handler(s)");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "ChromeLauncher",
+                "ProcessesKilled",
+                "Killed Chrome processes",
+                new { killed_count = killedCount, skipped_count = skippedCount });
 
             if (killedCount > 0)
             {
@@ -351,7 +372,12 @@ public sealed class ChromeLauncher
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[ChromeLauncher] Failed to close Chrome processes: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "ChromeLauncher",
+                "CloseProcessesFailed",
+                "Failed to close Chrome processes",
+                new { error = ex.Message });
             // Non-fatal - proceed with launch attempt
             return false;
         }
@@ -387,14 +413,24 @@ public sealed class ChromeLauncher
 
             if (closedCount > 0)
             {
-                DebugConsole.WriteLine($"[ChromeLauncher] Sent WM_CLOSE to {closedCount} browser window(s)");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "ChromeLauncher",
+                    "WindowsClosed",
+                    "Sent WM_CLOSE to browser windows",
+                    new { closed_count = closedCount });
                 // Wait for graceful shutdown before force-killing remaining processes
                 System.Threading.Thread.Sleep(2000);
             }
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[ChromeLauncher] Failed to close browser windows gracefully: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "ChromeLauncher",
+                "CloseWindowsFailed",
+                "Failed to close browser windows gracefully",
+                new { error = ex.Message });
         }
     }
 

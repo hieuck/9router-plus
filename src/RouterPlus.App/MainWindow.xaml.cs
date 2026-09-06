@@ -610,5 +610,13 @@ public partial class MainWindow : Window
         }
     }
 
+    private void DashboardPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox passwordBox)
+        {
+            ViewModel.DashboardAuthPassword = passwordBox.Password;
+        }
+    }
+
 }
 

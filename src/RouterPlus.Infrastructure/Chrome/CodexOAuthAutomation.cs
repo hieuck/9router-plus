@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Diagnostics;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -170,16 +171,23 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         if (providerState == null)
             return;
 
-        DebugConsole.WriteLine($"[CodexOAuth] URL: {state.CurrentUrl}");
-        DebugConsole.WriteLine($"[CodexOAuth] IsGoogleOAuth: {state.IsGoogleOAuthPage}");
-        DebugConsole.WriteLine($"[CodexOAuth] IsOpenAIOAuth: {providerState.IsOpenAIOAuthPage}");
-        DebugConsole.WriteLine($"[CodexOAuth] IsTargetService: {providerState.IsTargetService}");
-        DebugConsole.WriteLine($"[CodexOAuth] HasGoogleLoginButton: {providerState.HasGoogleLoginButton}");
-        DebugConsole.WriteLine($"[CodexOAuth] HasOpenAIAccountPicker: {providerState.HasOpenAIAccountPicker}");
-        DebugConsole.WriteLine($"[CodexOAuth] HasCodexConsentButton: {providerState.HasCodexConsentButton}");
-        DebugConsole.WriteLine($"[CodexOAuth] HasAccountPicker: {state.HasAccountPicker}");
-        DebugConsole.WriteLine($"[CodexOAuth] HasGoogleTotpInput: {state.HasGoogleTotpInput}");
-        DebugConsole.WriteLine($"[CodexOAuth] HasGoogleConsentButton: {state.HasGoogleConsentButton}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Debug,
+            "CodexOAuth",
+            "PageStateDetailed",
+            "Detailed Codex OAuth page state",
+            new {
+                url = state.CurrentUrl,
+                is_google_oauth = state.IsGoogleOAuthPage,
+                is_openai_oauth = providerState.IsOpenAIOAuthPage,
+                is_target_service = providerState.IsTargetService,
+                has_google_login_button = providerState.HasGoogleLoginButton,
+                has_openai_account_picker = providerState.HasOpenAIAccountPicker,
+                has_codex_consent_button = providerState.HasCodexConsentButton,
+                has_google_account_picker = state.HasAccountPicker,
+                has_google_totp = state.HasGoogleTotpInput,
+                has_google_consent = state.HasGoogleConsentButton
+            });
     }
 
     // ========== Override virtual methods for Codex-specific behavior ==========
@@ -191,9 +199,11 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
             return false;
 
         // Click "Log in" button on authorize page, OR "Continue with Google" button on login page
+        // BUT NOT on consent page (consent button is handled separately)
         return !state.IsGoogleOAuthPage &&
                providerState.IsOpenAIOAuthPage &&
                !providerState.HasOpenAIAccountPicker &&
+               !providerState.HasCodexConsentButton &&
                !state.HasAccountPicker; // Try clicking if no account pickers visible
     }
 
@@ -256,13 +266,23 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
                 resultProp.TryGetProperty("value", out var valueProp) &&
                 valueProp.ValueKind == JsonValueKind.True)
             {
-                DebugConsole.WriteLine($"[CodexOAuth] OpenAI account '{_profileEmail}' clicked successfully");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "CodexOAuth",
+                    "OpenAIAccountClicked",
+                    "OpenAI account clicked successfully",
+                    new { email = _profileEmail });
                 return true;
             }
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[CodexOAuth] Click OpenAI account error: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "CodexOAuth",
+                "ClickAccountError",
+                "Click OpenAI account error",
+                new { email = _profileEmail, error = ex.Message });
         }
 
         return false;
@@ -273,7 +293,26 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         var providerState = state.ProviderState as CodexOAuthPageState;
         if (state.IsGoogleOAuthPage || providerState == null ||
             !providerState.IsOpenAIOAuthPage || providerState.HasOpenAIAccountPicker)
+        {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "OAuth",
+                "CodexButtonSkipped",
+                "TryClickProviderInitialButton skipped",
+                new {
+                    is_google_oauth = state.IsGoogleOAuthPage,
+                    is_openai_oauth = providerState?.IsOpenAIOAuthPage,
+                    has_openai_picker = providerState?.HasOpenAIAccountPicker
+                });
             return false;
+        }
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "OAuth",
+            "CodexButtonAttempt",
+            "TryClickProviderInitialButton executing",
+            new { url = state.CurrentUrl });
 
         const string script = @"
 (function() {
@@ -283,6 +322,11 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         return rect.width > 0 && rect.height > 0;
     };
     const buttons = Array.from(document.querySelectorAll('button, a, [role=""button""]')).filter(isVisible);
+
+    const result = {
+        buttonCount: buttons.length,
+        buttonTexts: []
+    };
 
     let googleButton = buttons.find(btn => {
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '') + ' ' + (btn.getAttribute('href') || '')).toLowerCase();
@@ -302,7 +346,13 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         return 'login';
     }
 
-    return false;
+    // Collect button texts for debugging
+    buttons.forEach(btn => {
+        const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).trim();
+        if (text) result.buttonTexts.push(text);
+    });
+    result.clicked = false;
+    return result;
 })()
 ";
 
@@ -322,14 +372,49 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
                     var clickedType = valueProp.GetString();
                     if (clickedType == "google")
                     {
-                        DebugConsole.WriteLine("[CodexOAuth] Clicked 'Continue with Google' button on OpenAI page");
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "OAuth",
+                            "CodexGoogleButtonClicked",
+                            "Clicked 'Continue with Google' button on OpenAI page",
+                            new { url = state.CurrentUrl });
                         return true;
                     }
                     if (clickedType == "login")
                     {
-                        DebugConsole.WriteLine("[CodexOAuth] Clicked 'Log in' button on authorize page");
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "OAuth",
+                            "CodexLoginButtonClicked",
+                            "Clicked 'Log in' button on authorize page",
+                            new { url = state.CurrentUrl });
                         return true;
                     }
+                }
+                else if (valueProp.ValueKind == JsonValueKind.Object)
+                {
+                    // Script returned debug object with button list
+                    var buttonCount = valueProp.TryGetProperty("buttonCount", out var countProp) ? countProp.GetInt32() : 0;
+                    var buttonTexts = new List<string>();
+                    if (valueProp.TryGetProperty("buttonTexts", out var textsProp) && textsProp.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var textEl in textsProp.EnumerateArray())
+                        {
+                            if (textEl.ValueKind == JsonValueKind.String)
+                                buttonTexts.Add(textEl.GetString() ?? "");
+                        }
+                    }
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Warning,
+                        "OAuth",
+                        "CodexButtonNotFound",
+                        "No matching button found",
+                        new {
+                            url = state.CurrentUrl,
+                            button_count = buttonCount,
+                            button_texts = buttonTexts
+                        });
                 }
             }
 
@@ -337,7 +422,12 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[CodexOAuth] Click initial button error: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "OAuth",
+                "CodexButtonError",
+                "Click initial button error",
+                new { url = state.CurrentUrl, error = ex.Message });
             return false;
         }
     }
@@ -392,13 +482,23 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
                 resultProp.TryGetProperty("value", out var valueProp) &&
                 valueProp.ValueKind == JsonValueKind.True)
             {
-                DebugConsole.WriteLine("[CodexOAuth] Clicked Codex consent Continue button");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "CodexOAuth",
+                    "ConsentButtonClicked",
+                    "Clicked Codex consent Continue button",
+                    new { url = state.CurrentUrl });
                 return true;
             }
         }
         catch (Exception ex)
         {
-            DebugConsole.WriteLine($"[CodexOAuth] Click consent button error: {ex.Message}");
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error,
+                "CodexOAuth",
+                "ConsentButtonError",
+                "Click consent button error",
+                new { url = state.CurrentUrl, error = ex.Message });
         }
 
         return false;

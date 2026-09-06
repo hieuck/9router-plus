@@ -164,7 +164,12 @@ public static class GoogleLoginStateMachine
                             "Could not select Authenticator method from 2FA picker.");
                     }
 
-                    DebugConsole.WriteLine($"[GoogleLogin] Selected Authenticator method, reading state...");
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleLogin",
+                        "AuthenticatorMethodSelected",
+                        "Selected Authenticator method from 2FA picker",
+                        null);
 
                     state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
 
@@ -509,7 +514,12 @@ public static class GoogleLoginStateMachine
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5);
 
-        DebugConsole.WriteLine("[GoogleLogin] Manual challenge detected, waiting for user to complete...");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "GoogleLogin",
+            "ManualChallengeDetected",
+            "Manual challenge detected, waiting for user to complete",
+            null);
 
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -518,12 +528,22 @@ public static class GoogleLoginStateMachine
 
             if (!state.HasManualChallenge)
             {
-                DebugConsole.WriteLine("[GoogleLogin] Manual challenge resolved, resuming automation");
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleLogin",
+                    "ManualChallengeResolved",
+                    "Manual challenge resolved, resuming automation",
+                    null);
                 return state;
             }
         }
 
-        DebugConsole.WriteLine("[GoogleLogin] Manual challenge resolution timeout");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Warning,
+            "GoogleLogin",
+            "ManualChallengeTimeout",
+            "Manual challenge resolution timeout",
+            null);
         return null;
     }
 

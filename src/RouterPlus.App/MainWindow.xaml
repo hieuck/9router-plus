@@ -2004,6 +2004,10 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     
                                     <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
@@ -2047,10 +2051,22 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                     </StackPanel>
+
+                                    <!-- Dashboard Authentication -->
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                                               Text="Password (optional)"
+                                               Style="{StaticResource SettingsFieldLabelStyle}"
+                                               Margin="0,12,0,0" />
+
+                                    <PasswordBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
+                                                 x:Name="DashboardPasswordBox"
+                                                 Margin="0"
+                                                 ToolTip="Password for 9Router dashboard authentication (leave empty if no password)"
+                                                 PasswordChanged="DashboardPasswordBox_PasswordChanged" />
                                 </Grid>
                                 </StackPanel>
 
-                            
+
                                </StackPanel>
                         </Border>
 

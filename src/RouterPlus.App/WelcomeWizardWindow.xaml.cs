@@ -40,6 +40,7 @@ public partial class WelcomeWizardWindow : Window
     }
 
     public string DashboardUrl => DashboardUrlTextBox.Text.Trim();
+    public string DashboardPassword => DashboardPasswordBox.Password;
     public string ChromeExecutablePath => ChromeExeTextBox.Text.Trim();
     public string ChromeUserDataDirectory => ChromeUserDataTextBox.Text.Trim();
 
@@ -57,12 +58,15 @@ public partial class WelcomeWizardWindow : Window
             return;
         }
 
+        var password = DashboardPasswordBox.Password;
+        var hasPassword = !string.IsNullOrWhiteSpace(password);
+
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Info,
             "Wizard",
             "RouterVerificationStarted",
             "Starting router verification",
-            new { url });
+            new { url, has_password = hasPassword });
 
         CheckRouterButton.IsEnabled = false;
         RouterCheckingPanel.Visibility = Visibility.Visible;
@@ -71,8 +75,119 @@ public partial class WelcomeWizardWindow : Window
 
         try
         {
-            // Just check if the URL is reachable (root endpoint)
-            var response = await _httpClient.GetAsync(url);
+            HttpClient clientToUse = _httpClient;
+
+            // If password provided, create authenticated client with JWT cookie
+            if (hasPassword)
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Wizard",
+                    "RouterAuthenticating",
+                    "Password provided - attempting login",
+                    new { url });
+
+                var handler = new System.Net.Http.HttpClientHandler
+                {
+                    CookieContainer = new System.Net.CookieContainer(),
+                    UseCookies = true
+                };
+                clientToUse = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
+
+                // Login to get JWT token
+                try
+                {
+                    var loginPayload = new { password };
+                    var loginUri = new Uri(new Uri(url), "api/auth/login");
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Wizard",
+                        "RouterLoginAttempt",
+                        "Sending login request",
+                        new { login_url = loginUri.ToString() });
+
+                    var loginResponse = await clientToUse.PostAsync(
+                        loginUri,
+                        System.Net.Http.Json.JsonContent.Create(loginPayload));
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Wizard",
+                        "RouterLoginResponse",
+                        "Received login response",
+                        new { status_code = (int)loginResponse.StatusCode, is_success = loginResponse.IsSuccessStatusCode });
+
+                    if (!loginResponse.IsSuccessStatusCode)
+                    {
+                        var errorContent = await loginResponse.Content.ReadAsStringAsync();
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Warning,
+                            "Wizard",
+                            "RouterLoginFailed",
+                            "Router login failed with password",
+                            new { url, status_code = (int)loginResponse.StatusCode, error = errorContent });
+
+                        ShowRouterNotFound($"Đăng nhập thất bại (HTTP {(int)loginResponse.StatusCode}). Kiểm tra lại mật khẩu.");
+                        CheckRouterButton.IsEnabled = true;
+                        RouterCheckingPanel.Visibility = Visibility.Collapsed;
+                        if (clientToUse != _httpClient) clientToUse.Dispose();
+                        return;
+                    }
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Wizard",
+                        "RouterLoginSuccess",
+                        "Login successful - JWT cookie obtained",
+                        new { url });
+                }
+                catch (Exception loginEx)
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Warning,
+                        "Wizard",
+                        "RouterLoginError",
+                        "Router login error",
+                        new { url, error = loginEx.Message });
+
+                    ShowRouterNotFound($"Lỗi khi đăng nhập: {loginEx.Message}");
+                    CheckRouterButton.IsEnabled = true;
+                    RouterCheckingPanel.Visibility = Visibility.Collapsed;
+                    if (clientToUse != _httpClient) clientToUse.Dispose();
+                    return;
+                }
+            }
+            else
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Wizard",
+                    "RouterCheckingNoAuth",
+                    "No password provided - checking without authentication",
+                    new { url });
+            }
+
+            // Check API endpoint that requires auth (not just root)
+            var apiCheckUri = new Uri(new Uri(url), "api/providers");
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Wizard",
+                "RouterApiCheck",
+                "Checking protected API endpoint",
+                new { check_url = apiCheckUri.ToString() });
+
+            var response = await clientToUse.GetAsync(apiCheckUri);
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "Wizard",
+                "RouterApiCheckResponse",
+                "Received API check response",
+                new { status_code = (int)response.StatusCode, is_success = response.IsSuccessStatusCode });
+
+            if (clientToUse != _httpClient) clientToUse.Dispose();
 
             if (response.IsSuccessStatusCode)
             {
@@ -84,6 +199,17 @@ public partial class WelcomeWizardWindow : Window
                     new { url, status_code = (int)response.StatusCode });
 
                 ShowRouterFound();
+            }
+            else if ((int)response.StatusCode == 401)
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "Wizard",
+                    "RouterAuthRequired",
+                    "Router requires authentication (401)",
+                    new { url });
+
+                ShowRouterNotFound("9Router yêu cầu mật khẩu. Vui lòng nhập mật khẩu và thử lại.");
             }
             else
             {
@@ -329,6 +455,7 @@ public partial class WelcomeWizardWindow : Window
         {
             var settings = new RouterSettings(
                 DashboardBaseUrl: DashboardUrlTextBox.Text.Trim(),
+                DashboardAuthPassword: string.IsNullOrWhiteSpace(DashboardPasswordBox.Password) ? null : DashboardPasswordBox.Password,
                 ChromeExecutablePath: ChromeExeTextBox.Text.Trim(),
                 ChromeUserDataDirectory: ChromeUserDataTextBox.Text.Trim(),
                 UseLightTheme: true

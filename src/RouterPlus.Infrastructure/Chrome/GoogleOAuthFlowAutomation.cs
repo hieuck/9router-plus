@@ -79,7 +79,11 @@ public abstract class GoogleOAuthFlowAutomation
                     current_url = combinedState.CurrentUrl,
                     has_account_picker = combinedState.GoogleState?.HasAccountPicker,
                     has_totp = combinedState.GoogleState?.HasGoogleTotpInput,
-                    has_consent = combinedState.GoogleState?.HasGoogleConsentButton
+                    has_consent = combinedState.GoogleState?.HasGoogleConsentButton,
+                    provider_state = combinedState.ProviderState != null ? new {
+                        type = combinedState.ProviderState.GetType().Name,
+                        current_url = combinedState.ProviderState.CurrentUrl
+                    } : null
                 });
 
             if (!combinedState.IsGoogleOAuthPage)

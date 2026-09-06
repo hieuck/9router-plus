@@ -77,7 +77,10 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         RemoveGoogleAccountCommand = new AsyncRelayCommand(
             RemoveGoogleAccountAsync,
             () => CanRemoveGoogleAccount);
-        BatchLoginCommand = new AsyncRelayCommand(StartBatchLoginAsync, () => GoogleAccounts.Any(a => a.IsSelected && a.HasCredentials) && !IsBatchLoginRunning);
+        BatchLoginCommand = new AsyncRelayCommand(StartBatchLoginAsync, () =>
+            (GoogleAccounts.Any(a => a.IsSelected && a.HasCredentials) ||
+             CodexConnections.Any(c => c.IsSelected && c.HasCredentials)) &&
+            !IsBatchLoginRunning);
 
         StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
         RefreshCommand = new AsyncRelayCommand(RefreshDataAsync, () => !IsBatchLoginRunning);
@@ -982,13 +985,16 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
     private Task StartBatchLoginAsync()
     {
-        var selectedRows = GoogleAccounts
+        var selectedGoogleRows = GoogleAccounts
             .Where(a => a.IsSelected && a.HasCredentials)
+            .ToList();
+        var selectedCodexRows = CodexConnections
+            .Where(c => c.IsSelected && c.HasCredentials)
             .ToList();
         var batchCts = new CancellationTokenSource();
         _batchLoginCts = batchCts;
         IsBatchLoginRunning = true;
-        _batchLoginTask = BatchLoginAsync(batchCts, selectedRows);
+        _batchLoginTask = BatchLoginAsync(batchCts, selectedGoogleRows, selectedCodexRows);
         OnPropertyChanged(nameof(BatchLoginTask));
         return _batchLoginTask;
     }
@@ -1033,7 +1039,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
     private async Task BatchLoginAsync(
         CancellationTokenSource batchCts,
-        IReadOnlyList<GoogleAccountRowViewModel> selectedRows)
+        IReadOnlyList<GoogleAccountRowViewModel> selectedGoogleRows,
+        IReadOnlyList<CodexConnectionRowViewModel> selectedCodexRows)
     {
         // Yield so StartBatchLoginAsync can publish the task before preflight
         // exits through the cleanup path.
@@ -1043,11 +1050,12 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         var failCount = 0;
         var cancelled = false;
 
-        using var trace = TraceScope.Begin("CredentialsManager", "BatchLogin", new { profile_count = selectedRows.Count });
+        var totalCount = selectedGoogleRows.Count + selectedCodexRows.Count;
+        using var trace = TraceScope.Begin("CredentialsManager", "BatchLogin", new { profile_count = totalCount });
 
         try
         {
-            if (!selectedRows.Any())
+            if (totalCount == 0)
             {
                 SetStatus("No profiles selected");
                 return;
@@ -1060,11 +1068,16 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             }
 
             ObservabilityHub.Instance.LogEvent(LogLevel.Info, "CredentialsManager", "BatchLoginStarted",
-                "Starting batch login operation", new { profile_count = selectedRows.Count });
+                "Starting batch login operation", new {
+                    google_count = selectedGoogleRows.Count,
+                    codex_count = selectedCodexRows.Count,
+                    total_count = totalCount
+                });
 
-            SetStatus($"Starting batch login for {selectedRows.Count} profile(s)...");
+            SetStatus($"Starting batch login for {totalCount} profile(s) ({selectedGoogleRows.Count} Google, {selectedCodexRows.Count} Codex)...");
 
-            foreach (var row in selectedRows)
+            // Process Google accounts first
+            foreach (var row in selectedGoogleRows)
             {
                 // Find matching profile: by stable Id first, then by display name
                 // for legacy rows that predate Id resolution.
@@ -1090,7 +1103,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                         row.Password,
                         string.IsNullOrWhiteSpace(row.TotpSecret) ? "NONE" : row.TotpSecret.Trim());
 
-                    SetStatus($"🚀 Logging in {row.ProfileName}...");
+                    SetStatus($"🚀 Logging in Google {row.ProfileName}...");
 
                     var result = await _runGoogleAuthentication(profile, credential, batchCts.Token);
 
@@ -1102,23 +1115,23 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
                     if (result.Category == GoogleLoginResultCategory.Success)
                     {
-                        SetStatus($"✓ {row.ProfileName}: Login successful");
+                        SetStatus($"✓ {row.ProfileName}: Google login successful");
                         successCount++;
                     }
                     else if (result.Category == GoogleLoginResultCategory.Cancelled)
                     {
-                        SetStatus($"⏹ {row.ProfileName}: Login cancelled");
+                        SetStatus($"⏹ {row.ProfileName}: Google login cancelled");
                         cancelled = true;
                         break;
                     }
                     else if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
                     {
-                        SetStatus($"⚠ {row.ProfileName}: Manual intervention required");
+                        SetStatus($"⚠ {row.ProfileName}: Google manual intervention required");
                         failCount++;
                     }
                     else
                     {
-                        SetStatus($"❌ {row.ProfileName}: {result.Message}");
+                        SetStatus($"❌ {row.ProfileName}: Google {result.Message}");
                         failCount++;
                     }
                 }
@@ -1129,8 +1142,127 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
                 }
                 catch (Exception ex)
                 {
-                    SetStatus($"❌ {row.ProfileName}: {ex.Message}");
+                    SetStatus($"❌ {row.ProfileName}: Google {ex.Message}");
                     failCount++;
+                }
+            }
+
+            // Process Codex accounts if not cancelled
+            if (!cancelled)
+            {
+                foreach (var row in selectedCodexRows)
+                {
+                    batchCts.Token.ThrowIfCancellationRequested();
+
+                    if (string.IsNullOrWhiteSpace(row.ProfileId))
+                    {
+                        SetStatus($"❌ Codex {row.ProfileName}: Profile ID not resolved");
+                        failCount++;
+                        continue;
+                    }
+
+                    var profile = _mainViewModel.Profiles.FirstOrDefault(p => p.Id == row.ProfileId);
+                    if (profile == null)
+                    {
+                        SetStatus($"❌ Codex {row.ProfileName}: Profile not found");
+                        failCount++;
+                        continue;
+                    }
+
+                    try
+                    {
+                        CodexLoginCredential credential;
+
+                        if (row.AuthMethod == AuthMethod.GoogleOAuth)
+                        {
+                            // Google OAuth flow
+                            if (string.IsNullOrWhiteSpace(row.LinkedGoogleAccount))
+                            {
+                                SetStatus($"❌ Codex {row.ProfileName}: No linked Google account");
+                                failCount++;
+                                continue;
+                            }
+
+                            var googleAccount = GoogleAccounts.FirstOrDefault(a =>
+                                a.Email.Equals(row.LinkedGoogleAccount, StringComparison.OrdinalIgnoreCase));
+
+                            if (googleAccount == null)
+                            {
+                                SetStatus($"❌ Codex {row.ProfileName}: Google account '{row.LinkedGoogleAccount}' not found");
+                                failCount++;
+                                continue;
+                            }
+
+                            // Validate that Google account is logged in
+                            if (googleAccount.HealthStatus?.Status != CredentialHealthStatus.Healthy)
+                            {
+                                SetStatus($"❌ Codex {row.ProfileName}: Google account '{row.LinkedGoogleAccount}' must be logged in first");
+                                failCount++;
+                                continue;
+                            }
+
+                            credential = !string.IsNullOrWhiteSpace(row.TotpSecret)
+                                ? CodexLoginCredential.FromGoogleOAuthWithTotp(row.ProfileId, row.LinkedGoogleAccount, row.TotpSecret.Trim())
+                                : CodexLoginCredential.FromGoogleOAuth(row.ProfileId, row.LinkedGoogleAccount);
+                        }
+                        else // Direct method
+                        {
+                            if (string.IsNullOrWhiteSpace(row.Email) || string.IsNullOrWhiteSpace(row.Password))
+                            {
+                                SetStatus($"❌ Codex {row.ProfileName}: Email and password required for Direct login");
+                                failCount++;
+                                continue;
+                            }
+
+                            credential = CodexLoginCredential.FromDirect(
+                                row.ProfileId,
+                                row.Email,
+                                row.Password,
+                                string.IsNullOrWhiteSpace(row.TotpSecret) ? null : row.TotpSecret.Trim());
+                        }
+
+                        SetStatus($"🚀 Logging in Codex {row.ProfileName}...");
+
+                        var result = await _runCodexAuthentication(profile, credential, batchCts.Token);
+
+                        if (batchCts.IsCancellationRequested)
+                        {
+                            cancelled = true;
+                            break;
+                        }
+
+                        if (result.Category == CodexLoginResultCategory.Success)
+                        {
+                            SetStatus($"✓ Codex {row.ProfileName}: Login successful");
+                            successCount++;
+                        }
+                        else if (result.Category == CodexLoginResultCategory.Cancelled)
+                        {
+                            SetStatus($"⏹ Codex {row.ProfileName}: Login cancelled");
+                            cancelled = true;
+                            break;
+                        }
+                        else if (result.Category == CodexLoginResultCategory.ManualInterventionRequired)
+                        {
+                            SetStatus($"⚠ Codex {row.ProfileName}: Manual intervention required");
+                            failCount++;
+                        }
+                        else
+                        {
+                            SetStatus($"❌ Codex {row.ProfileName}: {result.Message}");
+                            failCount++;
+                        }
+                    }
+                    catch (OperationCanceledException) when (batchCts.IsCancellationRequested)
+                    {
+                        cancelled = true;
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        SetStatus($"❌ Codex {row.ProfileName}: {ex.Message}");
+                        failCount++;
+                    }
                 }
             }
 
