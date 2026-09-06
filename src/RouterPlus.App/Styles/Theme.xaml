@@ -34,6 +34,7 @@
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="WarningSoftBrush" Color="#FDF4E5" po:Freeze="False" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="DebugBrush" Color="{StaticResource MutedTextColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="AccentContentBrush" Color="{StaticResource AccentContentColor}" po:Freeze="False" />
 
     <Style TargetType="TextBlock">
