@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
+using RouterPlus.Core.Observability;
 
 namespace RouterPlus.App.Diagnostics;
 
@@ -9,6 +10,7 @@ namespace RouterPlus.App.Diagnostics;
 /// Centralized debug logging utility for development diagnostics.
 /// All logging is compiled out in Release builds via conditional compilation.
 /// In Debug builds, logs are also written to app-debug.log in the working directory.
+/// WARNING: app-debug.log may contain PII. Apply privacy scrubbing before sharing.
 /// </summary>
 /// <remarks>
 /// DEPRECATED: This class is obsolete. Use ObservabilityHub instead for unified logging
@@ -46,8 +48,9 @@ public static class DebugLogger
         {
             WriteToFile($"  ExceptionType: {ex.GetType().Name}");
             WriteToFile($"  HResult: 0x{ex.HResult:X8}");
-            WriteToFile($"  Message: {ex.Message}");
-            WriteToFile($"  StackTrace: {ex.StackTrace}");
+            // Scrub exception message and stack trace to prevent PII leakage to disk
+            WriteToFile($"  Message: {PrivacyScrubber.ScrubString(ex.Message)}");
+            WriteToFile($"  StackTrace: {PrivacyScrubber.ScrubString(ex.StackTrace ?? string.Empty)}");
         }
     }
 

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Observability;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Security;
@@ -50,7 +51,11 @@ internal static class DebugAutoLoginRunner
             }
 
             Console.WriteLine($"Chrome: {settings.ChromeExecutablePath}");
-            Console.WriteLine($"UserData: {settings.ChromeUserDataDirectory}");
+
+            // Sanitize path to avoid exposing Windows username
+            var sanitizedUserData = settings.ChromeUserDataDirectory
+                .Replace(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "%USERPROFILE%");
+            Console.WriteLine($"UserData: {sanitizedUserData}");
 
             // Discover profiles
             var profileReader = new ChromeProfileReader();
@@ -75,7 +80,9 @@ internal static class DebugAutoLoginRunner
                 Console.WriteLine("Available profiles (first 20):");
                 foreach (var p in profiles.Take(20))
                 {
-                    Console.WriteLine($"  Name='{p.Name}' DirName='{p.DirectoryName}'");
+                    var sanitizedPath = p.ProfilePath
+                        .Replace(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "%USERPROFILE%");
+                    Console.WriteLine($"  Name='{p.Name}' DirName='{p.DirectoryName}' Path='{sanitizedPath}'");
                 }
                 WpfApplication.Current.Shutdown(1);
                 return;
@@ -140,7 +147,8 @@ internal static class DebugAutoLoginRunner
                 return;
             }
 
-            Console.WriteLine($"Credential found: email={credential.Email}");
+            // Scrub email to avoid exposing PII in debug output
+            Console.WriteLine("Credential found and validated.");
 
             // Run automation
             var launcher = new ChromeLauncher();
