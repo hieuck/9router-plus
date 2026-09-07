@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -147,7 +148,14 @@ public sealed class RouterApiClientHttpBehaviorTests
         var created = await api.AddApiKeyConnectionAsync(ProviderKind.Kiro, "New Account", "secret", 2);
 
         Assert.Equal("kiro-2", created.Id);
-        Assert.Equal(4, handler.Requests.Count);
+        Assert.Contains(handler.Requests, request =>
+            request.Method == HttpMethod.Post &&
+            new Uri(request.Uri).AbsolutePath == "/api/providers");
+        Assert.Contains(handler.Requests, request =>
+            request.Method == HttpMethod.Get &&
+            new Uri(request.Uri).AbsolutePath == "/api/providers");
+        Assert.Contains(handler.Requests, request => request.Uri.EndsWith("/api/usage/kiro-1", StringComparison.Ordinal));
+        Assert.Contains(handler.Requests, request => request.Uri.EndsWith("/api/usage/kiro-2", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -256,7 +264,7 @@ public sealed class RouterApiClientHttpBehaviorTests
             _asyncResponder = responder;
         }
 
-        public List<RequestRecord> Requests { get; } = [];
+        public ConcurrentQueue<RequestRecord> Requests { get; } = new();
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -265,7 +273,7 @@ public sealed class RouterApiClientHttpBehaviorTests
             var body = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
-            Requests.Add(new RequestRecord(request.Method, request.RequestUri!.ToString(), body));
+            Requests.Enqueue(new RequestRecord(request.Method, request.RequestUri!.ToString(), body));
             return _asyncResponder is not null
                 ? await _asyncResponder(request, cancellationToken)
                 : _responder!(request);
