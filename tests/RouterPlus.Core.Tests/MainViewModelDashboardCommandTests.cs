@@ -33,6 +33,36 @@ public sealed class MainViewModelDashboardCommandTests
         Assert.True(secondLog.Length > firstLog.Length);
     }
 
+    [Fact]
+    public async Task Refresh_statuses_marks_existing_rows_unknown_when_api_sync_fails()
+    {
+        var handler = new FailsOnSecondProviderRequestHandler();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = new MainViewModel(httpClient: httpClient)
+        {
+            DashboardBaseUrl = "http://router.test"
+        };
+        var profile = new ChromeProfile(
+            "profile-id",
+            "Work",
+            "Default",
+            Path.Combine(Path.GetTempPath(), "RouterPlusTests"),
+            IsDefault: true);
+        viewModel.Profiles.Add(profile);
+        viewModel.ProfileRows.Add(new ProfileRowViewModel(profile, viewModel.Providers));
+        viewModel.SelectedProfile = profile;
+
+        await viewModel.RefreshConnectionStatusesAsync();
+        Assert.Equal(ProviderHealthState.Missing, viewModel.ProviderCards.Single(card => card.Kind == ProviderKind.Codex).HealthState);
+
+        await viewModel.RefreshConnectionStatusesAsync();
+
+        Assert.Equal(ProviderHealthState.Unknown, viewModel.ProviderCards.Single(card => card.Kind == ProviderKind.Codex).HealthState);
+        Assert.False(viewModel.ProfileRows.Single().ProviderStatuses.Single(status => status.Definition.Kind == ProviderKind.Codex).IsKnown);
+        Assert.StartsWith("Chưa đồng bộ provider: 9Router từ chối yêu cầu (HTTP 500).", viewModel.ConnectionStatusText, StringComparison.Ordinal);
+        Assert.Equal(2, handler.ProviderRequestCount);
+    }
+
     [Theory]
     [InlineData(ProviderKind.Codex, "codex-1")]
     [InlineData(ProviderKind.Ollama, "ollama-1")]
@@ -295,6 +325,31 @@ public sealed class MainViewModelDashboardCommandTests
         await WaitForAsync(() => handler.Requests.Count >= 2 && viewModel.StatusText.Contains("succeeded", StringComparison.OrdinalIgnoreCase));
 
         Assert.True(handler.Requests.Count >= 2, $"Expected at least 2 requests, got {handler.Requests.Count}");
+    }
+
+    private sealed class FailsOnSecondProviderRequestHandler : HttpMessageHandler
+    {
+        public int ProviderRequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/providers")
+            {
+                ProviderRequestCount++;
+                return Task.FromResult(ProviderRequestCount == 1
+                    ? Json(HttpStatusCode.OK, "{\"connections\":[]}")
+                    : Json(HttpStatusCode.InternalServerError, "{}"));
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.Method} {request.RequestUri}");
+        }
+
+        private static HttpResponseMessage Json(HttpStatusCode statusCode, string body) => new(statusCode)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
     }
 
     private sealed class ReenableSuggestionHandler : HttpMessageHandler
