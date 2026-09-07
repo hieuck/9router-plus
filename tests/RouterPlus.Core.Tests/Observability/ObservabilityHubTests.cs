@@ -1,155 +1,169 @@
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using System.Reflection;
 using RouterPlus.Core.Observability;
 using Xunit;
 
 namespace RouterPlus.Core.Tests.Observability;
 
-[Collection("Observability")]
 public sealed class ObservabilityHubTests
 {
     [Fact]
-    public void SetWriter_throws_when_writer_is_null()
+    public void SetWriter_rejects_null_writer()
     {
-        // Arrange
-        var hub = ObservabilityHub.Instance;
+        using var hub = CreateHub();
 
-        // Act
-        var exception = Assert.Throws<ArgumentNullException>(() => hub.SetWriter(null!));
-
-        // Assert
-        Assert.Equal("writer", exception.ParamName);
+        Assert.Throws<ArgumentNullException>(() => hub.SetWriter(null!));
     }
 
     [Fact]
     public async Task FlushAsync_does_not_write_when_queues_are_empty()
     {
-        // Arrange
-        var hub = ObservabilityHub.Instance;
-        var writer = await SetWriterAndFlushBaselineAsync(hub);
+        using var hub = CreateHub();
+        var writer = new RecordingWriter();
+        hub.SetWriter(writer);
 
-        // Act
         await hub.FlushAsync();
 
-        // Assert
-        Assert.Empty(writer.EventBatches);
-        Assert.Empty(writer.SnapshotBatches);
+        Assert.Empty(writer.Events);
+        Assert.Empty(writer.Snapshots);
     }
 
     [Fact]
-    public async Task FlushAsync_writes_events_and_snapshots_to_in_memory_writer()
+    public async Task FlushAsync_writes_queued_events_and_snapshots_to_in_memory_writer()
     {
-        // Arrange
-        var hub = ObservabilityHub.Instance;
-        var writer = await SetWriterAndFlushBaselineAsync(hub);
-        var exception = new InvalidOperationException("test failure");
+        using var hub = CreateHub();
+        var writer = new RecordingWriter();
+        hub.SetWriter(writer);
 
-        // Act
-        hub.LogEvent(LogLevel.Info, "Test", "EventWithNoContext", "message");
-        hub.LogError("Test", "ErrorWithNoContext", exception);
+        hub.LogEvent(LogLevel.Info, "Test", "Event", "Message", new { value = 42 });
+        hub.LogError("Test", "Error", new InvalidOperationException("failure"));
         hub.CaptureSnapshot(
             "TestComponent",
-            new Dictionary<string, object?> { ["state"] = "value" },
-            SnapshotTrigger.Error);
+            new Dictionary<string, object?> { ["value"] = 42 },
+            SnapshotTrigger.OnDemand);
+
         await hub.FlushAsync();
 
-        // Assert
-        var events = Assert.Single(writer.EventBatches);
-        Assert.Equal(2, events.Count);
-        Assert.Equal("EventWithNoContext", events[0].Event);
-        Assert.Null(events[0].Context);
-        Assert.Equal("ErrorWithNoContext", events[1].Event);
-        Assert.Equal(nameof(InvalidOperationException), events[1].ErrorType);
-        Assert.Null(events[1].Context);
+        Assert.Equal(2, writer.Events.Count);
+        var loggedEvent = Assert.Single(writer.Events, evt => evt.Event == "Event");
+        Assert.Equal("Test", loggedEvent.Category);
+        Assert.NotNull(loggedEvent.Context);
 
-        var snapshots = Assert.Single(writer.SnapshotBatches);
-        var snapshot = Assert.Single(snapshots);
+        var errorEvent = Assert.Single(writer.Events, evt => evt.Event == "Error");
+        Assert.Equal(LogLevel.Error, errorEvent.Level);
+        Assert.Equal("InvalidOperationException", errorEvent.ErrorType);
+        Assert.Equal("failure", errorEvent.Message);
+
+        var snapshot = Assert.Single(writer.Snapshots);
         Assert.Equal("TestComponent", snapshot.Component);
-        Assert.Equal(SnapshotTrigger.Error, snapshot.Trigger);
-        Assert.Null(snapshot.ErrorContext);
+        Assert.Equal(SnapshotTrigger.OnDemand, snapshot.Trigger);
+        Assert.NotNull(snapshot.State);
     }
 
     [Fact]
-    public async Task Metrics_use_sorted_tags_and_keep_distinct_series()
+    public async Task FlushAsync_without_writer_preserves_queued_data_until_writer_is_set()
     {
-        // Arrange
-        var hub = ObservabilityHub.Instance;
-        await SetWriterAndFlushBaselineAsync(hub);
-        var metricName = $"test.metric.{Guid.NewGuid():N}";
-        var tags = new Dictionary<string, string>
-        {
-            ["z"] = "last",
-            ["a"] = "first"
-        };
+        using var hub = CreateHub();
+        hub.LogEvent(LogLevel.Info, "Test", "Event", "Message");
 
-        var alternateTags = new Dictionary<string, string>
-        {
-            ["z"] = "last",
-            ["a"] = "alternate"
-        };
-
-        // Act
-        hub.IncrementCounter(metricName, tags: tags);
-        hub.IncrementCounter(metricName, tags: alternateTags);
-        hub.RecordGauge(metricName, 3.5, tags);
-        hub.RecordHistogram(metricName, 7.5, tags: tags, unit: "ignored");
-        var (counters, gauges, histograms) = hub.GetMetricSnapshots();
-
-        // Assert
-        var expectedKey = $"{metricName}{{a=first,z=last}}";
-        var alternateKey = $"{metricName}{{a=alternate,z=last}}";
-        Assert.Equal(1, counters[expectedKey]);
-        Assert.Equal(1, counters[alternateKey]);
-        Assert.Equal(3.5, gauges[expectedKey]);
-        Assert.Equal((1L, 7.5), histograms[expectedKey]);
-        Assert.DoesNotContain(alternateKey, gauges.Keys);
-        Assert.DoesNotContain(alternateKey, histograms.Keys);
-    }
-
-    private static async Task<RecordingWriter> SetWriterAndFlushBaselineAsync(ObservabilityHub hub)
-    {
+        await hub.FlushAsync();
         var writer = new RecordingWriter();
         hub.SetWriter(writer);
         await hub.FlushAsync();
-        writer.Clear();
-        return writer;
+
+        Assert.Single(writer.Events);
+        Assert.Equal("Event", writer.Events[0].Event);
+    }
+
+    [Fact]
+    public async Task Disposed_hub_ignores_logging_and_snapshot_requests()
+    {
+        var hub = CreateHub();
+        var writer = new RecordingWriter();
+        hub.SetWriter(writer);
+        hub.Dispose();
+
+        hub.LogEvent(LogLevel.Info, "Test", "Event", "Message");
+        hub.LogError("Test", "Error", new InvalidOperationException("failure"));
+        hub.CaptureSnapshot(
+            "TestComponent",
+            new Dictionary<string, object?> { ["value"] = 42 },
+            SnapshotTrigger.Error,
+            "failure");
+        await hub.FlushAsync();
+        hub.Dispose();
+
+        Assert.Empty(writer.Events);
+        Assert.Empty(writer.Snapshots);
+    }
+
+    [Fact]
+    public void Metrics_use_sorted_tags_and_keep_distinct_series()
+    {
+        using var hub = CreateHub();
+        var tags = new Dictionary<string, string> { ["z"] = "last", ["a"] = "first" };
+        var alternateTags = new Dictionary<string, string> { ["z"] = "last", ["a"] = "alternate" };
+
+        hub.IncrementCounter("test.metric", tags: tags);
+        hub.IncrementCounter("test.metric", tags: alternateTags);
+        hub.RecordGauge("test.metric", 3.5, tags);
+        hub.RecordHistogram("test.metric", 7.5, tags: tags, unit: "ignored");
+        var (counters, gauges, histograms) = hub.GetMetricSnapshots();
+
+        Assert.Equal(1, counters["test.metric{a=first,z=last}"]);
+        Assert.Equal(1, counters["test.metric{a=alternate,z=last}"]);
+        Assert.Equal(3.5, gauges["test.metric{a=first,z=last}"]);
+        Assert.Equal((1L, 7.5), histograms["test.metric{a=first,z=last}"]);
+        Assert.DoesNotContain("test.metric{a=alternate,z=last}", gauges.Keys);
+        Assert.DoesNotContain("test.metric{a=alternate,z=last}", histograms.Keys);
+    }
+
+    [Fact]
+    public void Metrics_return_independent_snapshots()
+    {
+        using var hub = CreateHub();
+        var tags = new Dictionary<string, string> { ["z"] = "last", ["a"] = "first" };
+
+        hub.IncrementCounter("requests", tags: tags);
+        hub.RecordGauge("queue", 3, tags);
+        hub.RecordHistogram("latency", 12, tags);
+        var (counters, gauges, histograms) = hub.GetMetricSnapshots();
+
+        counters.Clear();
+        gauges.Clear();
+        histograms.Clear();
+
+        var (freshCounters, freshGauges, freshHistograms) = hub.GetMetricSnapshots();
+        Assert.Single(freshCounters);
+        Assert.Single(freshGauges);
+        Assert.Single(freshHistograms);
+    }
+
+    private static ObservabilityHub CreateHub()
+    {
+        var constructor = typeof(ObservabilityHub).GetConstructor(
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null);
+
+        return (ObservabilityHub)constructor!.Invoke(null);
     }
 
     private sealed class RecordingWriter : IObservabilityWriter
     {
-        private readonly object _lock = new();
-
-        public List<IReadOnlyList<LogEvent>> EventBatches { get; } = new();
-        public List<IReadOnlyList<StateSnapshot>> SnapshotBatches { get; } = new();
+        public List<LogEvent> Events { get; } = [];
+        public List<StateSnapshot> Snapshots { get; } = [];
 
         public Task WriteEventsAsync(IEnumerable<LogEvent> events)
         {
-            lock (_lock)
-            {
-                EventBatches.Add(events.ToList());
-            }
-
+            Events.AddRange(events);
             return Task.CompletedTask;
         }
 
         public Task WriteSnapshotsAsync(IEnumerable<StateSnapshot> snapshots)
         {
-            lock (_lock)
-            {
-                SnapshotBatches.Add(snapshots.ToList());
-            }
-
+            Snapshots.AddRange(snapshots);
             return Task.CompletedTask;
-        }
-
-        public void Clear()
-        {
-            lock (_lock)
-            {
-                EventBatches.Clear();
-                SnapshotBatches.Clear();
-            }
         }
 
         public void Dispose()
