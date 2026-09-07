@@ -9,6 +9,83 @@ namespace RouterPlus.Core.Tests;
 public sealed class GoogleAutoLoginViewModelTests
 {
     [Fact]
+    public void Constructor_initializes_profile_and_locked_state()
+    {
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var viewModel = new GoogleAutoLoginViewModel(profile, new FakeVaultStore(), FakeAutomation);
+
+        Assert.Equal("Default", viewModel.ProfileName);
+        Assert.Equal(string.Empty, viewModel.Email);
+        Assert.Equal(string.Empty, viewModel.Password);
+        Assert.Equal(string.Empty, viewModel.TotpSecret);
+        Assert.Equal(string.Empty, viewModel.StatusText);
+        Assert.False(viewModel.IsVaultUnlocked);
+        Assert.False(viewModel.IsBusy);
+        Assert.False(viewModel.RememberOnDevice);
+        Assert.Equal("Locked", viewModel.VaultPasswordStatus);
+        Assert.False(viewModel.CanAutoLogin);
+    }
+
+    [Fact]
+    public void Constructor_rejects_missing_dependencies()
+    {
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var vaultStore = new FakeVaultStore();
+
+        Assert.Throws<ArgumentNullException>(() => new GoogleAutoLoginViewModel(null!, vaultStore, FakeAutomation));
+        Assert.Throws<ArgumentNullException>(() => new GoogleAutoLoginViewModel(profile, null!, FakeAutomation));
+        Assert.Throws<ArgumentNullException>(() => new GoogleAutoLoginViewModel(profile, vaultStore, null!));
+    }
+
+    [Theory]
+    [MemberData(nameof(LoginResultStatuses))]
+    public async Task AutoLoginAsync_maps_result_category_to_status(
+        GoogleLoginResult result,
+        string expectedStatus)
+    {
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var viewModel = new GoogleAutoLoginViewModel(
+            profile,
+            new FakeVaultStore(),
+            (_, _, _) => Task.FromResult(result));
+
+        await viewModel.UnlockVaultAsync("vault-password", false, CancellationToken.None);
+        await viewModel.AutoLoginAsync("user@example.com", "password", "JBSWY3DPEHPK3PXP", CancellationToken.None);
+
+        Assert.Equal(expectedStatus, viewModel.StatusText);
+        Assert.False(viewModel.IsBusy);
+    }
+
+    public static TheoryData<GoogleLoginResult, string> LoginResultStatuses => new()
+    {
+        { GoogleLoginResult.Success(), "Login completed successfully" },
+        { GoogleLoginResult.ManualInterventionRequired("Complete the challenge"), "Manual intervention required. Chrome is open for you to continue." },
+        { GoogleLoginResult.InvalidCredentials(), "Invalid credentials" },
+        { GoogleLoginResult.Timeout(), "Login timed out" },
+        { GoogleLoginResult.Cancelled(), "Login cancelled" },
+        { GoogleLoginResult.BrowserDisconnected("Browser closed"), "Browser closed" },
+        { GoogleLoginResult.UnsupportedPage("Unsupported sign-in page"), "Unsupported page or navigation blocked" }
+    };
+
+    [Fact]
+    public async Task AutoLoginAsync_reports_safe_status_when_automation_fails()
+    {
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var viewModel = new GoogleAutoLoginViewModel(
+            profile,
+            new FakeVaultStore(),
+            (_, _, _) => throw new InvalidOperationException("automation detail"));
+
+        await viewModel.UnlockVaultAsync("vault-password", false, CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            viewModel.AutoLoginAsync("user@example.com", "password", "JBSWY3DPEHPK3PXP", CancellationToken.None));
+
+        Assert.Equal("Auto-login failed: automation detail", viewModel.StatusText);
+        Assert.False(viewModel.IsBusy);
+    }
+
+    [Fact]
     public async Task New_record_leaves_email_empty_until_saved()
     {
         var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
