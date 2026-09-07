@@ -58,10 +58,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IUpdateService _updateService;
     private readonly IExternalLinkLauncher _linkLauncher;
     private readonly Func<ChromeProfile, string, Task> _launchUrl;
-<<<<<<< HEAD
-=======
-    private Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>> _launchManagedChrome;
->>>>>>> 0a2ea92 (test: cover device code automation)
+    private readonly Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>> _launchManagedChrome;
     private readonly bool _runStartupUpdateCheck;
     private readonly IReadOnlyList<ChromeProfile>? _harnessProfiles;
     private readonly bool _harnessMode;
@@ -145,12 +142,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IReadOnlyList<ChromeProfile>? harnessProfiles = null,
         IGoogleAuthenticationService? googleAuthenticationService = null,
         ProfileHealthService? profileHealthService = null,
-<<<<<<< HEAD
-        Func<ChromeProfile, string, Task>? launchUrl = null)
-=======
         Func<ChromeProfile, string, Task>? launchUrl = null,
         Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>>? launchManagedChrome = null)
->>>>>>> 0a2ea92 (test: cover device code automation)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
@@ -4809,15 +4802,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             throw new InvalidOperationException("Select a Chrome profile first.");
         }
 
-<<<<<<< HEAD
-=======
-        _installation ??= _chromeLocator.Find(ChromeExecutablePath, ChromeUserDataDirectory);
-        if (_installation is null)
-        {
-            throw new InvalidOperationException("Không tìm thấy Chrome. Hãy thêm đường dẫn chrome.exe và User Data Directory.");
-        }
-
->>>>>>> 0a2ea92 (test: cover device code automation)
         return _launchUrl(SelectedProfile, url);
     }
 
