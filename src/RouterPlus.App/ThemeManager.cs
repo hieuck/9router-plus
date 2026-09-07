@@ -13,6 +13,11 @@ public static class ThemeManager
             return;
         }
 
+        ApplyTo(resources, useLightTheme);
+    }
+
+    internal static void ApplyTo(ResourceDictionary resources, bool useLightTheme)
+    {
         var themeResources = resources.MergedDictionaries
             .FirstOrDefault(dictionary => dictionary.Contains("SurfaceBrush"))
             ?? resources;
