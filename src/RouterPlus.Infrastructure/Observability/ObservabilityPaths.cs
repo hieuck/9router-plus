@@ -19,9 +19,18 @@ public sealed class ObservabilityPaths
     public string SessionsDirectory { get; }
 
     public ObservabilityPaths()
+        : this(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RouterPlus",
+            "Observability"))
     {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        RootDirectory = Path.Combine(localAppData, "RouterPlus", "Observability");
+    }
+
+    public ObservabilityPaths(string rootDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
+
+        RootDirectory = rootDirectory;
         SessionsDirectory = Path.Combine(RootDirectory, "sessions");
     }
 
