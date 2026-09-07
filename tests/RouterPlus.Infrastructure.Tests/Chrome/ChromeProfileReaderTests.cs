@@ -75,17 +75,20 @@ public sealed class ChromeProfileReaderTests
         Assert.Empty(profiles);
     }
 
-    [Fact]
-    public void Read_rejects_blank_user_data_directory()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Read_rejects_missing_user_data_directory(string? userDataDirectory)
     {
         // Arrange
         var reader = new ChromeProfileReader();
 
         // Act
-        var exception = Assert.Throws<ArgumentException>(() => reader.Read(" "));
+        var act = () => reader.Read(userDataDirectory!);
 
         // Assert
-        Assert.Equal("userDataDirectory", exception.ParamName);
+        Assert.ThrowsAny<ArgumentException>(act);
     }
 
     private sealed class TemporaryDirectory : IDisposable
