@@ -195,6 +195,226 @@ public sealed class AutoLoginOrchestratorTests
     }
 
     [Fact]
+    public async Task LoginAsync_DirectPrimaryFailure_UsesGoogleFallback_AndReturnsPrimaryFailure()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var googleVault = new GoogleAccountVaultStore(new GoogleAccountVaultPaths(tempDir));
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = "TestProfile",
+                Provider = ProviderKind.GitHub,
+                PreferredMethod = AuthMethod.Direct,
+                LinkedGoogleAccount = "google@example.test",
+                DirectCredential = new ProviderCredential
+                {
+                    Email = "direct@example.test",
+                    Password = "synthetic-password"
+                }
+            });
+
+            var launcher = new Mock<IChromeLauncher>();
+            launcher.Setup(item => item.LaunchAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Uri>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((CdpSession?)null);
+            var orchestrator = new AutoLoginOrchestrator(googleVault, providerVault, launcher.Object);
+
+            // Act
+            var result = await orchestrator.LoginAsync(
+                "TestProfile",
+                ProviderKind.GitHub,
+                new Uri("https://github.com/login"),
+                TimeSpan.FromMinutes(1),
+                CancellationToken.None);
+
+            // Assert
+            Assert.False(result.Success);
+            Assert.Equal(AuthMethod.Direct, result.Method);
+            Assert.Contains("launch browser", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+            launcher.Verify(item => item.LaunchAsync(
+                It.IsAny<string>(),
+                It.IsAny<Uri>(),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task LoginAsync_GooglePrimaryWithoutLinkedAccount_UsesDirectFallback_AndReturnsPrimaryFailure()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var googleVault = new GoogleAccountVaultStore(new GoogleAccountVaultPaths(tempDir));
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = "TestProfile",
+                Provider = ProviderKind.GitHub,
+                PreferredMethod = AuthMethod.GoogleOAuth,
+                DirectCredential = new ProviderCredential
+                {
+                    Email = "direct@example.test",
+                    Password = "synthetic-password"
+                }
+            });
+
+            var launcher = new Mock<IChromeLauncher>();
+            launcher.Setup(item => item.LaunchAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Uri>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((CdpSession?)null);
+            var orchestrator = new AutoLoginOrchestrator(googleVault, providerVault, launcher.Object);
+
+            // Act
+            var result = await orchestrator.LoginAsync(
+                "TestProfile",
+                ProviderKind.GitHub,
+                new Uri("https://github.com/login"),
+                TimeSpan.FromMinutes(1),
+                CancellationToken.None);
+
+            // Assert
+            Assert.False(result.Success);
+            Assert.Equal(AuthMethod.GoogleOAuth, result.Method);
+            Assert.Equal("No Google account linked", result.ErrorMessage);
+            launcher.Verify(item => item.LaunchAsync(
+                It.IsAny<string>(),
+                It.IsAny<Uri>(),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task LoginAsync_DirectPrimaryWithoutDirectCredentials_ReturnsWithoutLaunchingBrowser()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var googleVault = new GoogleAccountVaultStore(new GoogleAccountVaultPaths(tempDir));
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = "TestProfile",
+                Provider = ProviderKind.GitHub,
+                PreferredMethod = AuthMethod.Direct
+            });
+
+            var launcher = new Mock<IChromeLauncher>();
+            var orchestrator = new AutoLoginOrchestrator(googleVault, providerVault, launcher.Object);
+
+            // Act
+            var result = await orchestrator.LoginAsync(
+                "TestProfile",
+                ProviderKind.GitHub,
+                new Uri("https://github.com/login"),
+                TimeSpan.FromMinutes(1),
+                CancellationToken.None);
+
+            // Assert
+            Assert.False(result.Success);
+            Assert.Equal(AuthMethod.Direct, result.Method);
+            Assert.Equal("No direct credentials", result.ErrorMessage);
+            launcher.Verify(item => item.LaunchAsync(
+                It.IsAny<string>(),
+                It.IsAny<Uri>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task LoginAsync_GooglePrimaryWithLockedVault_UsesDirectFallback_AndReturnsPrimaryFailure()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var googleVault = new GoogleAccountVaultStore(new GoogleAccountVaultPaths(tempDir));
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = "TestProfile",
+                Provider = ProviderKind.GitHub,
+                PreferredMethod = AuthMethod.GoogleOAuth,
+                LinkedGoogleAccount = "google@example.test",
+                DirectCredential = new ProviderCredential
+                {
+                    Email = "direct@example.test",
+                    Password = "synthetic-password"
+                }
+            });
+
+            var launcher = new Mock<IChromeLauncher>();
+            launcher.Setup(item => item.LaunchAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Uri>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((CdpSession?)null);
+            var orchestrator = new AutoLoginOrchestrator(googleVault, providerVault, launcher.Object);
+
+            // Act
+            var result = await orchestrator.LoginAsync(
+                "TestProfile",
+                ProviderKind.GitHub,
+                new Uri("https://github.com/login"),
+                TimeSpan.FromMinutes(1),
+                CancellationToken.None);
+
+            // Assert
+            Assert.False(result.Success);
+            Assert.Equal(AuthMethod.GoogleOAuth, result.Method);
+            Assert.Contains("vault not unlocked", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+            launcher.Verify(item => item.LaunchAsync(
+                It.IsAny<string>(),
+                It.IsAny<Uri>(),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void Constructor_NullGoogleVault_ThrowsArgumentNullException()
     {
         // Arrange
