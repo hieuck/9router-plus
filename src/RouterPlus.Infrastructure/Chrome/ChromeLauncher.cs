@@ -11,15 +11,16 @@ public sealed class ChromeLauncher
 {
     private readonly Func<string, CancellationToken, Task<string>>? _httpGetAsync;
     private readonly Func<ProcessStartInfo, Process?> _startProcess;
+    private readonly Func<int> _getAvailableLoopbackPort;
     private readonly Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>> _createManagedSession;
 
     public ChromeLauncher()
-        : this(null, Process.Start, ChromeManagedSession.CreateAsync)
+        : this(null, Process.Start, ChromeManagedSession.CreateAsync, ChromeManagedSession.GetAvailableLoopbackPort)
     {
     }
 
     internal ChromeLauncher(Func<string, CancellationToken, Task<string>> httpGetAsync)
-        : this(httpGetAsync, Process.Start, ChromeManagedSession.CreateAsync)
+        : this(httpGetAsync, Process.Start, ChromeManagedSession.CreateAsync, ChromeManagedSession.GetAvailableLoopbackPort)
     {
     }
 
@@ -27,17 +28,20 @@ public sealed class ChromeLauncher
         Func<string, CancellationToken, Task<string>>? httpGetAsync,
         Func<ProcessStartInfo, Process?> startProcess,
         Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>> createManagedSession)
+        : this(httpGetAsync, startProcess, createManagedSession, ChromeManagedSession.GetAvailableLoopbackPort)
     {
-        _httpGetAsync = httpGetAsync;
-        _startProcess = startProcess ?? throw new ArgumentNullException(nameof(startProcess));
-        _createManagedSession = createManagedSession ?? throw new ArgumentNullException(nameof(createManagedSession));
     }
 
     internal ChromeLauncher(
         Func<string, CancellationToken, Task<string>>? httpGetAsync,
-        Func<ProcessStartInfo, Process?> startProcess)
-        : this(httpGetAsync, startProcess, ChromeManagedSession.CreateAsync)
+        Func<ProcessStartInfo, Process?>? processStart,
+        Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>>? createManagedSession,
+        Func<int>? getAvailableLoopbackPort)
     {
+        _httpGetAsync = httpGetAsync;
+        _startProcess = processStart ?? Process.Start;
+        _createManagedSession = createManagedSession ?? ChromeManagedSession.CreateAsync;
+        _getAvailableLoopbackPort = getAvailableLoopbackPort ?? ChromeManagedSession.GetAvailableLoopbackPort;
     }
 
     public Process Launch(
@@ -141,7 +145,7 @@ public sealed class ChromeLauncher
 
         try
         {
-            var port = ChromeManagedSession.GetAvailableLoopbackPort();
+            var port = _getAvailableLoopbackPort();
             var sessionMarker = $"__9rp_session_{Guid.NewGuid():N}";
             var markedUri = AppendSessionMarker(startUri, sessionMarker);
 
@@ -213,7 +217,7 @@ public sealed class ChromeLauncher
         }
     }
 
-    private static Uri AppendSessionMarker(Uri originalUri, string sessionMarker)
+    internal static Uri AppendSessionMarker(Uri originalUri, string sessionMarker)
     {
         ArgumentNullException.ThrowIfNull(originalUri);
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionMarker);
