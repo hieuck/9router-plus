@@ -409,6 +409,43 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
+    public void InferUsageFromError_WeeklyReset_OnMonday_ResetsFollowingMonday()
+    {
+        // Arrange - Monday Sep 7, 2026
+        var errorTime = new DateTimeOffset(2026, 9, 7, 10, 30, 0, TimeSpan.Zero);
+        Assert.Equal(DayOfWeek.Monday, errorTime.DayOfWeek);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Ollama,
+            "429",
+            "weekly limit",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.Equal(new DateTimeOffset(2026, 9, 14, 0, 0, 0, TimeSpan.Zero), result.UsageResetAt);
+    }
+
+    [Fact]
+    public void InferUsageFromError_WithUnsupportedProvider_ReturnsNull()
+    {
+        // Arrange
+        var unsupportedProvider = (ProviderKind)999;
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            unsupportedProvider,
+            "429",
+            "usage limit exceeded",
+            new DateTimeOffset(2026, 9, 7, 10, 30, 0, TimeSpan.Zero));
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void InferUsageFromError_CaseInsensitive_Keywords()
     {
         // Arrange & Act
