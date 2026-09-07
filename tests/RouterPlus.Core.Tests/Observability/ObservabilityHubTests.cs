@@ -45,14 +45,13 @@ public sealed class ObservabilityHubTests
         var writer = await SetWriterAndFlushBaselineAsync(hub);
         var exception = new InvalidOperationException("test failure");
 
+        // Act
         hub.LogEvent(LogLevel.Info, "Test", "EventWithNoContext", "message");
         hub.LogError("Test", "ErrorWithNoContext", exception);
         hub.CaptureSnapshot(
             "TestComponent",
             new Dictionary<string, object?> { ["state"] = "value" },
             SnapshotTrigger.Error);
-
-        // Act
         await hub.FlushAsync();
 
         // Assert
@@ -84,17 +83,28 @@ public sealed class ObservabilityHubTests
             ["a"] = "first"
         };
 
+        var alternateTags = new Dictionary<string, string>
+        {
+            ["z"] = "last",
+            ["a"] = "alternate"
+        };
+
         // Act
         hub.IncrementCounter(metricName, tags: tags);
+        hub.IncrementCounter(metricName, tags: alternateTags);
         hub.RecordGauge(metricName, 3.5, tags);
         hub.RecordHistogram(metricName, 7.5, tags: tags, unit: "ignored");
         var (counters, gauges, histograms) = hub.GetMetricSnapshots();
 
         // Assert
         var expectedKey = $"{metricName}{{a=first,z=last}}";
+        var alternateKey = $"{metricName}{{a=alternate,z=last}}";
         Assert.Equal(1, counters[expectedKey]);
+        Assert.Equal(1, counters[alternateKey]);
         Assert.Equal(3.5, gauges[expectedKey]);
         Assert.Equal((1L, 7.5), histograms[expectedKey]);
+        Assert.DoesNotContain(alternateKey, gauges.Keys);
+        Assert.DoesNotContain(alternateKey, histograms.Keys);
     }
 
     private static async Task<RecordingWriter> SetWriterAndFlushBaselineAsync(ObservabilityHub hub)
