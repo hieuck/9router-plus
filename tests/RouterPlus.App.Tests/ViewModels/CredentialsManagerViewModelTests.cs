@@ -971,6 +971,59 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         Assert.Equal("other-password", remaining.Password);
     }
 
+    [Theory]
+    [InlineData(GoogleLoginResultCategory.Success, CredentialHealthStatus.Healthy)]
+    [InlineData(GoogleLoginResultCategory.InvalidCredentials, CredentialHealthStatus.Invalid)]
+    [InlineData(GoogleLoginResultCategory.ManualInterventionRequired, CredentialHealthStatus.RequiresAction)]
+    [InlineData(GoogleLoginResultCategory.Timeout, CredentialHealthStatus.Error)]
+    [InlineData(GoogleLoginResultCategory.Cancelled, CredentialHealthStatus.Error)]
+    [InlineData(GoogleLoginResultCategory.BrowserDisconnected, CredentialHealthStatus.Error)]
+    [InlineData(GoogleLoginResultCategory.UnsupportedPage, CredentialHealthStatus.RequiresAction)]
+    public async Task CheckHealthRowCommand_maps_runner_result_to_health_status(
+        GoogleLoginResultCategory category,
+        CredentialHealthStatus expectedStatus)
+    {
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "user@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel(
+            healthCheck: (_, _, _) => Task.FromResult(CreateGoogleLoginResult(category, "synthetic health result")));
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+
+        viewModel.CheckHealthRowCommand.Execute(row);
+        await WaitForAsync(() => row.HealthStatus?.Status == expectedStatus);
+
+        Assert.Equal(expectedStatus, row.HealthStatus!.Status);
+        Assert.Contains("Test Profile", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CheckHealthRowCommand_reports_runner_exception_and_marks_row_error()
+    {
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile",
+            "user@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel(
+            healthCheck: (_, _, _) => throw new InvalidOperationException("synthetic health failure"));
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+
+        viewModel.CheckHealthRowCommand.Execute(row);
+        await WaitForAsync(() => row.HealthStatus?.Status == CredentialHealthStatus.Error);
+
+        Assert.Equal("Health check failed: synthetic health failure", row.HealthStatus!.Message);
+        Assert.Contains("synthetic health failure", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task SaveProviderRowCommand_maps_each_provider_collection_to_its_provider_kind()
     {
@@ -1034,8 +1087,26 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             CancellationToken.None));
     }
 
+    private static GoogleLoginResult CreateGoogleLoginResult(
+        GoogleLoginResultCategory category,
+        string message)
+    {
+        return category switch
+        {
+            GoogleLoginResultCategory.Success => GoogleLoginResult.Success(),
+            GoogleLoginResultCategory.InvalidCredentials => GoogleLoginResult.InvalidCredentials(),
+            GoogleLoginResultCategory.ManualInterventionRequired => GoogleLoginResult.ManualInterventionRequired(message),
+            GoogleLoginResultCategory.Timeout => GoogleLoginResult.Timeout(),
+            GoogleLoginResultCategory.Cancelled => GoogleLoginResult.Cancelled(),
+            GoogleLoginResultCategory.BrowserDisconnected => GoogleLoginResult.BrowserDisconnected(message),
+            GoogleLoginResultCategory.UnsupportedPage => GoogleLoginResult.UnsupportedPage(message),
+            _ => throw new ArgumentOutOfRangeException(nameof(category), category, null)
+        };
+    }
+
     private CredentialsManagerViewModel CreateViewModel(
-        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? automation = null)
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? automation = null,
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? healthCheck = null)
     {
         var viewModel = new CredentialsManagerViewModel(
             _mainViewModel,
@@ -1043,7 +1114,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _providerVaultStore,
             _vaultPaths,
             automation ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
-            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
+            healthCheck ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
             (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
         return viewModel;
