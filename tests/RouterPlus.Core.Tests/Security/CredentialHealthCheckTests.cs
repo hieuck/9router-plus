@@ -171,4 +171,55 @@ public class CredentialHealthCheckTests
         // Assert
         Assert.Equal(expected, result);
     }
+
+    [Theory]
+    [InlineData(CredentialHealthStatus.Expired, "Credentials expired")]
+    [InlineData(CredentialHealthStatus.Unknown, "Health status unknown")]
+    [InlineData(CredentialHealthStatus.Checking, "Checking credentials...")]
+    [InlineData(CredentialHealthStatus.NotConfigured, "No credentials configured")]
+    public void Factory_methods_create_results_for_remaining_statuses(
+        CredentialHealthStatus expectedStatus,
+        string expectedMessage)
+    {
+        // Act
+        var result = expectedStatus switch
+        {
+            CredentialHealthStatus.Expired => CredentialHealthCheckResult.Expired(),
+            CredentialHealthStatus.Unknown => CredentialHealthCheckResult.Unknown(),
+            CredentialHealthStatus.Checking => CredentialHealthCheckResult.Checking(),
+            CredentialHealthStatus.NotConfigured => CredentialHealthCheckResult.NotConfigured(),
+            _ => throw new ArgumentOutOfRangeException(nameof(expectedStatus))
+        };
+
+        // Assert
+        Assert.Equal(expectedStatus, result.Status);
+        Assert.Equal(expectedMessage, result.Message);
+        Assert.Null(result.Exception);
+    }
+
+    [Fact]
+    public void Error_without_exception_keeps_exception_null()
+    {
+        // Act
+        var result = CredentialHealthCheckResult.Error("Synthetic error");
+
+        // Assert
+        Assert.Equal(CredentialHealthStatus.Error, result.Status);
+        Assert.Null(result.Exception);
+    }
+
+    [Fact]
+    public void Unknown_status_uses_enum_name_fallback_for_display_text()
+    {
+        // Arrange
+        const CredentialHealthStatus unknownStatus = (CredentialHealthStatus)999;
+
+        // Act
+        var displayText = unknownStatus.ToDisplayText();
+        var emoji = unknownStatus.ToEmoji();
+
+        // Assert
+        Assert.Equal("999", displayText);
+        Assert.Equal("?", emoji);
+    }
 }
