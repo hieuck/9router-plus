@@ -1,5 +1,6 @@
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
+using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.App.ViewModels;
@@ -970,79 +971,71 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         Assert.Equal("other-password", remaining.Password);
     }
 
-    [Theory]
-    [InlineData(GoogleLoginResultCategory.Success, CredentialHealthStatus.Healthy)]
-    [InlineData(GoogleLoginResultCategory.InvalidCredentials, CredentialHealthStatus.Invalid)]
-    [InlineData(GoogleLoginResultCategory.ManualInterventionRequired, CredentialHealthStatus.RequiresAction)]
-    [InlineData(GoogleLoginResultCategory.Timeout, CredentialHealthStatus.Error)]
-    [InlineData(GoogleLoginResultCategory.Cancelled, CredentialHealthStatus.Error)]
-    [InlineData(GoogleLoginResultCategory.BrowserDisconnected, CredentialHealthStatus.Error)]
-    [InlineData(GoogleLoginResultCategory.UnsupportedPage, CredentialHealthStatus.RequiresAction)]
-    public async Task CheckHealthRowCommand_maps_runner_result_to_health_status(
-        GoogleLoginResultCategory category,
-        CredentialHealthStatus expectedStatus)
+    [Fact]
+    public async Task SaveProviderRowCommand_maps_each_provider_collection_to_its_provider_kind()
     {
-        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
-            "Test Profile",
-            "user@example.test",
-            "synthetic-login-password",
-            "NONE"));
-        var viewModel = CreateViewModel(
-            healthCheck: (_, _, _) => Task.FromResult(CreateGoogleLoginResult(category, "synthetic health result")));
+        // Arrange
+        var viewModel = CreateViewModel();
+        await viewModel.InitializationTask;
+        var rows = new[]
+        {
+            (Row: Assert.Single(viewModel.KiroConnections), Provider: ProviderKind.Kiro, Command: viewModel.SaveProviderRowCommand),
+            (Row: Assert.Single(viewModel.GitHubConnections), Provider: ProviderKind.GitHub, Command: viewModel.SaveProviderRowCommand),
+            (Row: Assert.Single(viewModel.OpenRouterConnections), Provider: ProviderKind.OpenRouter, Command: viewModel.SaveProviderRowCommand)
+        };
 
-        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
-        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
-        var row = Assert.Single(viewModel.GoogleAccounts);
+        foreach (var (row, provider, command) in rows)
+        {
+            row.AuthMethod = AuthMethod.Direct;
+            row.Email = $"{provider.ToString().ToLowerInvariant()}@example.test";
+            row.Password = "synthetic-password";
+            row.TotpSecret = " synthetic-totp ";
 
-        viewModel.CheckHealthRowCommand.Execute(row);
-        await WaitForAsync(() => row.HealthStatus?.Status == expectedStatus);
+            // Act
+            command.Execute(row);
+            await WaitForAsync(() => viewModel.StatusMessage.Contains(
+                $"Saved {provider} credentials", StringComparison.Ordinal));
 
-        Assert.Equal(expectedStatus, row.HealthStatus!.Status);
-        Assert.Contains("Test Profile", viewModel.StatusMessage, StringComparison.Ordinal);
+            // Assert
+            var connection = await _providerVaultStore.GetConnectionAsync(
+                _profile.Name,
+                provider,
+                CancellationToken.None);
+            Assert.NotNull(connection);
+            Assert.Equal(provider, connection!.Provider);
+            Assert.Equal(AuthMethod.Direct, connection.PreferredMethod);
+            Assert.Null(connection.LinkedGoogleAccount);
+            Assert.NotNull(connection.DirectCredential);
+            Assert.Equal(row.Email, connection.DirectCredential!.Email);
+            Assert.Equal(row.Password, connection.DirectCredential.Password);
+            Assert.Equal("synthetic-totp", connection.DirectCredential.TotpSecret);
+        }
     }
 
     [Fact]
-    public async Task CheckHealthRowCommand_reports_runner_exception_and_marks_row_error()
+    public async Task SaveProviderRowCommand_requires_linked_google_account_for_oauth()
     {
-        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
-            "Test Profile",
-            "user@example.test",
-            "synthetic-login-password",
-            "NONE"));
-        var viewModel = CreateViewModel(
-            healthCheck: (_, _, _) => throw new InvalidOperationException("synthetic health failure"));
+        // Arrange
+        var viewModel = CreateViewModel();
+        await viewModel.InitializationTask;
+        var row = Assert.Single(viewModel.KiroConnections);
+        row.AuthMethod = AuthMethod.GoogleOAuth;
 
-        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
-        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
-        var row = Assert.Single(viewModel.GoogleAccounts);
+        // Act
+        viewModel.SaveProviderRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains(
+            "Google account is required for OAuth method", StringComparison.Ordinal));
 
-        viewModel.CheckHealthRowCommand.Execute(row);
-        await WaitForAsync(() => row.HealthStatus?.Status == CredentialHealthStatus.Error);
-
-        Assert.Equal("Health check failed: synthetic health failure", row.HealthStatus!.Message);
-        Assert.Contains("synthetic health failure", viewModel.StatusMessage, StringComparison.Ordinal);
-    }
-
-    private static GoogleLoginResult CreateGoogleLoginResult(
-        GoogleLoginResultCategory category,
-        string message)
-    {
-        return category switch
-        {
-            GoogleLoginResultCategory.Success => GoogleLoginResult.Success(),
-            GoogleLoginResultCategory.InvalidCredentials => GoogleLoginResult.InvalidCredentials(),
-            GoogleLoginResultCategory.ManualInterventionRequired => GoogleLoginResult.ManualInterventionRequired(message),
-            GoogleLoginResultCategory.Timeout => GoogleLoginResult.Timeout(),
-            GoogleLoginResultCategory.Cancelled => GoogleLoginResult.Cancelled(),
-            GoogleLoginResultCategory.BrowserDisconnected => GoogleLoginResult.BrowserDisconnected(message),
-            GoogleLoginResultCategory.UnsupportedPage => GoogleLoginResult.UnsupportedPage(message),
-            _ => throw new ArgumentOutOfRangeException(nameof(category), category, null)
-        };
+        // Assert
+        Assert.False(row.HasCredentials);
+        Assert.Null(await _providerVaultStore.GetConnectionAsync(
+            _profile.Name,
+            ProviderKind.Kiro,
+            CancellationToken.None));
     }
 
     private CredentialsManagerViewModel CreateViewModel(
-        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? automation = null,
-        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? healthCheck = null)
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? automation = null)
     {
         var viewModel = new CredentialsManagerViewModel(
             _mainViewModel,
@@ -1050,7 +1043,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _providerVaultStore,
             _vaultPaths,
             automation ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
-            healthCheck ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
             (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         _viewModels.Add(viewModel);
         return viewModel;
