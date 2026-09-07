@@ -126,7 +126,16 @@ public sealed class ChromeProfileDeleter
         }
 
         var json = File.ReadAllText(localStatePath);
-        var root = JsonNode.Parse(json);
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(json);
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
         if (root is null)
         {
             return;

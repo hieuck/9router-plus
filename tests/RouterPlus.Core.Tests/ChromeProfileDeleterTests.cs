@@ -477,7 +477,7 @@ public sealed class ChromeProfileDeleterTests
         Directory.CreateDirectory(profileDirectory);
 
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
-        File.WriteAllText(localStatePath, "{}");
+        File.WriteAllText(localStatePath, "{ malformed");
 
         try
         {
@@ -486,6 +486,76 @@ public sealed class ChromeProfileDeleterTests
             new ChromeProfileDeleter().Delete(profile, userDataDirectory);
 
             Assert.False(Directory.Exists(profileDirectory));
+            Assert.Equal("{ malformed", File.ReadAllText(localStatePath));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_rejects_profile_path_that_is_not_a_directory()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profilePath = Path.Combine(userDataDirectory, "Profile 1");
+        File.WriteAllText(profilePath, "not a directory");
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+
+            Assert.Throws<InvalidOperationException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+            Assert.True(File.Exists(profilePath));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_rejects_nested_profile_path()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profileDirectory = Path.Combine(userDataDirectory, "Profiles", "Profile 1");
+        Directory.CreateDirectory(profileDirectory);
+
+        try
+        {
+            var profile = new ChromeProfile(
+                ChromeProfile.CreateId(userDataDirectory, "Profiles\\Profile 1"),
+                "Test profile",
+                "Profiles\\Profile 1",
+                userDataDirectory,
+                false);
+
+            Assert.Throws<InvalidOperationException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+            Assert.True(Directory.Exists(profileDirectory));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_surfaces_profile_directory_deletion_failure()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
+        Directory.CreateDirectory(profileDirectory);
+        var lockedFilePath = Path.Combine(profileDirectory, "locked.txt");
+        File.WriteAllText(lockedFilePath, "locked");
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+            using var lockedFile = new FileStream(lockedFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+            Assert.ThrowsAny<IOException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+            Assert.True(Directory.Exists(profileDirectory));
+            Assert.True(File.Exists(lockedFilePath));
         }
         finally
         {
