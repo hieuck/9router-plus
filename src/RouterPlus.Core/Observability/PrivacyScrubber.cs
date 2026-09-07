@@ -55,6 +55,12 @@ public static class PrivacyScrubber
             return obj;
         }
 
+        // Dictionaries need to remain key/value objects so snapshot state can be recovered.
+        if (obj is IDictionary dictionary)
+        {
+            return ScrubDictionary(dictionary);
+        }
+
         // Collections
         if (obj is IEnumerable enumerable and not string)
         {
@@ -119,6 +125,21 @@ public static class PrivacyScrubber
                 // Skip properties that throw on access
                 scrubbed[prop.Name] = "[ERROR_READING_PROPERTY]";
             }
+        }
+
+        return scrubbed;
+    }
+
+    private static object ScrubDictionary(IDictionary dictionary)
+    {
+        var scrubbed = new Dictionary<string, object?>();
+
+        foreach (DictionaryEntry entry in dictionary)
+        {
+            var key = entry.Key?.ToString() ?? string.Empty;
+            scrubbed[key] = IsSensitivePropertyName(key)
+                ? RedactedValue
+                : Scrub(entry.Value);
         }
 
         return scrubbed;

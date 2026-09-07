@@ -98,6 +98,46 @@ public sealed class PrivacyScubberTests
     }
 
     [Fact]
+    public void Scrub_dictionary_preserves_entries_and_scrubs_sensitive_values()
+    {
+        // Arrange
+        var obj = new Dictionary<string, object?>
+        {
+            ["Username"] = "user@example.com",
+            ["Password"] = "secret123",
+            ["Nested"] = new Dictionary<string, object?>
+            {
+                ["ApiKey"] = "key123"
+            }
+        };
+
+        // Act
+        var scrubbed = PrivacyScrubber.Scrub(obj) as Dictionary<string, object?>;
+
+        // Assert
+        Assert.NotNull(scrubbed);
+        Assert.Equal("user@example.com", scrubbed["Username"]);
+        Assert.Equal("[REDACTED]", scrubbed["Password"]);
+        var nested = Assert.IsType<Dictionary<string, object?>>(scrubbed["Nested"]);
+        Assert.Equal("[REDACTED]", nested["ApiKey"]);
+    }
+
+    [Fact]
+    public void Scrub_preserves_non_string_scalar_values()
+    {
+        Assert.Equal(42, PrivacyScrubber.Scrub(42));
+        Assert.Equal(true, PrivacyScrubber.Scrub(true));
+        var timestamp = DateTime.UtcNow;
+        Assert.Equal(timestamp, PrivacyScrubber.Scrub(timestamp));
+    }
+
+    [Fact]
+    public void Scrub_scalar_string_still_scrubs_sensitive_patterns()
+    {
+        Assert.Equal("token=[REDACTED]", PrivacyScrubber.Scrub("token=secret123"));
+    }
+
+    [Fact]
     public void Scrub_handles_nested_objects()
     {
         // Arrange
