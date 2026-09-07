@@ -575,7 +575,6 @@ public sealed class UpdateTransactionTests
         {
             StartedExecutable = executablePath;
             BeforeHealthCheck?.Invoke();
-<<<<<<< HEAD
             if (HealthCheckException is not null)
             {
                 throw HealthCheckException;
