@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using RouterPlus.Infrastructure.Observability;
 using Xunit;
@@ -8,221 +7,392 @@ namespace RouterPlus.Infrastructure.Tests.Observability;
 public sealed class EventLogReaderTests
 {
     [Fact]
-    public void ReadEventsFromSession_returns_empty_for_missing_file()
+    public void Constructor_throws_when_paths_are_null()
     {
-        var paths = new ObservabilityPaths();
-        using var log = new TemporaryEventLog(paths);
-        var reader = new EventLogReader(paths);
-
-        var events = reader.ReadEventsFromSession(log.SessionId);
-
-        Assert.Empty(events);
+        // Arrange, Act & Assert
+        Assert.Throws<ArgumentNullException>(() => new EventLogReader(null!));
     }
 
     [Fact]
-    public void ReadEventsFromSession_skips_blank_and_malformed_lines()
+    public void ReadEventsFromSession_returns_empty_when_events_file_does_not_exist()
     {
+        // Arrange
         var paths = new ObservabilityPaths();
-        using var log = new TemporaryEventLog(paths);
-        log.Write(
-            "  ",
-            EventJson(timestamp: "2026-09-07T10:00:00Z", operation: "valid"),
-            "{ not valid json",
-            "",
-            EventJson(timestamp: "2026-09-07T10:01:00Z", operation: "also-valid"));
+        var sessionId = CreateSessionId();
         var reader = new EventLogReader(paths);
 
-        var events = reader.ReadEventsFromSession(log.SessionId);
-
-        Assert.Equal(new[] { "also-valid", "valid" }, events.Select(e => e.Operation));
-    }
-
-    [Fact]
-    public void ReadEventsFromSession_returns_newest_first_and_honors_max_count()
-    {
-        var paths = new ObservabilityPaths();
-        using var log = new TemporaryEventLog(paths);
-        log.Write(
-            EventJson(timestamp: "2026-09-07T10:00:00Z", operation: "first"),
-            EventJson(timestamp: "2026-09-07T10:01:00Z", operation: "second"),
-            EventJson(timestamp: "2026-09-07T10:02:00Z", operation: "third"));
-        var reader = new EventLogReader(paths);
-
-        var events = reader.ReadEventsFromSession(log.SessionId, maxCount: 2);
-
-        Assert.Equal(new[] { "third", "second" }, events.Select(e => e.Operation));
-    }
-
-    [Fact]
-    public void ReadFilteredEvents_filters_by_category_level_search_and_time_range()
-    {
-        var paths = new ObservabilityPaths();
-        using var log = new TemporaryEventLog(paths);
-        log.Write(
-            EventJson("2026-09-07T10:00:00Z", "startup", "System", 1, "Started", new Dictionary<string, object?> { ["host"] = "local" }),
-            EventJson("2026-09-07T10:01:00Z", "request-failed", "Http", 3, "Request failed", new Dictionary<string, object?> { ["status"] = 500 }),
-            EventJson("2026-09-07T10:02:00Z", "request-ok", "Http", 1, "Request completed", new Dictionary<string, object?> { ["status"] = 200 }));
-        var reader = new EventLogReader(paths);
-
-        var allEvents = reader.ReadEventsFromSession(log.SessionId);
-        Assert.Equal(3, allEvents.Count);
-        Assert.Equal("request-failed", allEvents[1].Operation);
-        Assert.Equal("Http", allEvents[1].Category);
-        Assert.Equal("Error", allEvents[1].Level);
-        Assert.Equal("500", allEvents[1].GetContextValue("status"));
-        Assert.Equal(DateTime.Parse("2026-09-07T10:01:00Z", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind), allEvents[1].Timestamp);
-        Assert.Equal(2, reader.ReadFilteredEvents(log.SessionId, category: "http").Count);
-        Assert.Single(reader.ReadFilteredEvents(log.SessionId, level: "error"));
-        Assert.Single(reader.ReadFilteredEvents(log.SessionId, searchText: "500"));
-
-        var events = reader.ReadFilteredEvents(
-            log.SessionId,
-            category: "http",
-            level: "error",
-            searchText: "500",
-            startTime: Utc("2026-09-07T10:00:30Z"),
-            endTime: Utc("2026-09-07T10:01:30Z"));
-
-        var evt = Assert.Single(events);
-        Assert.Equal("request-failed", evt.Operation);
-    }
-
-    [Fact]
-    public void ReadFilteredEvents_searches_operation_and_treats_all_as_unfiltered()
-    {
-        var paths = new ObservabilityPaths();
-        using var log = new TemporaryEventLog(paths);
-        log.Write(
-            EventJson("2026-09-07T10:00:00Z", "profile-loaded", "Chrome"),
-            EventJson("2026-09-07T10:01:00Z", "other", "System"));
-        var reader = new EventLogReader(paths);
-
-        var allEvents = reader.ReadEventsFromSession(log.SessionId);
-        Assert.Equal(2, allEvents.Count);
-        Assert.Equal("profile-loaded", allEvents[1].Operation);
-        Assert.Single(reader.ReadFilteredEvents(log.SessionId, searchText: "PROFILE"));
-
-        var events = reader.ReadFilteredEvents(log.SessionId, category: "All", level: "All", searchText: "PROFILE");
-
-        var evt = Assert.Single(events);
-        Assert.Equal("profile-loaded", evt.Operation);
-    }
-
-    [Fact]
-    public void GetCategories_returns_distinct_nonempty_sorted_categories()
-    {
-        var paths = new ObservabilityPaths();
-        using var log = new TemporaryEventLog(paths);
-        log.Write(
-            EventJson("2026-09-07T10:00:00Z", "one", "Zeta"),
-            EventJson("2026-09-07T10:01:00Z", "two", ""),
-            EventJson("2026-09-07T10:02:00Z", "three", "Alpha"),
-            EventJson("2026-09-07T10:03:00Z", "four", "Zeta"));
-        var reader = new EventLogReader(paths);
-
-        var categories = reader.GetCategories(log.SessionId);
-
-        Assert.Equal(new[] { "Alpha", "Zeta" }, categories);
-    }
-
-    [Fact]
-    public void CalculateMetrics_counts_levels_and_categories_and_tracks_bounds()
-    {
-        var events = new[]
+        try
         {
-            Event("2026-09-07T10:00:00Z", "one", "A", 0),
-            Event("2026-09-07T10:01:00Z", "two", "A", 1),
-            Event("2026-09-07T10:02:00Z", "three", "B", 2),
-            Event("2026-09-07T10:03:00Z", "four", "B", 3),
-            Event("2026-09-07T10:04:00Z", "five", "A", 3)
-        }.ToList();
+            // Act
+            var events = reader.ReadEventsFromSession(sessionId);
+
+            // Assert
+            Assert.Empty(events);
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void ReadEventsFromSession_parses_valid_lines_skips_blank_and_malformed_lines_and_returns_newest_first()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = CreateSessionId();
+        var firstTimestamp = new DateTime(2026, 9, 1, 10, 0, 0, DateTimeKind.Utc);
+        var secondTimestamp = firstTimestamp.AddMinutes(1);
+        var firstEvent = JsonSerializer.Serialize(new
+        {
+            timestamp = firstTimestamp,
+            level = 1,
+            category = "Auth",
+            @event = "Login",
+            message = "started",
+            context = new { count = 2, enabled = true, note = (string?)null }
+        });
+        var secondEvent = JsonSerializer.Serialize(new
+        {
+            TimeStamp = secondTimestamp,
+            LEVEL = 3,
+            CATEGORY = "Router",
+            EVENT = "Request",
+            MESSAGE = "failed",
+            context = new { items = new[] { 1, 2 }, details = new { code = "E1" } }
+        });
+        WriteEvents(paths, sessionId, string.Join(Environment.NewLine, firstEvent, string.Empty, "not json", secondEvent));
+        var reader = new EventLogReader(paths);
+
+        try
+        {
+            // Act
+            var events = reader.ReadEventsFromSession(sessionId);
+
+            // Assert
+            Assert.Equal(2, events.Count);
+            Assert.Equal(secondTimestamp, events[0].Timestamp);
+            Assert.Equal("Error", events[0].Level);
+            Assert.Equal("Router", events[0].Category);
+            Assert.Equal("Request", events[0].Operation);
+            Assert.Equal("failed", events[0].Message);
+            Assert.Equal(firstTimestamp, events[1].Timestamp);
+            Assert.Equal("2", events[1].GetContextValue("count"));
+            Assert.Equal("true", events[1].GetContextValue("enabled"));
+            Assert.Equal("null", events[1].GetContextValue("note"));
+            Assert.Equal("[1,2]", events[0].GetContextValue("items"));
+            Assert.Equal("{\"code\":\"E1\"}", events[0].GetContextValue("details"));
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void ReadEventsFromSession_allows_trailing_commas_in_json_objects()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = CreateSessionId();
+        var timestamp = new DateTime(2026, 9, 1, 10, 0, 0, DateTimeKind.Utc);
+        WriteEvents(paths, sessionId, $"{{\"timestamp\":\"{timestamp:O}\",\"message\":\"trailing\",}}");
+        var reader = new EventLogReader(paths);
+
+        try
+        {
+            // Act
+            var events = reader.ReadEventsFromSession(sessionId);
+
+            // Assert
+            var result = Assert.Single(events);
+            Assert.Equal("trailing", result.Message);
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void ReadEventsFromSession_returns_empty_when_file_cannot_be_read()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = CreateSessionId();
+        var filePath = paths.GetEventsFilePath(sessionId);
+        Directory.CreateDirectory(filePath);
+        var reader = new EventLogReader(paths);
+
+        try
+        {
+            // Act
+            var events = reader.ReadEventsFromSession(sessionId);
+
+            // Assert
+            Assert.Empty(events);
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void ReadEventsFromSession_limits_to_last_lines_before_reversing_results()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = CreateSessionId();
+        var timestamps = Enumerable.Range(0, 3)
+            .Select(index => new DateTime(2026, 9, 1, 10, index, 0, DateTimeKind.Utc))
+            .ToArray();
+        WriteEvents(paths, sessionId, string.Join(Environment.NewLine, timestamps.Select((timestamp, index) =>
+            $"{{\"timestamp\":\"{timestamp:O}\",\"category\":\"C{index}\"}}")));
+        var reader = new EventLogReader(paths);
+
+        try
+        {
+            // Act
+            var events = reader.ReadEventsFromSession(sessionId, maxCount: 2);
+
+            // Assert
+            Assert.Equal(2, events.Count);
+            Assert.Equal(timestamps[2], events[0].Timestamp);
+            Assert.Equal(timestamps[1], events[1].Timestamp);
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void ReadRecentEvents_returns_events_at_or_after_cutoff_in_descending_timestamp_order()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = CreateSessionId();
+        var now = DateTime.UtcNow;
+        var cutoffBoundary = now.AddMinutes(-4);
+        WriteEvents(paths, sessionId, string.Join(Environment.NewLine,
+            EventJson(cutoffBoundary, "boundary"),
+            EventJson(now.AddMinutes(-10), "old"),
+            EventJson(now.AddMinutes(-1), "recent")));
+        var reader = new EventLogReader(paths);
+
+        try
+        {
+            // Act
+            var events = reader.ReadRecentEvents(sessionId, TimeSpan.FromMinutes(5));
+
+            // Assert
+            Assert.Equal(2, events.Count);
+            Assert.Equal("recent", events[0].Message);
+            Assert.Equal("boundary", events[1].Message);
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void ReadFilteredEvents_applies_category_level_search_and_time_filters_inclusive()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = CreateSessionId();
+        var start = new DateTime(2026, 9, 1, 10, 0, 0, DateTimeKind.Utc);
+        WriteEvents(paths, sessionId, string.Join(Environment.NewLine,
+            EventJson(start, "matching", level: 3, category: "Router", operation: "Request", context: "target"),
+            EventJson(start.AddMinutes(1), "different level", level: 1, category: "Router", operation: "Request"),
+            EventJson(start.AddMinutes(2), "different category", level: 3, category: "Auth", operation: "Request"),
+            EventJson(start.AddMinutes(3), "different text", level: 3, category: "Router", operation: "Health")));
+        var reader = new EventLogReader(paths);
+
+        try
+        {
+            // Act
+            var events = reader.ReadFilteredEvents(sessionId, "router", "error", "TARGET", start, start);
+
+            // Assert
+            var result = Assert.Single(events);
+            Assert.Equal("matching", result.Message);
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void ReadFilteredEvents_treats_all_filters_as_unrestricted_when_using_all_or_blank_values()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = CreateSessionId();
+        WriteEvents(paths, sessionId, string.Join(Environment.NewLine,
+            EventJson(new DateTime(2026, 9, 1, 10, 0, 0, DateTimeKind.Utc), "one", category: "A"),
+            EventJson(new DateTime(2026, 9, 1, 10, 1, 0, DateTimeKind.Utc), "two", category: "B")));
+        var reader = new EventLogReader(paths);
+
+        try
+        {
+            // Act
+            var events = reader.ReadFilteredEvents(sessionId, category: "All", level: "All", searchText: " ");
+
+            // Assert
+            Assert.Equal(2, events.Count);
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void GetCategories_returns_sorted_distinct_non_empty_categories()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = CreateSessionId();
+        WriteEvents(paths, sessionId, string.Join(Environment.NewLine,
+            EventJson(DateTime.UtcNow, "one", category: "Zebra"),
+            EventJson(DateTime.UtcNow, "two", category: ""),
+            EventJson(DateTime.UtcNow, "three", category: "Alpha"),
+            EventJson(DateTime.UtcNow, "four", category: "Zebra")));
+        var reader = new EventLogReader(paths);
+
+        try
+        {
+            // Act
+            var categories = reader.GetCategories(sessionId);
+
+            // Assert
+            Assert.Equal(new[] { "Alpha", "Zebra" }, categories);
+        }
+        finally
+        {
+            DeleteSession(paths, sessionId);
+        }
+    }
+
+    [Fact]
+    public void CalculateMetrics_counts_levels_categories_and_timestamp_bounds()
+    {
+        // Arrange
+        var oldest = new DateTime(2026, 9, 1, 10, 0, 0, DateTimeKind.Utc);
+        var events = new List<ObservabilityEvent>
+        {
+            new() { Timestamp = oldest, LevelInt = 0, Category = "A" },
+            new() { Timestamp = oldest.AddMinutes(1), LevelInt = 1, Category = "A" },
+            new() { Timestamp = oldest.AddMinutes(2), LevelInt = 2, Category = "B" },
+            new() { Timestamp = oldest.AddMinutes(3), LevelInt = 3, Category = "B" },
+            new() { Timestamp = oldest.AddMinutes(4), LevelInt = 99, Category = "B" }
+        };
         var reader = new EventLogReader(new ObservabilityPaths());
 
+        // Act
         var metrics = reader.CalculateMetrics(events);
 
+        // Assert
         Assert.Equal(5, metrics.TotalEvents);
-        Assert.Equal(2, metrics.ErrorCount);
-        Assert.Equal(1, metrics.WarningCount);
-        Assert.Equal(1, metrics.InfoCount);
         Assert.Equal(1, metrics.DebugCount);
-        Assert.Equal(3, metrics.CategoryCounts["A"]);
-        Assert.Equal(2, metrics.CategoryCounts["B"]);
-        Assert.Equal(DateTime.Parse("2026-09-07T10:00:00Z"), metrics.OldestEvent);
-        Assert.Equal(DateTime.Parse("2026-09-07T10:04:00Z"), metrics.NewestEvent);
+        Assert.Equal(1, metrics.InfoCount);
+        Assert.Equal(1, metrics.WarningCount);
+        Assert.Equal(1, metrics.ErrorCount);
+        Assert.Equal(2, metrics.CategoryCounts["A"]);
+        Assert.Equal(3, metrics.CategoryCounts["B"]);
+        Assert.Equal(oldest, metrics.OldestEvent);
+        Assert.Equal(oldest.AddMinutes(4), metrics.NewestEvent);
     }
 
     [Fact]
-    public void ObservabilityEvent_formats_context_values_for_display()
+    public void CalculateMetrics_returns_empty_bounds_and_counts_for_empty_input()
     {
-        var evt = new ObservabilityEvent
-        {
-            Context = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
-                "{\"text\":\"hello\",\"number\":42,\"enabled\":true,\"disabled\":false,\"empty\":null,\"nested\":{\"key\":\"value\"},\"items\":[1,2]}")
-        };
+        // Arrange
+        var reader = new EventLogReader(new ObservabilityPaths());
 
-        Assert.Equal("hello", evt.GetContextValue("text"));
-        Assert.Equal("42", evt.GetContextValue("number"));
-        Assert.Equal("true", evt.GetContextValue("enabled"));
-        Assert.Equal("false", evt.GetContextValue("disabled"));
-        Assert.Equal("null", evt.GetContextValue("empty"));
-        Assert.Equal("", evt.GetContextValue("missing"));
-        Assert.Equal("text=hello, number=42, enabled=true, disabled=false, empty=null, nested={\"key\":\"value\"}, items=[1,2]", evt.FormatContext());
+        // Act
+        var metrics = reader.CalculateMetrics(new List<ObservabilityEvent>());
+
+        // Assert
+        Assert.Equal(0, metrics.TotalEvents);
+        Assert.Empty(metrics.CategoryCounts);
+        Assert.Null(metrics.OldestEvent);
+        Assert.Null(metrics.NewestEvent);
     }
 
-    private static string EventJson(
-        string timestamp,
-        string operation,
-        string category = "Test",
-        int level = 1,
-        string message = "message",
-        Dictionary<string, object?>? context = null)
+    [Fact]
+    public void ObservabilityEvent_context_helpers_handle_missing_empty_and_all_json_value_kinds()
     {
-        return JsonSerializer.Serialize(new
-        {
-            timestamp,
-            level,
-            category,
-            @event = operation,
-            message,
-            context
-        });
+        // Arrange
+        using var document = JsonDocument.Parse("{\"text\":\"value\",\"number\":1.5,\"yes\":true,\"no\":false,\"nothing\":null,\"array\":[1],\"object\":{\"key\":\"value\"}}");
+        var context = document.RootElement.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
+        var withoutContext = new ObservabilityEvent();
+        var emptyContext = new ObservabilityEvent { Context = new Dictionary<string, JsonElement>() };
+        var eventWithContext = new ObservabilityEvent { Context = context };
+
+        // Act
+        var missingValue = eventWithContext.GetContextValue("missing");
+        var noContextFormatting = withoutContext.FormatContext();
+        var emptyContextFormatting = emptyContext.FormatContext();
+        var formattedContext = eventWithContext.FormatContext();
+
+        // Assert
+        Assert.Equal(string.Empty, missingValue);
+        Assert.Equal(string.Empty, noContextFormatting);
+        Assert.Equal(string.Empty, emptyContextFormatting);
+        Assert.Equal("value", eventWithContext.GetContextValue("text"));
+        Assert.Equal("1.5", eventWithContext.GetContextValue("number"));
+        Assert.Equal("true", eventWithContext.GetContextValue("yes"));
+        Assert.Equal("false", eventWithContext.GetContextValue("no"));
+        Assert.Equal("null", eventWithContext.GetContextValue("nothing"));
+        Assert.Contains("text=value", formattedContext);
+        Assert.Contains("array=[1]", formattedContext);
+        Assert.Contains("object={\"key\":\"value\"}", formattedContext);
     }
 
-    private static DateTime Utc(string value) => DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-
-    private static ObservabilityEvent Event(string timestamp, string operation, string category, int level)
+    [Theory]
+    [InlineData(0, "Debug")]
+    [InlineData(1, "Info")]
+    [InlineData(2, "Warning")]
+    [InlineData(3, "Error")]
+    [InlineData(99, "Unknown")]
+    public void Level_returns_readable_name_for_level_value(int level, string expected)
     {
-        return new ObservabilityEvent
-        {
-            Timestamp = DateTime.Parse(timestamp),
-            Operation = operation,
-            Category = category,
-            LevelInt = level
-        };
+        // Arrange
+        var observabilityEvent = new ObservabilityEvent { LevelInt = level };
+
+        // Act
+        var actual = observabilityEvent.Level;
+
+        // Assert
+        Assert.Equal(expected, actual);
     }
 
-    private sealed class TemporaryEventLog : IDisposable
+    private static string CreateSessionId() => $"event-log-reader-{Guid.NewGuid():N}";
+
+    private static void WriteEvents(ObservabilityPaths paths, string sessionId, string content)
     {
-        private readonly string _directory;
+        var filePath = paths.GetEventsFilePath(sessionId);
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, content);
+    }
 
-        public TemporaryEventLog(ObservabilityPaths paths)
+    private static string EventJson(DateTime timestamp, string message, int level = 1, string category = "Category", string operation = "Operation", string? context = null)
+    {
+        var contextJson = context is null ? "{}" : $"{{\"value\":\"{context}\"}}";
+        return $"{{\"timestamp\":\"{timestamp:O}\",\"level\":{level},\"category\":\"{category}\",\"event\":\"{operation}\",\"message\":\"{message}\",\"context\":{contextJson}}}";
+    }
+
+    private static void DeleteSession(ObservabilityPaths paths, string sessionId)
+    {
+        var directory = paths.GetSessionDirectory(sessionId);
+        if (Directory.Exists(directory))
         {
-            SessionId = $"event-log-reader-{Guid.NewGuid():N}";
-            _directory = paths.GetSessionDirectory(SessionId);
-        }
-
-        public string SessionId { get; }
-
-        public void Write(params string[] lines)
-        {
-            Directory.CreateDirectory(_directory);
-            File.WriteAllLines(Path.Combine(_directory, "events.jsonl"), lines);
-        }
-
-        public void Dispose()
-        {
-            if (Directory.Exists(_directory))
-                Directory.Delete(_directory, recursive: true);
+            Directory.Delete(directory, recursive: true);
         }
     }
 }
