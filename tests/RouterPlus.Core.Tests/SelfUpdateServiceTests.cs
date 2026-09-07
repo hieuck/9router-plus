@@ -55,6 +55,86 @@ public sealed class SelfUpdateServiceTests
         }
     }
 
+    [Fact]
+    public async Task Download_and_stage_rejects_release_without_verified_assets_before_download()
+    {
+        using var httpClient = new HttpClient(new ThrowingHandler());
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"));
+        var release = new ReleaseCheckResult(ReleaseVersion.Parse("1.0.0"), null, null, null, null);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAndStageAsync(release));
+    }
+
+    [Fact]
+    public async Task Download_and_stage_rejects_unapproved_asset_before_download()
+    {
+        using var httpClient = new HttpClient(new ThrowingHandler());
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"));
+        var release = CreateAvailableResult() with
+        {
+            Archive = CreateAvailableResult().Archive! with
+            {
+                DownloadUri = new Uri("http://github.com/hieuck/9router-plus/releases/download/v1.1.0/RouterPlus-v1.1.0-win-x64.zip")
+            }
+        };
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAndStageAsync(release));
+            Assert.False(Directory.Exists(UpdatePaths.VersionRoot(ReleaseVersion.Parse("1.1.0"))));
+        }
+        finally
+        {
+            DeleteVersionRoot();
+        }
+    }
+
+    [Fact]
+    public async Task Windows_updater_launcher_returns_false_when_updater_file_is_missing()
+    {
+        var launcher = new WindowsUpdaterProcessLauncher();
+
+        var launched = await launcher.LaunchAsync(
+            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "RouterPlus.Updater.exe"),
+            Path.GetTempPath(),
+            Path.GetTempPath(),
+            Path.GetTempPath(),
+            Environment.ProcessId,
+            ReleaseVersion.Parse("1.1.0"));
+
+        Assert.False(launched);
+    }
+
+    [Fact]
+    public async Task Launch_updater_delegates_paths_and_version_to_process_launcher()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "RouterPlusUpdateTests", Guid.NewGuid().ToString("N"));
+        var stagingPath = Path.Combine(root, "1.1.0", "staging");
+        Directory.CreateDirectory(stagingPath);
+        var launcher = new RecordingUpdaterLauncher();
+        using var httpClient = new HttpClient(new ThrowingHandler());
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), launcher);
+        var package = new VerifiedUpdatePackage(ReleaseVersion.Parse("1.1.0"), Path.Combine(root, "archive.zip"), stagingPath);
+
+        try
+        {
+            var launched = await service.LaunchUpdaterAsync(package);
+
+            Assert.True(launched);
+            Assert.Equal(Path.Combine(stagingPath, "RouterPlus.Updater.exe"), launcher.UpdaterPath);
+            Assert.Equal(Path.Combine(root, "1.1.0", "backup"), launcher.BackupDirectory);
+            Assert.Equal(package.Version, launcher.Version);
+            Assert.Equal(Environment.ProcessId, launcher.ProcessId);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static ReleaseCheckResult CreateAvailableResult() => new(
         ReleaseVersion.Parse("1.0.0"),
         ReleaseVersion.Parse("1.1.0"),
@@ -93,6 +173,38 @@ public sealed class SelfUpdateServiceTests
         if (Directory.Exists(versionRoot))
         {
             Directory.Delete(versionRoot, recursive: true);
+        }
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("HTTP should not be called");
+    }
+
+    private sealed class RecordingUpdaterLauncher : IUpdaterProcessLauncher
+    {
+        public string? UpdaterPath { get; private set; }
+        public string? BackupDirectory { get; private set; }
+        public int ProcessId { get; private set; }
+        public ReleaseVersion? Version { get; private set; }
+
+        public Task<bool> LaunchAsync(
+            string updaterPath,
+            string targetDirectory,
+            string stagingDirectory,
+            string backupDirectory,
+            int processId,
+            ReleaseVersion version,
+            CancellationToken cancellationToken = default)
+        {
+            UpdaterPath = updaterPath;
+            BackupDirectory = backupDirectory;
+            ProcessId = processId;
+            Version = version;
+            return Task.FromResult(true);
         }
     }
 
