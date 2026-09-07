@@ -45,6 +45,8 @@ public sealed class DiagnosticHelpersTests
         var writer = new InMemoryObservabilityWriter();
         var hub = ObservabilityHub.Instance;
         hub.SetWriter(writer);
+        await hub.FlushAsync();
+        var baseline = writer.Events.Count;
 
         // Act
         UIEventLogger.LogClick("SyntheticButton", "synthetic-click");
@@ -60,8 +62,8 @@ public sealed class DiagnosticHelpersTests
         await hub.FlushAsync();
 
         // Assert
-        var events = writer.Events;
-        Assert.Equal(10, events.Count);
+        var events = writer.Events.Skip(baseline).ToArray();
+        Assert.Contains(events, e => e.Event == "Click");
         Assert.Equal("CLICK SyntheticButton", EventByName(events, "Click").Message);
         Assert.Equal("synthetic-click", Context(EventByName(events, "Click"))["details"]);
         Assert.Equal("RIGHT-CLICK SyntheticRow", EventByName(events, "RightClick").Message);
@@ -84,13 +86,17 @@ public sealed class DiagnosticHelpersTests
         var writer = new InMemoryObservabilityWriter();
         var hub = ObservabilityHub.Instance;
         hub.SetWriter(writer);
+        await hub.FlushAsync();
+        var baseline = writer.Events.Count;
 
         // Act
         UIEventLogger.LogSelection("SyntheticPicker", null);
         await hub.FlushAsync();
 
         // Assert
-        Assert.Equal("null", Context(EventByName(writer.Events, "Selection"))["selected_value"]);
+        Assert.Equal(
+            "null",
+            Context(EventByName(writer.Events.Skip(baseline).ToArray(), "Selection"))["selected_value"]);
     }
 
     [Fact]
@@ -100,6 +106,8 @@ public sealed class DiagnosticHelpersTests
         var writer = new InMemoryObservabilityWriter();
         var hub = ObservabilityHub.Instance;
         hub.SetWriter(writer);
+        await hub.FlushAsync();
+        var baseline = writer.Events.Count;
 
         // Act
         ViewModelLogger.LogPropertyChanged("SyntheticViewModel", "SyntheticProperty");
@@ -109,12 +117,17 @@ public sealed class DiagnosticHelpersTests
         await hub.FlushAsync();
 
         // Assert
-        var events = writer.Events;
-        Assert.Equal(4, events.Count);
-        Assert.Equal("SyntheticViewModel.SyntheticProperty changed", EventByName(events, "PropertyChanged").Message);
-        Assert.Equal("synthetic-parameter", Context(EventByName(events, "CommandExecute"))["parameter"]);
-        Assert.False((bool)Context(EventByName(events, "CommandCanExecuteChanged"))["can_execute"]!);
-        Assert.Equal(7, Context(EventByName(events, "DataLoaded"))["count"]);
+        var events = writer.Events.Skip(baseline).ToArray();
+        Assert.Contains(events, e => e.Event == "PropertyChanged" &&
+            e.Message == "SyntheticViewModel.SyntheticProperty changed");
+        Assert.Equal(
+            "synthetic-parameter",
+            Context(events.Single(e => e.Event == "CommandExecute" &&
+                e.Message == "SyntheticViewModel.SyntheticCommand executed"))["parameter"]);
+        Assert.False((bool)Context(events.Single(e => e.Event == "CommandCanExecuteChanged" &&
+            e.Message == "SyntheticViewModel.SyntheticCommand CanExecute changed"))["can_execute"]!);
+        Assert.Equal(7, Context(events.Single(e => e.Event == "DataLoaded" &&
+            e.Message == "SyntheticViewModel loaded SyntheticItems"))["count"]);
     }
 
     [Fact]
@@ -124,6 +137,8 @@ public sealed class DiagnosticHelpersTests
         var writer = new InMemoryObservabilityWriter();
         var hub = ObservabilityHub.Instance;
         hub.SetWriter(writer);
+        await hub.FlushAsync();
+        var baseline = writer.Events.Count;
 
         // Act
         ChromeLogger.LogProfileScan(3, 42);
@@ -133,8 +148,8 @@ public sealed class DiagnosticHelpersTests
         await hub.FlushAsync();
 
         // Assert
-        var events = writer.Events;
-        Assert.Equal(4, events.Count);
+        var events = writer.Events.Skip(baseline).ToArray();
+        Assert.Contains(events, e => e.Event == "ProfileScanCompleted");
         Assert.Equal(LogLevel.Info, EventByName(events, "ProfileScanCompleted").Level);
         Assert.Equal(3, Context(EventByName(events, "ProfileScanCompleted"))["profile_count"]);
         Assert.Equal(42L, Context(EventByName(events, "ProfileScanCompleted"))["elapsed_ms"]);

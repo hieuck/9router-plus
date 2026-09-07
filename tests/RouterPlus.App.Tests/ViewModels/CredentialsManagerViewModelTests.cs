@@ -354,8 +354,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
 
         // Act
         viewModel.BatchLoginCommand.Execute(null);
-        await WaitForAsync(() => viewModel.BatchLoginTask is not null);
-        await viewModel.BatchLoginTask!;
+        await WaitForAsync(() => viewModel.StatusMessage.Contains(
+            "Vault not unlocked", StringComparison.OrdinalIgnoreCase));
 
         // Assert
         Assert.False(invoked);
