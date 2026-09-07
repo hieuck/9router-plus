@@ -6,6 +6,32 @@ namespace RouterPlus.Core.Tests.Chrome;
 public sealed class ProfileHealthCheckerTests
 {
     [Fact]
+    public void CheckFilesystemHealth_NullProfile_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var checker = new ProfileHealthChecker();
+
+        // Act
+        var act = () => checker.CheckFilesystemHealth(null!);
+
+        // Assert
+        Assert.Throws<ArgumentNullException>(act);
+    }
+
+    [Fact]
+    public void CheckCredentialsHealth_NullProfile_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var checker = new ProfileHealthChecker();
+
+        // Act
+        var act = () => checker.CheckCredentialsHealth(null!, vault: null);
+
+        // Assert
+        Assert.Throws<ArgumentNullException>(act);
+    }
+
+    [Fact]
     public void CheckFilesystemHealth_ProfileDirectoryMissing_ReturnsError()
     {
         var profile = new ChromeProfile(
