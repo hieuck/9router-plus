@@ -100,7 +100,64 @@ public sealed class OAuthAutomationDecisionTests
     }
 
     [Fact]
-    public async Task OpenRouter_ShouldClickProviderConsent_requires_provider_terms_button()
+    public async Task OpenRouter_ShouldClickProviderConsent_returns_false_when_terms_button_is_missing()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new OpenRouterOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new OpenRouterOAuthPageState
+            {
+                CurrentUrl = "https://openrouter.ai/terms",
+                IsOpenRouterOAuthPage = false,
+                IsTargetService = false,
+                HasGoogleLoginButton = false,
+                HasTermsConsentButton = false
+            }
+        };
+
+        // Act
+        var result = InvokeDecision(automation, "ShouldClickProviderConsent", state);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task OpenRouter_ShouldClickProviderConsent_returns_false_on_google_owned_page()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new OpenRouterOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new OpenRouterOAuthPageState
+            {
+                CurrentUrl = "https://openrouter.ai/terms",
+                IsOpenRouterOAuthPage = false,
+                IsTargetService = false,
+                HasGoogleLoginButton = false,
+                HasTermsConsentButton = true
+            },
+            GoogleState = new GoogleOAuthPageState
+            {
+                CurrentUrl = "https://accounts.google.com/signin",
+                HasAccountPicker = false,
+                HasGoogleTotpInput = false,
+                HasGoogleConsentButton = false
+            }
+        };
+
+        // Act
+        var result = InvokeDecision(automation, "ShouldClickProviderConsent", state);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task OpenRouter_ShouldClickProviderConsent_returns_true_when_provider_terms_button_is_present()
     {
         // Arrange
         await using var client = CreateClient();
@@ -123,6 +180,7 @@ public sealed class OAuthAutomationDecisionTests
         // Assert
         Assert.True(result);
     }
+
 
     [Fact]
     public async Task AwsBuilderId_CheckCompletion_returns_success_when_authorization_is_complete()
@@ -178,6 +236,83 @@ public sealed class OAuthAutomationDecisionTests
         // Assert
         Assert.True(initialResult);
         Assert.True(consentResult);
+    }
+
+    [Fact]
+    public async Task AwsBuilderId_ShouldClickProviderInitialButton_returns_false_when_button_is_missing()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new AwsBuilderIdOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new AwsBuilderIdOAuthPageState
+            {
+                CurrentUrl = "https://auth.kiro.dev/",
+                IsAwsBuilderIdPage = true,
+                IsCompletionPage = false,
+                HasContinueWithGoogleButton = false,
+                HasAwsConsentButton = true
+            }
+        };
+
+        // Act
+        var result = InvokeDecision(automation, "ShouldClickProviderInitialButton", state);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task AwsBuilderId_ShouldClickProviderConsent_returns_false_when_button_is_missing()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new AwsBuilderIdOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new AwsBuilderIdOAuthPageState
+            {
+                CurrentUrl = "https://auth.kiro.dev/",
+                IsAwsBuilderIdPage = true,
+                IsCompletionPage = false,
+                HasContinueWithGoogleButton = true,
+                HasAwsConsentButton = false
+            }
+        };
+
+        // Act
+        var result = InvokeDecision(automation, "ShouldClickProviderConsent", state);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task AwsBuilderId_provider_decisions_return_false_on_non_aws_page()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new AwsBuilderIdOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new AwsBuilderIdOAuthPageState
+            {
+                CurrentUrl = "https://example.com/",
+                IsAwsBuilderIdPage = false,
+                IsCompletionPage = false,
+                HasContinueWithGoogleButton = true,
+                HasAwsConsentButton = true
+            }
+        };
+
+        // Act
+        var initialResult = InvokeDecision(automation, "ShouldClickProviderInitialButton", state);
+        var consentResult = InvokeDecision(automation, "ShouldClickProviderConsent", state);
+
+        // Assert
+        Assert.False(initialResult);
+        Assert.False(consentResult);
     }
 
     private static ChromeCdpClient CreateClient() =>
