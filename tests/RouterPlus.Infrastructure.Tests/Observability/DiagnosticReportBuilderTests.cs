@@ -97,9 +97,13 @@ public class DiagnosticReportBuilderTests
         var browser = new SessionBrowser(paths);
         var builder = new DiagnosticReportBuilder(paths, browser);
 
-        // Act & Assert
-        Assert.Throws<DirectoryNotFoundException>(() =>
+        // Act
+        var exception = Record.Exception(() =>
             builder.CreateReport("nonexistent_session", Path.GetTempFileName()));
+
+        // Assert
+        var directoryNotFoundException = Assert.IsType<DirectoryNotFoundException>(exception);
+        Assert.Equal("Session nonexistent_session not found", directoryNotFoundException.Message);
     }
 
     [Fact]
