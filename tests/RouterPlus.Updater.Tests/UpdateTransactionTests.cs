@@ -255,6 +255,128 @@ public sealed class UpdateTransactionTests
         Assert.Equal("old", await fixture.ReadAsync(fixture.TargetDirectory));
     }
 
+    [Fact]
+    public async Task Execute_swaps_after_parent_exits()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var checks = 0;
+        var runtime = new FakeRuntime
+        {
+            ProcessRunning = () => Interlocked.Increment(ref checks) == 1,
+            HealthCheckResult = true
+        };
+        var transaction = new UpdateTransaction(runtime, new FakeMutex { Acquired = true });
+
+        var result = await transaction.ExecuteAsync(fixture.Options);
+
+        Assert.Equal(UpdateTransactionResult.Success, result);
+        Assert.Equal("new", await fixture.ReadAsync(fixture.TargetDirectory));
+        Assert.Equal(2, checks);
+    }
+
+    [Fact]
+    public async Task Execute_returns_swap_failed_when_target_disappears_before_swap()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var mutex = new FakeMutex
+        {
+            Acquired = true,
+            OnAcquire = () => Directory.Delete(fixture.TargetDirectory, recursive: true)
+        };
+        var transaction = new UpdateTransaction(new FakeRuntime(), mutex);
+
+        var result = await transaction.ExecuteAsync(fixture.Options);
+
+        Assert.Equal(UpdateTransactionResult.SwapFailed, result);
+        Assert.False(Directory.Exists(fixture.TargetDirectory));
+        Assert.Equal("new", await fixture.ReadAsync(fixture.StagingDirectory));
+    }
+
+    [Fact]
+    public async Task Execute_rolls_back_when_staging_disappears_during_swap()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var mutex = new FakeMutex
+        {
+            Acquired = true,
+            OnAcquire = () => Directory.Delete(fixture.StagingDirectory, recursive: true)
+        };
+        var runtime = new FakeRuntime
+        {
+            HealthCheckResult = true
+        };
+        var transaction = new UpdateTransaction(runtime, mutex);
+
+        var result = await transaction.ExecuteAsync(fixture.Options);
+
+        Assert.Equal(UpdateTransactionResult.SwapFailed, result);
+        Assert.Equal("old", await fixture.ReadAsync(fixture.TargetDirectory));
+        Assert.False(Directory.Exists(fixture.StagingDirectory));
+        Assert.False(Directory.Exists(fixture.BackupDirectory));
+    }
+
+    [Fact]
+    public async Task Execute_returns_swap_failed_and_restores_target_when_health_check_is_cancelled()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var runtime = new FakeRuntime { ThrowOperationCanceled = true };
+        var transaction = new UpdateTransaction(runtime, new FakeMutex { Acquired = true });
+
+        var result = await transaction.ExecuteAsync(fixture.Options);
+
+        Assert.Equal(UpdateTransactionResult.SwapFailed, result);
+        Assert.Equal("old", await fixture.ReadAsync(fixture.TargetDirectory));
+        Assert.False(Directory.Exists(fixture.BackupDirectory));
+    }
+
+    [Fact]
+    public async Task Execute_returns_rollback_failed_when_backup_disappears_before_rollback()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var runtime = new FakeRuntime
+        {
+            HealthCheckResult = false,
+            BeforeHealthCheck = () => Directory.Delete(fixture.BackupDirectory, recursive: true)
+        };
+        var transaction = new UpdateTransaction(runtime, new FakeMutex { Acquired = true });
+
+        var result = await transaction.ExecuteAsync(fixture.Options);
+
+        Assert.Equal(UpdateTransactionResult.RollbackFailed, result);
+        Assert.False(Directory.Exists(fixture.TargetDirectory));
+    }
+
+    [Fact]
+    public async Task Execute_propagates_cancellation_while_waiting_for_parent()
+    {
+        using var fixture = UpdateFixture.Create(parentWaitTimeout: TimeSpan.FromSeconds(1));
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        using var cancellation = new CancellationTokenSource();
+        var runtime = new FakeRuntime
+        {
+            ParentRunning = true,
+            Delay = TimeSpan.Zero,
+            CancelDuringDelay = cancellation
+        };
+        var transaction = new UpdateTransaction(runtime, new FakeMutex { Acquired = true });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transaction.ExecuteAsync(fixture.Options, cancellation.Token));
+
+        Assert.Equal("old", await fixture.ReadAsync(fixture.TargetDirectory));
+        Assert.Equal("new", await fixture.ReadAsync(fixture.StagingDirectory));
+    }
+
     private sealed class UpdateFixture : IDisposable
     {
         private UpdateFixture(string root, TimeSpan parentWaitTimeout)
@@ -304,15 +426,22 @@ public sealed class UpdateTransactionTests
     private sealed class FakeRuntime : IUpdateTransactionRuntime
     {
         public bool ParentRunning { get; init; }
+        public Func<bool>? ProcessRunning { get; init; }
         public TimeSpan Delay { get; init; } = TimeSpan.Zero;
         public bool HealthCheckResult { get; init; }
         public Exception? HealthCheckException { get; init; }
+        public bool ThrowOperationCanceled { get; init; }
         public Action? BeforeHealthCheck { get; init; }
+        public CancellationTokenSource? CancelDuringDelay { get; init; }
         public string? StartedExecutable { get; private set; }
 
-        public bool IsProcessRunning(int processId) => ParentRunning;
+        public bool IsProcessRunning(int processId) => ProcessRunning?.Invoke() ?? ParentRunning;
 
-        public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) => Task.Delay(Delay, cancellationToken);
+        public async Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            CancelDuringDelay?.Cancel();
+            await Task.Delay(Delay, cancellationToken);
+        }
 
         public Task<bool> LaunchAndWaitForHealthyAsync(string executablePath, string workingDirectory, TimeSpan timeout, CancellationToken cancellationToken)
         {
@@ -323,6 +452,11 @@ public sealed class UpdateTransactionTests
                 throw HealthCheckException;
             }
 
+            if (ThrowOperationCanceled)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+
             return Task.FromResult(HealthCheckResult);
         }
     }
@@ -330,7 +464,13 @@ public sealed class UpdateTransactionTests
     private sealed class FakeMutex : IUpdateMutex
     {
         public bool Acquired { get; init; }
-        public bool TryAcquire() => Acquired;
+        public Action? OnAcquire { get; init; }
+        public bool TryAcquire()
+        {
+            OnAcquire?.Invoke();
+            return Acquired;
+        }
+
         public void Dispose() { }
     }
 }
