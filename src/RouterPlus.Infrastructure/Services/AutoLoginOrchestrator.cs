@@ -15,14 +15,14 @@ namespace RouterPlus.Infrastructure.Services;
 /// </summary>
 public sealed class AutoLoginOrchestrator
 {
-    private readonly GoogleAccountVaultStore _googleAccountVault;
+    private readonly IGoogleAccountVaultStore _googleAccountVault;
     private readonly ProviderConnectionVaultStore _connectionVault;
     private readonly IChromeLauncher _chromeLauncher;
     private readonly IProviderOAuthAdapterRegistry _oauthAdapterRegistry;
     private readonly IGoogleAuthenticationService _googleAuthenticationService;
 
     public AutoLoginOrchestrator(
-        GoogleAccountVaultStore googleAccountVault,
+        IGoogleAccountVaultStore googleAccountVault,
         ProviderConnectionVaultStore connectionVault,
         IChromeLauncher chromeLauncher,
         IProviderOAuthAdapterRegistry? oauthAdapterRegistry = null,
