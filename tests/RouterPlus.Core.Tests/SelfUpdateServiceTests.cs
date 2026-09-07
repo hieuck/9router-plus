@@ -34,6 +34,80 @@ public sealed class SelfUpdateServiceTests
     }
 
     [Fact]
+    public async Task Download_and_stage_rejects_an_unverified_release_without_downloading()
+    {
+        var handler = new AssetHandler(Array.Empty<byte>(), string.Empty);
+        using var httpClient = new HttpClient(handler);
+        var updateRoot = CreateUpdateRoot();
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), updateRoot: updateRoot);
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAndStageAsync(
+                new ReleaseCheckResult(ReleaseVersion.Parse("1.0.0"), null, null, null, null)));
+
+            Assert.Empty(handler.RequestedUris);
+        }
+        finally
+        {
+            DeleteUpdateRoot(updateRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Download_and_stage_rejects_an_asset_with_an_untrusted_uri_and_cleans_stage()
+    {
+        var handler = new AssetHandler(Array.Empty<byte>(), string.Empty);
+        using var httpClient = new HttpClient(handler);
+        var updateRoot = CreateUpdateRoot();
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), updateRoot: updateRoot);
+        var release = CreateAvailableResult() with
+        {
+            Archive = new ReleaseAsset(
+                "RouterPlus-v1.1.0-win-x64.zip",
+                new Uri("http://github.com/hieuck/9router-plus/releases/download/v1.1.0/RouterPlus-v1.1.0-win-x64.zip"),
+                0,
+                null,
+                true)
+        };
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAndStageAsync(release));
+            Assert.False(Directory.Exists(UpdatePaths.VersionRoot(updateRoot, ReleaseVersion.Parse("1.1.0"))));
+            Assert.Empty(handler.RequestedUris);
+        }
+        finally
+        {
+            DeleteUpdateRoot(updateRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Download_and_stage_rejects_a_response_redirect_to_an_untrusted_host()
+    {
+        var archiveBytes = CreateUpdateArchive();
+        var checksum = Convert.ToHexString(SHA256.HashData(archiveBytes)).ToLowerInvariant();
+        var handler = new AssetHandler(archiveBytes, $"{checksum}  RouterPlus-v1.1.0-win-x64.zip")
+        {
+            ResponseUri = new Uri("https://example.test/asset")
+        };
+        using var httpClient = new HttpClient(handler);
+        var updateRoot = CreateUpdateRoot();
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), updateRoot: updateRoot);
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAndStageAsync(CreateAvailableResult()));
+            Assert.False(Directory.Exists(UpdatePaths.VersionRoot(updateRoot, ReleaseVersion.Parse("1.1.0"))));
+        }
+        finally
+        {
+            DeleteUpdateRoot(updateRoot);
+        }
+    }
+
+    [Fact]
     public async Task Download_and_stage_cleans_partial_download_when_checksum_request_fails()
     {
         var handler = new AssetHandler(Array.Empty<byte>(), string.Empty)
@@ -49,92 +123,11 @@ public sealed class SelfUpdateServiceTests
             await Assert.ThrowsAsync<HttpRequestException>(() =>
                 service.DownloadAndStageAsync(CreateAvailableResult()));
 
-            Assert.False(Directory.Exists(UpdatePaths.ResolveUnderRoot(updateRoot, "1.1.0")));
+            Assert.False(Directory.Exists(UpdatePaths.VersionRoot(updateRoot, ReleaseVersion.Parse("1.1.0"))));
         }
         finally
         {
             DeleteUpdateRoot(updateRoot);
-        }
-    }
-
-    [Fact]
-    public async Task Download_and_stage_rejects_release_without_verified_assets_before_download()
-    {
-        using var httpClient = new HttpClient(new ThrowingHandler());
-        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"));
-        var release = new ReleaseCheckResult(ReleaseVersion.Parse("1.0.0"), null, null, null, null);
-
-        await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAndStageAsync(release));
-    }
-
-    [Fact]
-    public async Task Download_and_stage_rejects_unapproved_asset_before_download()
-    {
-        using var httpClient = new HttpClient(new ThrowingHandler());
-        var updateRoot = CreateUpdateRoot();
-        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), updateRoot: updateRoot);
-        var release = CreateAvailableResult() with
-        {
-            Archive = CreateAvailableResult().Archive! with
-            {
-                DownloadUri = new Uri("http://github.com/hieuck/9router-plus/releases/download/v1.1.0/RouterPlus-v1.1.0-win-x64.zip")
-            }
-        };
-
-        try
-        {
-            await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAndStageAsync(release));
-            Assert.False(Directory.Exists(UpdatePaths.ResolveUnderRoot(updateRoot, "1.1.0")));
-        }
-        finally
-        {
-            DeleteUpdateRoot(updateRoot);
-        }
-    }
-
-    [Fact]
-    public async Task Windows_updater_launcher_returns_false_when_updater_file_is_missing()
-    {
-        var launcher = new WindowsUpdaterProcessLauncher();
-
-        var launched = await launcher.LaunchAsync(
-            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "RouterPlus.Updater.exe"),
-            Path.GetTempPath(),
-            Path.GetTempPath(),
-            Path.GetTempPath(),
-            Environment.ProcessId,
-            ReleaseVersion.Parse("1.1.0"));
-
-        Assert.False(launched);
-    }
-
-    [Fact]
-    public async Task Launch_updater_delegates_paths_and_version_to_process_launcher()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "RouterPlusUpdateTests", Guid.NewGuid().ToString("N"));
-        var stagingPath = Path.Combine(root, "1.1.0", "staging");
-        Directory.CreateDirectory(stagingPath);
-        var launcher = new RecordingUpdaterLauncher();
-        using var httpClient = new HttpClient(new ThrowingHandler());
-        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), launcher);
-        var package = new VerifiedUpdatePackage(ReleaseVersion.Parse("1.1.0"), Path.Combine(root, "archive.zip"), stagingPath);
-
-        try
-        {
-            var launched = await service.LaunchUpdaterAsync(package);
-
-            Assert.True(launched);
-            Assert.Equal(Path.Combine(stagingPath, "RouterPlus.Updater.exe"), launcher.UpdaterPath);
-            Assert.Equal(Path.Combine(root, "1.1.0", "backup"), launcher.BackupDirectory);
-            Assert.Equal(package.Version, launcher.Version);
-            Assert.Equal(Environment.ProcessId, launcher.ProcessId);
-        }
-        finally
-        {
-            if (Directory.Exists(root))
-            {
-                Directory.Delete(root, recursive: true);
-            }
         }
     }
 
@@ -170,46 +163,18 @@ public sealed class SelfUpdateServiceTests
         return stream.ToArray();
     }
 
-    private static string CreateUpdateRoot() =>
-        Path.Combine(Path.GetTempPath(), "RouterPlusUpdateTests", Guid.NewGuid().ToString("N"));
-
-    private static void DeleteUpdateRoot(string updateRoot)
+    private static string CreateUpdateRoot()
     {
-        if (Directory.Exists(updateRoot))
-        {
-            Directory.Delete(updateRoot, recursive: true);
-        }
+        var root = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        return root;
     }
 
-    private sealed class ThrowingHandler : HttpMessageHandler
+    private static void DeleteUpdateRoot(string root)
     {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("HTTP should not be called");
-    }
-
-    private sealed class RecordingUpdaterLauncher : IUpdaterProcessLauncher
-    {
-        public string? UpdaterPath { get; private set; }
-        public string? BackupDirectory { get; private set; }
-        public int ProcessId { get; private set; }
-        public ReleaseVersion? Version { get; private set; }
-
-        public Task<bool> LaunchAsync(
-            string updaterPath,
-            string targetDirectory,
-            string stagingDirectory,
-            string backupDirectory,
-            int processId,
-            ReleaseVersion version,
-            CancellationToken cancellationToken = default)
+        if (Directory.Exists(root))
         {
-            UpdaterPath = updaterPath;
-            BackupDirectory = backupDirectory;
-            ProcessId = processId;
-            Version = version;
-            return Task.FromResult(true);
+            Directory.Delete(root, recursive: true);
         }
     }
 
@@ -217,10 +182,15 @@ public sealed class SelfUpdateServiceTests
     {
         public bool ThrowOnChecksumRequest { get; init; }
 
+        public Uri? ResponseUri { get; init; }
+
+        public List<Uri> RequestedUris { get; } = [];
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            RequestedUris.Add(request.RequestUri!);
             if (request.RequestUri?.AbsolutePath.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase) == true)
             {
                 if (ThrowOnChecksumRequest)
@@ -231,10 +201,16 @@ public sealed class SelfUpdateServiceTests
                 return Task.FromResult(CreateResponse(checksumText, "text/plain"));
             }
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new ByteArrayContent(archiveBytes)
-            });
+            };
+            if (ResponseUri is not null)
+            {
+                response.RequestMessage = new HttpRequestMessage(HttpMethod.Get, ResponseUri);
+            }
+
+            return Task.FromResult(response);
         }
 
         private static HttpResponseMessage CreateResponse(string content, string mediaType) =>

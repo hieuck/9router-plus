@@ -49,8 +49,7 @@ public sealed class SelfUpdateService : IUpdateService
             throw new InvalidDataException("No verified update is available.");
         }
 
-        var versionRoot = UpdatePaths.ResolveUnderRoot(_updateRoot, release.AvailableVersion.ToString());
-
+        var versionRoot = UpdatePaths.VersionRoot(_updateRoot, release.AvailableVersion);
         if (Directory.Exists(versionRoot))
         {
             Directory.Delete(versionRoot, recursive: true);
