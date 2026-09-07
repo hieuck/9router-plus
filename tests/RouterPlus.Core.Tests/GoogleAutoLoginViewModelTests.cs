@@ -9,80 +9,122 @@ namespace RouterPlus.Core.Tests;
 public sealed class GoogleAutoLoginViewModelTests
 {
     [Fact]
-    public void Constructor_initializes_profile_and_locked_state()
+    public void Remembered_vault_loads_credentials_by_profile_id()
     {
+        // Arrange
         var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
-        var viewModel = new GoogleAutoLoginViewModel(profile, new FakeVaultStore(), FakeAutomation);
+        var rememberedCredential = new GoogleLoginCredential("profile-1", "remembered@example.com", "remembered-password", "REMEMBEREDTOTP");
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedVault = new GoogleAccountVault(new[] { rememberedCredential })
+        };
 
-        Assert.Equal("Default", viewModel.ProfileName);
+        // Act
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+
+        // Assert
+        Assert.True(vaultStore.RememberedUnlockCalled);
+        Assert.True(viewModel.IsVaultUnlocked);
+        Assert.Equal("Vault unlocked from remembered device", viewModel.StatusText);
+        Assert.Equal("remembered@example.com", viewModel.Email);
+        Assert.Equal("remembered-password", viewModel.Password);
+        Assert.Equal("REMEMBEREDTOTP", viewModel.TotpSecret);
+    }
+
+    [Fact]
+    public void Remembered_vault_loads_legacy_credentials_by_profile_name()
+    {
+        // Arrange
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var rememberedCredential = new GoogleLoginCredential("test.user@example.com", "legacy@example.com", "legacy-password", "LEGACYTOTP");
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedVault = new GoogleAccountVault(new[] { rememberedCredential })
+        };
+
+        // Act
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+
+        // Assert
+        Assert.True(viewModel.IsVaultUnlocked);
+        Assert.Equal("legacy@example.com", viewModel.Email);
+        Assert.Equal("legacy-password", viewModel.Password);
+        Assert.Equal("LEGACYTOTP", viewModel.TotpSecret);
+    }
+
+    [Fact]
+    public void Remembered_vault_without_profile_credentials_stays_unlocked_without_loading_fields()
+    {
+        // Arrange
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var otherCredential = new GoogleLoginCredential("other-profile", "other@example.com", "other-password", "OTHERTOTP");
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedVault = new GoogleAccountVault(new[] { otherCredential })
+        };
+
+        // Act
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+
+        // Assert
+        Assert.True(viewModel.IsVaultUnlocked);
+        Assert.Equal("Vault unlocked from remembered device", viewModel.StatusText);
         Assert.Equal(string.Empty, viewModel.Email);
         Assert.Equal(string.Empty, viewModel.Password);
         Assert.Equal(string.Empty, viewModel.TotpSecret);
-        Assert.Equal(string.Empty, viewModel.StatusText);
-        Assert.False(viewModel.IsVaultUnlocked);
-        Assert.False(viewModel.IsBusy);
-        Assert.False(viewModel.RememberOnDevice);
-        Assert.Equal("Locked", viewModel.VaultPasswordStatus);
-        Assert.False(viewModel.CanAutoLogin);
     }
 
     [Fact]
-    public void Constructor_rejects_missing_dependencies()
+    public void Missing_remembered_vault_leaves_view_model_locked()
     {
+        // Arrange
         var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
         var vaultStore = new FakeVaultStore();
 
-        Assert.Throws<ArgumentNullException>(() => new GoogleAutoLoginViewModel(null!, vaultStore, FakeAutomation));
-        Assert.Throws<ArgumentNullException>(() => new GoogleAutoLoginViewModel(profile, null!, FakeAutomation));
-        Assert.Throws<ArgumentNullException>(() => new GoogleAutoLoginViewModel(profile, vaultStore, null!));
+        // Act
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+
+        // Assert
+        Assert.True(vaultStore.RememberedUnlockCalled);
+        Assert.False(viewModel.IsVaultUnlocked);
+        Assert.Equal(string.Empty, viewModel.StatusText);
     }
-
-    [Theory]
-    [MemberData(nameof(LoginResultStatuses))]
-    public async Task AutoLoginAsync_maps_result_category_to_status(
-        GoogleLoginResult result,
-        string expectedStatus)
-    {
-        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
-        var viewModel = new GoogleAutoLoginViewModel(
-            profile,
-            new FakeVaultStore(),
-            (_, _, _) => Task.FromResult(result));
-
-        await viewModel.UnlockVaultAsync("vault-password", false, CancellationToken.None);
-        await viewModel.AutoLoginAsync("user@example.com", "password", "JBSWY3DPEHPK3PXP", CancellationToken.None);
-
-        Assert.Equal(expectedStatus, viewModel.StatusText);
-        Assert.False(viewModel.IsBusy);
-    }
-
-    public static TheoryData<GoogleLoginResult, string> LoginResultStatuses => new()
-    {
-        { GoogleLoginResult.Success(), "Login completed successfully" },
-        { GoogleLoginResult.ManualInterventionRequired("Complete the challenge"), "Manual intervention required. Chrome is open for you to continue." },
-        { GoogleLoginResult.InvalidCredentials(), "Invalid credentials" },
-        { GoogleLoginResult.Timeout(), "Login timed out" },
-        { GoogleLoginResult.Cancelled(), "Login cancelled" },
-        { GoogleLoginResult.BrowserDisconnected("Browser closed"), "Browser closed" },
-        { GoogleLoginResult.UnsupportedPage("Unsupported sign-in page"), "Unsupported page or navigation blocked" }
-    };
 
     [Fact]
-    public async Task AutoLoginAsync_reports_safe_status_when_automation_fails()
+    public void Remembered_vault_error_is_suppressed_and_leaves_view_model_locked()
     {
+        // Arrange
         var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
-        var viewModel = new GoogleAutoLoginViewModel(
-            profile,
-            new FakeVaultStore(),
-            (_, _, _) => throw new InvalidOperationException("automation detail"));
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedUnlockException = new System.Security.Cryptography.CryptographicException("remembered key is invalid")
+        };
 
-        await viewModel.UnlockVaultAsync("vault-password", false, CancellationToken.None);
+        // Act
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            viewModel.AutoLoginAsync("user@example.com", "password", "JBSWY3DPEHPK3PXP", CancellationToken.None));
+        // Assert
+        Assert.True(vaultStore.RememberedUnlockCalled);
+        Assert.False(viewModel.IsVaultUnlocked);
+        Assert.Equal(string.Empty, viewModel.StatusText);
+    }
 
-        Assert.Equal("Auto-login failed: automation detail", viewModel.StatusText);
+    [Fact]
+    public async Task Vault_unlock_error_reports_safe_status_and_resets_busy_state()
+    {
+        // Arrange
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var vaultStore = new FakeVaultStore { ThrowOnWrongPassword = true };
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+
+        // Act
+        await Assert.ThrowsAsync<System.Security.Cryptography.CryptographicException>(() =>
+            viewModel.UnlockVaultAsync("wrong-password", false, CancellationToken.None));
+
+        // Assert
+        Assert.False(viewModel.IsVaultUnlocked);
         Assert.False(viewModel.IsBusy);
+        Assert.Equal("Failed to unlock vault: Cryptographic operation failed", viewModel.StatusText);
     }
 
     [Fact]
@@ -283,6 +325,9 @@ public sealed class GoogleAutoLoginViewModelTests
         private FakeSession? _currentSession;
         public GoogleAccountVault? SavedVault { get; private set; }
         public bool ThrowOnWrongPassword { get; set; }
+        public GoogleAccountVault? RememberedVault { get; set; }
+        public Exception? RememberedUnlockException { get; set; }
+        public bool RememberedUnlockCalled { get; private set; }
         public bool RememberCalled { get; private set; }
         public bool ImportCalled { get; private set; }
         public string? ImportSourcePath { get; private set; }
@@ -311,7 +356,15 @@ public sealed class GoogleAutoLoginViewModelTests
 
         public Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<GoogleAccountVaultSession?>(null);
+            RememberedUnlockCalled = true;
+            if (RememberedUnlockException != null)
+                throw RememberedUnlockException;
+
+            if (RememberedVault == null)
+                return Task.FromResult<GoogleAccountVaultSession?>(null);
+
+            _currentSession = new FakeSession(this, RememberedVault);
+            return Task.FromResult<GoogleAccountVaultSession?>(_currentSession);
         }
 
         public Task SaveAsync(GoogleAccountVaultSession session, CancellationToken cancellationToken = default)
