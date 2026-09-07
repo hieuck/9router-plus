@@ -430,4 +430,223 @@ public class ProviderConnectionCalculationsTests
 
         Assert.Equal(0m, quota.UsagePercentage);
     }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void IsDisabled_is_the_inverse_of_active_state(bool isActive, bool expected)
+    {
+        // Arrange
+        var connection = new ProviderConnection("conn-1", ProviderKind.Codex, "Test", 1, isActive);
+
+        // Act
+        var actual = connection.IsDisabled;
+
+        // Assert
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void UsagePercentage_falls_back_to_legacy_counts_when_quota_rows_have_no_percentage()
+    {
+        // Arrange
+        var connection = new ProviderConnection(
+            "conn-1",
+            ProviderKind.Codex,
+            "Test",
+            1,
+            true,
+            UsageCount: 25,
+            LimitCount: 100,
+            Quotas: [new ProviderQuota("requests", null, null, null, null)]);
+
+        // Act
+        var percentage = connection.UsagePercentage;
+
+        // Assert
+        Assert.Equal(25.0, percentage);
+    }
+
+    [Fact]
+    public void UsagePercentage_uses_the_first_quota_with_a_percentage()
+    {
+        // Arrange
+        var connection = new ProviderConnection(
+            "conn-1",
+            ProviderKind.Codex,
+            "Test",
+            1,
+            true,
+            UsageCount: 25,
+            LimitCount: 100,
+            Quotas:
+            [
+                new ProviderQuota("unavailable", null, null, null, null),
+                new ProviderQuota("requests", 40m, 80m, 40m, null),
+                new ProviderQuota("other", 90m, 100m, 10m, null)
+            ]);
+
+        // Act
+        var percentage = connection.UsagePercentage;
+
+        // Assert
+        Assert.Equal(50.0, percentage);
+    }
+
+    [Theory]
+    [InlineData(" active ")]
+    [InlineData("OK")]
+    [InlineData("healthy")]
+    [InlineData("available")]
+    [InlineData("ready")]
+    [InlineData("success")]
+    [InlineData("connected")]
+    public void HasSuccessfulTestStatus_accepts_success_statuses_case_insensitively(string status)
+    {
+        // Arrange
+        var connection = new ProviderConnection("conn-1", ProviderKind.Codex, "Test", 1, true, TestStatus: status);
+
+        // Act
+        var isSuccessful = connection.HasSuccessfulTestStatus;
+
+        // Assert
+        Assert.True(isSuccessful);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("pending")]
+    public void HasUnknownTestStatus_identifies_missing_or_unrecognized_status(string? status)
+    {
+        // Arrange
+        var connection = new ProviderConnection("conn-1", ProviderKind.Codex, "Test", 1, true, TestStatus: status);
+
+        // Act
+        var isUnknown = connection.HasUnknownTestStatus;
+
+        // Assert
+        Assert.True(isUnknown);
+    }
+
+    [Fact]
+    public void HasUnknownTestStatus_is_false_for_success_and_error_statuses()
+    {
+        // Arrange
+        var successful = new ProviderConnection("conn-1", ProviderKind.Codex, "Test", 1, true, TestStatus: "ready");
+        var errored = new ProviderConnection("conn-2", ProviderKind.Codex, "Test", 1, true, TestStatus: "failed");
+
+        // Act
+        var successfulUnknown = successful.HasUnknownTestStatus;
+        var erroredUnknown = errored.HasUnknownTestStatus;
+
+        // Assert
+        Assert.False(successfulUnknown);
+        Assert.False(erroredUnknown);
+    }
+
+    [Theory]
+    [InlineData("401", null, null)]
+    [InlineData(null, "request failed", null)]
+    [InlineData(null, null, "expired")]
+    public void HasError_detects_error_code_message_or_error_status(
+        string? errorCode,
+        string? lastError,
+        string? testStatus)
+    {
+        // Arrange
+        var connection = new ProviderConnection(
+            "conn-1",
+            ProviderKind.Codex,
+            "Test",
+            1,
+            true,
+            TestStatus: testStatus,
+            ErrorCode: errorCode,
+            LastError: lastError);
+
+        // Act
+        var hasError = connection.HasError;
+
+        // Assert
+        Assert.True(hasError);
+    }
+
+    [Fact]
+    public void HasError_is_false_when_success_status_overrides_stale_error_metadata()
+    {
+        // Arrange
+        var connection = new ProviderConnection(
+            "conn-1",
+            ProviderKind.Codex,
+            "Test",
+            1,
+            true,
+            TestStatus: "connected",
+            ErrorCode: "401",
+            LastError: "stale error");
+
+        // Act
+        var hasError = connection.HasError;
+
+        // Assert
+        Assert.False(hasError);
+    }
+
+    [Theory]
+    [InlineData(79.99, false)]
+    [InlineData(80.0, true)]
+    public void ProviderQuota_IsNearLimit_uses_the_eighty_percent_threshold(decimal used, bool expected)
+    {
+        // Arrange
+        var quota = new ProviderQuota("requests", used, 100m, 100m - used, null);
+
+        // Act
+        var isNearLimit = quota.IsNearLimit;
+
+        // Assert
+        Assert.Equal(expected, isNearLimit);
+    }
+
+    [Theory]
+    [InlineData(99.99, false)]
+    [InlineData(100.0, true)]
+    public void ProviderQuota_IsOverLimit_uses_the_hundred_percent_threshold(decimal used, bool expected)
+    {
+        // Arrange
+        var quota = new ProviderQuota("requests", used, 100m, 100m - used, null);
+
+        // Act
+        var isOverLimit = quota.IsOverLimit;
+
+        // Assert
+        Assert.Equal(expected, isOverLimit);
+    }
+
+    [Fact]
+    public void ProviderQuota_UsageText_returns_placeholder_when_used_is_missing()
+    {
+        // Arrange
+        var quota = new ProviderQuota("requests", null, 100m, null, null);
+
+        // Act
+        var usageText = quota.UsageText;
+
+        // Assert
+        Assert.Equal("Chưa có dữ liệu", usageText);
+    }
+
+    [Fact]
+    public void ProviderQuota_UsageText_returns_placeholder_when_total_is_missing()
+    {
+        // Arrange
+        var quota = new ProviderQuota("requests", 100m, null, null, null);
+
+        // Act
+        var usageText = quota.UsageText;
+
+        // Assert
+        Assert.Equal("Chưa có dữ liệu", usageText);
+    }
 }
