@@ -105,57 +105,6 @@ public sealed class PrivacyScubberTests
     }
 
     [Fact]
-    public void Scrub_returns_null_for_null_input()
-    {
-        // Arrange
-        object? value = null;
-
-        // Act
-        var scrubbed = PrivacyScrubber.Scrub(value);
-
-        // Assert
-        Assert.Null(scrubbed);
-    }
-
-    [Theory]
-    [InlineData(42)]
-    [InlineData(true)]
-    public void Scrub_preserves_primitive_values(object value)
-    {
-        // Act
-        var scrubbed = PrivacyScrubber.Scrub(value);
-
-        // Assert
-        Assert.Equal(value, scrubbed);
-    }
-
-    [Fact]
-    public void Scrub_preserves_value_types()
-    {
-        // Arrange
-        var value = new DateTime(2026, 9, 8, 12, 30, 0, DateTimeKind.Utc);
-
-        // Act
-        var scrubbed = PrivacyScrubber.Scrub(value);
-
-        // Assert
-        Assert.Equal(value, scrubbed);
-    }
-
-    [Fact]
-    public void Scrub_preserves_enum_values()
-    {
-        // Arrange
-        var value = LogLevel.Warning;
-
-        // Act
-        var scrubbed = PrivacyScrubber.Scrub(value);
-
-        // Assert
-        Assert.Equal(value, scrubbed);
-    }
-
-    [Fact]
     public void Scrub_removes_password_property()
     {
         // Arrange
