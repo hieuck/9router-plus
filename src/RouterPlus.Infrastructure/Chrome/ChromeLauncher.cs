@@ -10,14 +10,34 @@ namespace RouterPlus.Infrastructure.Chrome;
 public sealed class ChromeLauncher
 {
     private readonly Func<string, CancellationToken, Task<string>>? _httpGetAsync;
+    private readonly Func<ProcessStartInfo, Process?> _startProcess;
+    private readonly Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>> _createManagedSession;
 
     public ChromeLauncher()
+        : this(null, Process.Start, ChromeManagedSession.CreateAsync)
     {
     }
 
     internal ChromeLauncher(Func<string, CancellationToken, Task<string>> httpGetAsync)
+        : this(httpGetAsync, Process.Start, ChromeManagedSession.CreateAsync)
+    {
+    }
+
+    internal ChromeLauncher(
+        Func<string, CancellationToken, Task<string>>? httpGetAsync,
+        Func<ProcessStartInfo, Process?> startProcess,
+        Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>> createManagedSession)
     {
         _httpGetAsync = httpGetAsync;
+        _startProcess = startProcess ?? throw new ArgumentNullException(nameof(startProcess));
+        _createManagedSession = createManagedSession ?? throw new ArgumentNullException(nameof(createManagedSession));
+    }
+
+    internal ChromeLauncher(
+        Func<string, CancellationToken, Task<string>>? httpGetAsync,
+        Func<ProcessStartInfo, Process?> startProcess)
+        : this(httpGetAsync, startProcess, ChromeManagedSession.CreateAsync)
+    {
     }
 
     public Process Launch(
@@ -49,7 +69,7 @@ public sealed class ChromeLauncher
         startInfo.ArgumentList.Add($"--profile-directory={profile.DirectoryName}");
         startInfo.ArgumentList.Add(startUrl);
 
-        return Process.Start(startInfo) ?? throw new InvalidOperationException("Chrome did not start.");
+        return _startProcess(startInfo) ?? throw new InvalidOperationException("Chrome did not start.");
     }
 
     public async Task<ChromeManagedSession> LaunchManagedAsync(
@@ -142,13 +162,13 @@ public sealed class ChromeLauncher
             startInfo.ArgumentList.Add("--new-window");
             startInfo.ArgumentList.Add(markedUri.ToString());
 
-            var process = Process.Start(startInfo)
+            var process = _startProcess(startInfo)
                 ?? throw new InvalidOperationException("Chrome did not start.");
 
             try
             {
                 var httpGet = _httpGetAsync ?? DefaultHttpGetAsync;
-                var session = await ChromeManagedSession.CreateAsync(
+                var session = await _createManagedSession(
                     process,
                     port,
                     sessionMarker,
