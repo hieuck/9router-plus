@@ -35,7 +35,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ChromeProfileDeleter _profileDeleter;
     private readonly ChromeLauncher _chromeLauncher = new();
     private readonly SettingsStore _settingsStore;
-    private readonly ISecretVault _secretVault = new DpapiSecretVault();
+    private readonly ISecretVault _secretVault;
     private readonly IGoogleAccountVaultStore _googleLoginVaultStore;
     private readonly GoogleAccountVaultPaths _googleLoginVaultPaths;
     private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
@@ -133,6 +133,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IUpdateService? updateService = null,
         IExternalLinkLauncher? linkLauncher = null,
         bool runStartupUpdateCheck = false,
+        ISecretVault? secretVault = null,
         IGoogleAccountVaultStore? googleLoginVaultStore = null,
         GoogleAccountVaultPaths? googleLoginVaultPaths = null,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null,
@@ -141,6 +142,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProfileHealthService? profileHealthService = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
+        _secretVault = secretVault ?? new DpapiSecretVault();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
@@ -1699,9 +1701,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     ObservabilityHub.Instance.IncrementCounter("profile.health_check.no_credentials",
                         tags: new Dictionary<string, string> { ["profile_id"] = row.Profile.Id });
 
-                    StatusText = $"⚠ {row.Name}: No credentials configured";
-                    ShowToast(StatusText, ToastType.Warning);
-
                     var status = ProfileHealthStatus.FromIssues(new[]
                     {
                         HealthIssue.Warning(HealthCategory.Credentials,
@@ -1709,6 +1708,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                             "Add credentials in Credentials Manager")
                     });
                     row.HealthStatus = status;
+                    StatusText = $"⚠ {row.Name}: No credentials configured";
+                    ShowToast(StatusText, ToastType.Warning);
                     return;
                 }
 
@@ -1738,17 +1739,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 "HealthCheckFailed",
                 ex,
                 new { profile_name = row.Name });
-            StatusText = $"❌ {row.Name}: Health check failed - {ex.Message}";
-            ShowToast(StatusText, ToastType.Error);
-
-            ObservabilityHub.Instance.IncrementCounter("profile.health_check.exception",
-                tags: new Dictionary<string, string> { ["error_type"] = ex.GetType().Name });
-
             var status = ProfileHealthStatus.FromIssues(new[]
             {
                 HealthIssue.Error(HealthCategory.Credentials, ex.Message, null)
             });
             row.HealthStatus = status;
+            StatusText = $"❌ {row.Name}: Health check failed - {ex.Message}";
+            ShowToast(StatusText, ToastType.Error);
+
+            ObservabilityHub.Instance.IncrementCounter("profile.health_check.exception",
+                tags: new Dictionary<string, string> { ["error_type"] = ex.GetType().Name });
         }
         finally
         {
