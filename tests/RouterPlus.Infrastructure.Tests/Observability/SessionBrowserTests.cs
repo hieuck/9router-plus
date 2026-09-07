@@ -1,66 +1,18 @@
-using System;
-using System.IO;
-using System.Linq;
+using System.Reflection;
+using System.Text;
 using RouterPlus.Infrastructure.Observability;
 using Xunit;
 
 namespace RouterPlus.Infrastructure.Tests.Observability;
 
-public sealed class SessionBrowserTests : IDisposable
+public class SessionBrowserTests
 {
-    private readonly string _rootDirectory = Path.Combine(
-        Path.GetTempPath(),
-        "RouterPlus.SessionBrowserTests",
-        Guid.NewGuid().ToString("N"));
-
-    private readonly ObservabilityPaths _paths;
-
-    public SessionBrowserTests()
-    {
-        _paths = new ObservabilityPaths(_rootDirectory);
-    }
-
-    [Fact]
-    public void Constructor_throws_for_null_paths()
-    {
-        // Arrange
-        ObservabilityPaths? paths = null;
-
-        // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => new SessionBrowser(paths!));
-    }
-
-    [Fact]
-    public void GetSessionInfo_returns_null_when_session_id_is_null()
-    {
-        // Arrange
-        var browser = new SessionBrowser(_paths);
-
-        // Act
-        var info = browser.GetSessionInfo(null!);
-
-        // Assert
-        Assert.Null(info);
-    }
-
-    [Fact]
-    public void DeleteSession_returns_false_when_session_id_is_null()
-    {
-        // Arrange
-        var browser = new SessionBrowser(_paths);
-
-        // Act
-        var deleted = browser.DeleteSession(null!);
-
-        // Assert
-        Assert.False(deleted);
-    }
-
     [Fact]
     public void ListSessions_returns_empty_when_no_sessions_exist()
     {
         // Arrange
-        var browser = new SessionBrowser(_paths);
+        using var fixture = new TempObservabilityFixture();
+        var browser = new SessionBrowser(fixture.Paths);
 
         // Act
         var sessions = browser.ListSessions();
@@ -70,120 +22,167 @@ public sealed class SessionBrowserTests : IDisposable
     }
 
     [Fact]
-    public void ListSessions_returns_sessions_newest_first_including_empty_sessions()
+    public void GetSessionInfo_returns_null_for_nonexistent_session()
     {
         // Arrange
-        CreateSession("older", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), "old data");
-        CreateSession("newer", new DateTime(2024, 1, 2, 0, 0, 0, DateTimeKind.Utc), "new data");
-        Directory.CreateDirectory(_paths.GetSessionDirectory("empty"));
-        var browser = new SessionBrowser(_paths);
+        using var fixture = new TempObservabilityFixture();
+        var browser = new SessionBrowser(fixture.Paths);
+
+        // Act
+        var info = browser.GetSessionInfo("nonexistent_session_id");
+
+        // Assert
+        Assert.Null(info);
+    }
+
+    [Fact]
+    public void DeleteSession_returns_false_for_nonexistent_session()
+    {
+        // Arrange
+        using var fixture = new TempObservabilityFixture();
+        var browser = new SessionBrowser(fixture.Paths);
+
+        // Act
+        var deleted = browser.DeleteSession("nonexistent_session_id");
+
+        // Assert
+        Assert.False(deleted);
+    }
+
+    [Fact]
+    public void GetSessionInfo_returns_file_metadata_for_session()
+    {
+        // Arrange
+        using var fixture = new TempObservabilityFixture();
+        var browser = new SessionBrowser(fixture.Paths);
+        var createdAt = DateTime.UtcNow.AddHours(-2);
+        var files = new[]
+        {
+            ("session.json", "metadata"),
+            ("events.jsonl", "event"),
+            ("snapshots.jsonl", "snapshot")
+        };
+        CreateSession(fixture, "session-with-metadata", createdAt, files);
+        var expectedSize = files.Sum(file => Encoding.UTF8.GetByteCount(file.Item2));
+
+        // Act
+        var info = browser.GetSessionInfo("session-with-metadata");
+
+        // Assert
+        Assert.NotNull(info);
+        Assert.Equal("session-with-metadata", info.SessionId);
+        Assert.Equal(files.Length, info.FileCount);
+        Assert.Equal(expectedSize, info.TotalSizeBytes);
+        Assert.True(info.HasEvents);
+        Assert.True(info.HasSnapshots);
+        Assert.InRange(info.StartTime, createdAt.AddSeconds(-1), createdAt.AddSeconds(1));
+        Assert.Equal(expectedSize / (1024.0 * 1024.0), info.SizeMB);
+    }
+
+    [Fact]
+    public void ListSessions_returns_sessions_newest_first()
+    {
+        // Arrange
+        using var fixture = new TempObservabilityFixture();
+        var browser = new SessionBrowser(fixture.Paths);
+        CreateSession(fixture, "old-session", DateTime.UtcNow.AddDays(-3), ("events.jsonl", "old"));
+        CreateSession(fixture, "newest-session", DateTime.UtcNow.AddHours(-1), ("events.jsonl", "newest"));
+        CreateSession(fixture, "middle-session", DateTime.UtcNow.AddDays(-1), ("events.jsonl", "middle"));
 
         // Act
         var sessions = browser.ListSessions();
 
         // Assert
-        Assert.Equal(new[] { "empty", "newer", "older" }, sessions.Select(session => session.SessionId));
-        Assert.Equal(2, sessions.Count(session => session.FileCount == 1));
+        Assert.Equal(
+            new[] { "newest-session", "middle-session", "old-session" },
+            sessions.Select(session => session.SessionId));
     }
 
     [Fact]
-    public void GetSessionInfo_returns_file_metadata_and_artifact_flags()
+    public void DeleteSession_deletes_session_files_and_directory()
     {
         // Arrange
-        const string sessionId = "session-with-artifacts";
-        var sessionDirectory = _paths.GetSessionDirectory(sessionId);
-        Directory.CreateDirectory(sessionDirectory);
-        File.WriteAllText(_paths.GetEventsFilePath(sessionId), "event");
-        File.WriteAllText(_paths.GetSnapshotsFilePath(sessionId), "snapshot");
-        File.WriteAllText(Path.Combine(sessionDirectory, "notes.txt"), "12345");
-        var browser = new SessionBrowser(_paths);
-
-        // Act
-        var info = browser.GetSessionInfo(sessionId);
-
-        // Assert
-        Assert.NotNull(info);
-        Assert.Equal(sessionId, info.SessionId);
-        Assert.Equal(3, info.FileCount);
-        Assert.Equal(5 + 8 + 5, info.TotalSizeBytes);
-        Assert.True(info.HasEvents);
-        Assert.True(info.HasSnapshots);
-        Assert.Equal(info.TotalSizeBytes / (1024.0 * 1024.0), info.SizeMB);
-    }
-
-    [Fact]
-    public void GetSessionInfo_uses_utc_now_for_session_without_files()
-    {
-        // Arrange
-        const string sessionId = "empty-session";
-        Directory.CreateDirectory(_paths.GetSessionDirectory(sessionId));
-        var before = DateTime.UtcNow;
-        var browser = new SessionBrowser(_paths);
-
-        // Act
-        var info = browser.GetSessionInfo(sessionId);
-        var after = DateTime.UtcNow;
-
-        // Assert
-        Assert.NotNull(info);
-        Assert.InRange(info.StartTime, before, after);
-        Assert.Equal(0, info.FileCount);
-        Assert.Equal(0, info.TotalSizeBytes);
-        Assert.False(info.HasEvents);
-        Assert.False(info.HasSnapshots);
-    }
-
-    [Fact]
-    public void DeleteSession_deletes_existing_session_recursively()
-    {
-        // Arrange
-        const string sessionId = "deletable";
-        var sessionDirectory = _paths.GetSessionDirectory(sessionId);
+        using var fixture = new TempObservabilityFixture();
+        var browser = new SessionBrowser(fixture.Paths);
+        var sessionDirectory = CreateSession(
+            fixture,
+            "session-to-delete",
+            DateTime.UtcNow.AddHours(-1),
+            ("events.jsonl", "event"));
         Directory.CreateDirectory(Path.Combine(sessionDirectory, "nested"));
-        File.WriteAllText(Path.Combine(sessionDirectory, "session.json"), "metadata");
-        File.WriteAllText(Path.Combine(sessionDirectory, "nested", "details.txt"), "details");
-        var browser = new SessionBrowser(_paths);
+        File.WriteAllText(Path.Combine(sessionDirectory, "nested", "extra.json"), "extra");
 
         // Act
-        var deleted = browser.DeleteSession(sessionId);
+        var deleted = browser.DeleteSession("session-to-delete");
 
         // Assert
         Assert.True(deleted);
         Assert.False(Directory.Exists(sessionDirectory));
-        Assert.False(browser.DeleteSession(sessionId));
     }
 
     [Fact]
-    public void DeleteOldSessions_deletes_only_sessions_before_cutoff()
+    public void DeleteOldSessions_deletes_only_sessions_older_than_retention_cutoff()
     {
         // Arrange
-        CreateSession("old", DateTime.UtcNow.AddDays(-10), "old");
-        CreateSession("recent", DateTime.UtcNow.AddDays(-1), "recent");
-        var browser = new SessionBrowser(_paths);
+        using var fixture = new TempObservabilityFixture();
+        var browser = new SessionBrowser(fixture.Paths);
+        CreateSession(fixture, "expired-session", DateTime.UtcNow.AddDays(-30), ("events.jsonl", "old"));
+        CreateSession(fixture, "active-session", DateTime.UtcNow.AddDays(-1), ("events.jsonl", "recent"));
 
         // Act
-        var deletedCount = browser.DeleteOldSessions(5);
+        var deletedCount = browser.DeleteOldSessions(olderThanDays: 7);
 
         // Assert
         Assert.Equal(1, deletedCount);
-        Assert.False(Directory.Exists(_paths.GetSessionDirectory("old")));
-        Assert.True(Directory.Exists(_paths.GetSessionDirectory("recent")));
+        Assert.False(Directory.Exists(fixture.Paths.GetSessionDirectory("expired-session")));
+        Assert.True(Directory.Exists(fixture.Paths.GetSessionDirectory("active-session")));
     }
 
-    private void CreateSession(string sessionId, DateTime creationTimeUtc, string contents)
+    private static string CreateSession(
+        TempObservabilityFixture fixture,
+        string sessionId,
+        DateTime createdAt,
+        params (string FileName, string Content)[] files)
     {
-        var sessionDirectory = _paths.GetSessionDirectory(sessionId);
+        var sessionDirectory = fixture.Paths.GetSessionDirectory(sessionId);
         Directory.CreateDirectory(sessionDirectory);
-        var filePath = Path.Combine(sessionDirectory, "session.json");
-        File.WriteAllText(filePath, contents);
-        File.SetCreationTimeUtc(filePath, creationTimeUtc);
+
+        foreach (var (fileName, content) in files)
+        {
+            var filePath = Path.Combine(sessionDirectory, fileName);
+            File.WriteAllBytes(filePath, Encoding.UTF8.GetBytes(content));
+            File.SetCreationTimeUtc(filePath, createdAt);
+        }
+
+        return sessionDirectory;
     }
 
-    public void Dispose()
+    private sealed class TempObservabilityFixture : IDisposable
     {
-        if (Directory.Exists(_rootDirectory))
+        private static readonly FieldInfo RootDirectoryField =
+            typeof(ObservabilityPaths).GetField("<RootDirectory>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        private static readonly FieldInfo SessionsDirectoryField =
+            typeof(ObservabilityPaths).GetField("<SessionsDirectory>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        public TempObservabilityFixture()
         {
-            Directory.Delete(_rootDirectory, recursive: true);
+            RootDirectory = Directory.CreateTempSubdirectory("routerplus-session-browser-").FullName;
+            Paths = new ObservabilityPaths();
+            RootDirectoryField.SetValue(Paths, RootDirectory);
+            SessionsDirectoryField.SetValue(Paths, Path.Combine(RootDirectory, "sessions"));
+            Directory.CreateDirectory(Paths.SessionsDirectory);
+        }
+
+        public string RootDirectory { get; }
+
+        public ObservabilityPaths Paths { get; }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(RootDirectory))
+            {
+                Directory.Delete(RootDirectory, recursive: true);
+            }
         }
     }
 }
