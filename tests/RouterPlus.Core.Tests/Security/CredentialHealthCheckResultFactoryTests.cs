@@ -17,18 +17,19 @@ public sealed class CredentialHealthCheckResultFactoryTests
         string expectedMessage)
     {
         // Arrange
-
-        // Act
-        var result = expectedStatus switch
+        Func<CredentialHealthCheckResult> factory = expectedStatus switch
         {
-            CredentialHealthStatus.Healthy => CredentialHealthCheckResult.Healthy(),
-            CredentialHealthStatus.Invalid => CredentialHealthCheckResult.Invalid(),
-            CredentialHealthStatus.Expired => CredentialHealthCheckResult.Expired(),
-            CredentialHealthStatus.Unknown => CredentialHealthCheckResult.Unknown(),
-            CredentialHealthStatus.Checking => CredentialHealthCheckResult.Checking(),
-            CredentialHealthStatus.NotConfigured => CredentialHealthCheckResult.NotConfigured(),
+            CredentialHealthStatus.Healthy => () => CredentialHealthCheckResult.Healthy(),
+            CredentialHealthStatus.Invalid => () => CredentialHealthCheckResult.Invalid(),
+            CredentialHealthStatus.Expired => () => CredentialHealthCheckResult.Expired(),
+            CredentialHealthStatus.Unknown => () => CredentialHealthCheckResult.Unknown(),
+            CredentialHealthStatus.Checking => () => CredentialHealthCheckResult.Checking(),
+            CredentialHealthStatus.NotConfigured => () => CredentialHealthCheckResult.NotConfigured(),
             _ => throw new ArgumentOutOfRangeException(nameof(expectedStatus), expectedStatus, null)
         };
+
+        // Act
+        var result = factory();
 
         // Assert
         Assert.Equal(expectedStatus, result.Status);

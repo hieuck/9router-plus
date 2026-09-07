@@ -144,7 +144,7 @@ public sealed class ProviderConnectionStatusTests
     {
         // Arrange
         var connection = CreateConnection(
-            quotas: [new ProviderQuota("synthetic-quota", 101m, 100m, -1m, null)]);
+            quotas: [new ProviderQuota("synthetic-quota", 50m, 100m, -1m, null)]);
 
         // Act
         var result = connection.IsOverLimit;
