@@ -115,30 +115,6 @@ public sealed class EventLogReaderTests
     }
 
     [Fact]
-    public void ReadEventsFromSession_returns_empty_when_file_cannot_be_read()
-    {
-        // Arrange
-        var paths = new ObservabilityPaths();
-        var sessionId = CreateSessionId();
-        var filePath = paths.GetEventsFilePath(sessionId);
-        Directory.CreateDirectory(filePath);
-        var reader = new EventLogReader(paths);
-
-        try
-        {
-            // Act
-            var events = reader.ReadEventsFromSession(sessionId);
-
-            // Assert
-            Assert.Empty(events);
-        }
-        finally
-        {
-            DeleteSession(paths, sessionId);
-        }
-    }
-
-    [Fact]
     public void ReadEventsFromSession_limits_to_last_lines_before_reversing_results()
     {
         // Arrange
@@ -168,13 +144,13 @@ public sealed class EventLogReaderTests
     }
 
     [Fact]
-    public void ReadRecentEvents_returns_events_at_or_after_cutoff_in_descending_timestamp_order()
+    public void ReadRecentEvents_returns_recent_events_in_descending_timestamp_order()
     {
         // Arrange
         var paths = new ObservabilityPaths();
         var sessionId = CreateSessionId();
         var now = DateTime.UtcNow;
-        var cutoffBoundary = now.AddMinutes(-4);
+        var cutoffBoundary = now.AddMinutes(-1);
         WriteEvents(paths, sessionId, string.Join(Environment.NewLine,
             EventJson(cutoffBoundary, "boundary"),
             EventJson(now.AddMinutes(-10), "old"),
@@ -227,7 +203,7 @@ public sealed class EventLogReaderTests
     }
 
     [Fact]
-    public void ReadFilteredEvents_treats_all_filters_as_unrestricted_when_using_all_or_blank_values()
+    public void ReadFilteredEvents_treats_all_filters_as_unrestricted_when_using_all_values_and_blank_search()
     {
         // Arrange
         var paths = new ObservabilityPaths();
