@@ -1,4 +1,6 @@
+using System.Text.Json;
 using RouterPlus.Core.Observability;
+using RouterPlus.Infrastructure.Observability;
 
 namespace RouterPlus.Core.Tests.Observability;
 
@@ -67,11 +69,55 @@ public sealed class TraceScopeTests
     }
 
     [Fact]
-    public void Current_restores_parent_scope_after_nested_scope_is_disposed()
+    public async Task Begin_persists_start_and_completion_as_json_lines()
+    {
+        // Arrange
+        var paths = new ObservabilityPaths();
+        var sessionId = $"test_trace_scope_{Guid.NewGuid():N}";
+        var sessionDirectory = paths.GetSessionDirectory(sessionId);
+        Directory.CreateDirectory(sessionDirectory);
+        var writer = new JsonLinesWriter(paths, sessionId);
+        var hub = ObservabilityHub.Instance;
+        hub.SetWriter(writer);
+
+        try
+        {
+            // Act
+            using (TraceScope.Begin("Persistence", "PersistedOperation", new { request_id = "request-1" }))
+            {
+            }
+            await hub.FlushAsync();
+
+            // Assert
+            var eventsPath = paths.GetEventsFilePath(sessionId);
+            Assert.True(File.Exists(eventsPath));
+            var events = File.ReadAllLines(eventsPath)
+                .Select(line => JsonSerializer.Deserialize<JsonElement>(line))
+                .ToArray();
+            Assert.Contains(events, logEvent => logEvent.GetProperty("event").GetString() == "PersistedOperationStarted");
+            var completed = Assert.Single(events, logEvent => logEvent.GetProperty("event").GetString() == "PersistedOperationCompleted");
+            Assert.Equal("request-1", completed.GetProperty("context").GetProperty("operation_context").GetProperty("request_id").GetString());
+        }
+        finally
+        {
+            writer.Dispose();
+            try
+            {
+                Directory.Delete(sessionDirectory, recursive: true);
+            }
+            catch (DirectoryNotFoundException)
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Current_restores_parent_scope_after_nested_scope_is_disposed()
     {
         // Arrange
         var hub = ObservabilityHub.Instance;
         hub.SetWriter(new CapturingWriter());
+        await hub.FlushAsync();
         Assert.Null(TraceScope.Current);
 
         // Act
@@ -86,6 +132,7 @@ public sealed class TraceScopeTests
             // Assert
             Assert.Same(outer, TraceScope.Current);
         }
+        await hub.FlushAsync();
 
         // Assert
         Assert.Null(TraceScope.Current);
