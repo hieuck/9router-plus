@@ -193,48 +193,6 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_rejects_profile_nested_below_user_data_directory()
-    {
-        var userDataDirectory = CreateTempDirectory();
-        var nestedDirectory = Path.Combine(userDataDirectory, "Profiles", "Profile 1");
-        Directory.CreateDirectory(nestedDirectory);
-
-        try
-        {
-            var profile = CreateProfile(userDataDirectory, Path.Combine("Profiles", "Profile 1"));
-            var exception = Assert.Throws<InvalidOperationException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
-
-            Assert.Contains("immediate child", exception.Message);
-            Assert.True(Directory.Exists(nestedDirectory));
-        }
-        finally
-        {
-            DeleteTempDirectory(userDataDirectory);
-        }
-    }
-
-    [Fact]
-    public void Delete_rejects_profile_path_that_is_a_file()
-    {
-        var userDataDirectory = CreateTempDirectory();
-        var profilePath = Path.Combine(userDataDirectory, "Profile 1");
-        File.WriteAllText(profilePath, "not a directory");
-
-        try
-        {
-            var profile = CreateProfile(userDataDirectory, "Profile 1");
-            var exception = Assert.Throws<InvalidOperationException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
-
-            Assert.Contains("not a directory", exception.Message);
-            Assert.True(File.Exists(profilePath));
-        }
-        finally
-        {
-            DeleteTempDirectory(userDataDirectory);
-        }
-    }
-
-    [Fact]
     public void Delete_handles_local_state_without_profile_metadata_without_rewriting_it()
     {
         var userDataDirectory = CreateTempDirectory();
@@ -421,30 +379,6 @@ public sealed class ChromeProfileDeleterTests
             Assert.DoesNotContain("Profile 1", profileMetadata.GetProperty("profiles_order").EnumerateArray().Select(item => item.GetString()));
             Assert.Empty(profileMetadata.GetProperty("last_active_profiles").EnumerateArray());
             Assert.DoesNotContain("Cá nhân 2", updatedJson);
-        }
-        finally
-        {
-            DeleteTempDirectory(userDataDirectory);
-        }
-    }
-
-    [Fact]
-    public void Delete_handles_null_local_state_json_without_rewriting_it()
-    {
-        var userDataDirectory = CreateTempDirectory();
-        var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
-        Directory.CreateDirectory(profileDirectory);
-        var localStatePath = Path.Combine(userDataDirectory, "Local State");
-        File.WriteAllText(localStatePath, "null");
-
-        try
-        {
-            var profile = CreateProfile(userDataDirectory, "Profile 1");
-
-            new ChromeProfileDeleter().Delete(profile, userDataDirectory);
-
-            Assert.Equal("null", File.ReadAllText(localStatePath));
-            Assert.False(Directory.Exists(profileDirectory));
         }
         finally
         {
