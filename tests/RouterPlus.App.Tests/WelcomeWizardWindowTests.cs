@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Threading;
 using RouterPlus.App.Setup;
 using RouterPlus.App.Views;
 using RouterPlus.Infrastructure.Storage;
@@ -222,7 +223,45 @@ public sealed class WelcomeWizardWindowTests
 
     private static T OnSta<T>(Func<Task<T>> action)
     {
-        return OnSta(() => action().GetAwaiter().GetResult());
+        T? result = default;
+        Exception? exception = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var dispatcher = Dispatcher.CurrentDispatcher;
+                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+                var task = action();
+                if (!task.IsCompleted)
+                {
+                    var frame = new DispatcherFrame();
+                    _ = task.ContinueWith(
+                        _ => dispatcher.BeginInvoke(
+                            DispatcherPriority.Send,
+                            new Action(() => frame.Continue = false)),
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+                    Dispatcher.PushFrame(frame);
+                }
+
+                result = task.GetAwaiter().GetResult();
+            }
+            catch (Exception caught)
+            {
+                exception = caught;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (exception is not null)
+        {
+            throw new AggregateException(exception);
+        }
+
+        return result!;
     }
 
     private sealed class RecordingHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory)
