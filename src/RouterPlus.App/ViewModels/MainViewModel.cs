@@ -57,6 +57,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly HttpClient _httpClient;
     private readonly IUpdateService _updateService;
     private readonly IExternalLinkLauncher _linkLauncher;
+    private readonly Func<ChromeProfile, string, Task> _launchUrl;
     private readonly bool _runStartupUpdateCheck;
     private readonly IReadOnlyList<ChromeProfile>? _harnessProfiles;
     private readonly bool _harnessMode;
@@ -139,10 +140,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null,
         IReadOnlyList<ChromeProfile>? harnessProfiles = null,
         IGoogleAuthenticationService? googleAuthenticationService = null,
-        ProfileHealthService? profileHealthService = null)
+        ProfileHealthService? profileHealthService = null,
+        Func<ChromeProfile, string, Task>? launchUrl = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
+        _launchUrl = launchUrl ?? ((profile, url) =>
+        {
+            _installation ??= _chromeLocator.Find(ChromeExecutablePath, ChromeUserDataDirectory)
+                ?? throw new InvalidOperationException("Không tìm thấy Chrome. Hãy thêm đường dẫn chrome.exe và User Data Directory.");
+            _chromeLauncher.Launch(_installation, profile, url);
+            return Task.CompletedTask;
+        });
+
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
@@ -3136,6 +3146,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    internal Task OpenProviderForTestAsync(ProviderKind provider) => OpenProviderAsync(provider);
+
     private async Task OpenProviderAsync(ProviderKind provider)
     {
         // Prevent race condition from double-click
@@ -4775,14 +4787,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             throw new InvalidOperationException("Select a Chrome profile first.");
         }
 
-        _installation ??= _chromeLocator.Find(ChromeExecutablePath, ChromeUserDataDirectory);
-        if (_installation is null)
-        {
-            throw new InvalidOperationException("Không tìm thấy Chrome. Hãy thêm đường dẫn chrome.exe và User Data Directory.");
-        }
-
-        _chromeLauncher.Launch(_installation, SelectedProfile, url);
-        return Task.CompletedTask;
+        return _launchUrl(SelectedProfile, url);
     }
 
     /// <summary>
