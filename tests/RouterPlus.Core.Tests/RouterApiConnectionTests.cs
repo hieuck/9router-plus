@@ -11,6 +11,7 @@ public sealed class RouterApiConnectionTests
     [Fact]
     public async Task ListAllConnections_parses_known_connections_in_one_request()
     {
+        // Arrange
         var handler = new JsonHandler("""
             {"connections":[
               {"id":"codex-1","provider":"codex","name":"Work","priority":1,"isActive":true},
@@ -21,8 +22,10 @@ public sealed class RouterApiConnectionTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
+        // Act
         var connections = await api.ListAllConnectionsAsync();
 
+        // Assert
         Assert.True(handler.RequestCount >= 1, $"Expected at least 1 request, got {handler.RequestCount}");
         Assert.Equal(2, connections.Count);
         Assert.Contains(connections, connection => connection.Provider == ProviderKind.Codex);
@@ -32,16 +35,22 @@ public sealed class RouterApiConnectionTests
     [Fact]
     public void RouterApiClient_does_not_retain_a_local_usage_database_reader()
     {
+        // Arrange
         var readerFields = typeof(RouterApiClient)
             .GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
             .Where(field => field.FieldType.Name == "UsageDatabaseReader");
 
-        Assert.Empty(readerFields);
+        // Act
+        var retainedReaderFields = readerFields.ToArray();
+
+        // Assert
+        Assert.Empty(retainedReaderFields);
     }
 
     [Fact]
     public async Task ListAllConnections_marks_connections_with_provider_errors()
     {
+        // Arrange
         var handler = new JsonHandler("""
             {"connections":[
               {"id":"codex-1","provider":"codex","name":"Work","priority":1,"isActive":true,
@@ -51,8 +60,10 @@ public sealed class RouterApiConnectionTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
+        // Act
         var connection = Assert.Single(await api.ListAllConnectionsAsync());
 
+        // Assert
         Assert.True(connection.HasError);
         Assert.Equal("401", connection.ErrorCode);
         Assert.Contains("Usage API", connection.LastError, StringComparison.Ordinal);
@@ -61,6 +72,7 @@ public sealed class RouterApiConnectionTests
     [Fact]
     public async Task ListAllConnections_uses_unavailable_test_status_as_provider_error()
     {
+        // Arrange
         var handler = new JsonHandler("""
             {"connections":[
               {"id":"ollama-1","provider":"ollama","name":"Work","priority":1,"isActive":true,"testStatus":"unavailable"}
@@ -69,8 +81,10 @@ public sealed class RouterApiConnectionTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
+        // Act
         var connection = Assert.Single(await api.ListAllConnectionsAsync());
 
+        // Assert
         Assert.Equal("unavailable", connection.TestStatus);
         Assert.True(connection.HasError);
     }
@@ -78,6 +92,7 @@ public sealed class RouterApiConnectionTests
     [Fact]
     public async Task ListAllConnections_tolerates_null_optional_connection_fields()
     {
+        // Arrange
         var handler = new JsonHandler("""
             {"connections":[
               {"id":"openrouter-1","provider":"openrouter","name":null,"email":null,
@@ -88,8 +103,10 @@ public sealed class RouterApiConnectionTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
+        // Act
         var connection = Assert.Single(await api.ListAllConnectionsAsync());
 
+        // Assert
         Assert.Equal("openrouter-1", connection.Id);
         Assert.Equal(ProviderKind.OpenRouter, connection.Provider);
         Assert.Null(connection.Name);
@@ -100,6 +117,7 @@ public sealed class RouterApiConnectionTests
     [Fact]
     public async Task WaitForNewConnection_accepts_existing_connection_refreshed_after_snapshot()
     {
+        // Arrange
         var snapshot = new ProviderConnection(
             "codex-1",
             ProviderKind.Codex,
@@ -118,12 +136,14 @@ public sealed class RouterApiConnectionTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
+        // Act
         var connection = await api.WaitForNewConnectionAsync(
             ProviderKind.Codex,
             new Dictionary<string, ProviderConnection> { [snapshot.Id] = snapshot },
             TimeSpan.FromSeconds(1),
             TimeSpan.FromMilliseconds(1));
 
+        // Assert
         Assert.Equal(snapshot.Id, connection.Id);
         Assert.Equal("new-account@example.com", connection.Email);
     }
@@ -148,12 +168,14 @@ public sealed class RouterApiConnectionTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
+        // Act
         var connection = await api.WaitForNewConnectionAsync(
             ProviderKind.Codex,
             new Dictionary<string, ProviderConnection> { [snapshot.Id] = snapshot },
             TimeSpan.FromSeconds(1),
             TimeSpan.FromMilliseconds(1));
 
+        // Assert
         Assert.Equal(snapshot.Id, connection.Id);
     }
 
@@ -176,11 +198,15 @@ public sealed class RouterApiConnectionTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
-        await Assert.ThrowsAsync<TimeoutException>(() => api.WaitForNewConnectionAsync(
+        // Act
+        var act = () => api.WaitForNewConnectionAsync(
             ProviderKind.Codex,
             new Dictionary<string, ProviderConnection> { [snapshot.Id] = snapshot },
             TimeSpan.FromMilliseconds(20),
-            TimeSpan.FromMilliseconds(1)));
+            TimeSpan.FromMilliseconds(1));
+
+        // Assert
+        await Assert.ThrowsAsync<TimeoutException>(act);
     }
 
     [Fact]
