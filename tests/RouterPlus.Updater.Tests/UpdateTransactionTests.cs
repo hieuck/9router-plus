@@ -241,6 +241,133 @@ public sealed class UpdateTransactionTests
     }
 
     [Fact]
+    public async Task Execute_returns_swap_failed_when_target_move_fails_before_backup_is_created()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var invalidSwap = fixture.Options with
+        {
+            BackupDirectory = Path.Combine(fixture.TargetDirectory, "backup")
+        };
+        var transaction = new UpdateTransaction(new FakeRuntime(), new FakeMutex { Acquired = true });
+
+        var result = await transaction.ExecuteAsync(invalidSwap);
+
+        Assert.Equal(UpdateTransactionResult.SwapFailed, result);
+        Assert.Equal("old", await fixture.ReadAsync(fixture.TargetDirectory));
+        Assert.Equal("new", await fixture.ReadAsync(fixture.StagingDirectory));
+    }
+
+    [Fact]
+    public async Task Execute_rolls_back_when_staging_is_nested_under_target_and_swap_fails()
+    {
+        using var fixture = UpdateFixture.Create();
+        var nestedStaging = Path.Combine(fixture.TargetDirectory, "staging");
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(nestedStaging, "new");
+        var options = fixture.Options with { StagingDirectory = nestedStaging };
+        var transaction = new UpdateTransaction(new FakeRuntime(), new FakeMutex { Acquired = true });
+
+        var result = await transaction.ExecuteAsync(options);
+
+        Assert.Equal(UpdateTransactionResult.SwapFailed, result);
+        Assert.Equal("old", await fixture.ReadAsync(fixture.TargetDirectory));
+        Assert.False(Directory.Exists(nestedStaging));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Execute_rolls_back_when_health_check_launch_throws(bool cancellation)
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var runtime = new FakeRuntime
+        {
+            LaunchException = cancellation
+                ? new OperationCanceledException()
+                : new InvalidOperationException()
+        };
+        var transaction = new UpdateTransaction(runtime, new FakeMutex { Acquired = true });
+
+        var result = await transaction.ExecuteAsync(fixture.Options);
+
+        Assert.Equal(UpdateTransactionResult.SwapFailed, result);
+        Assert.Equal("old", await fixture.ReadAsync(fixture.TargetDirectory));
+        Assert.False(Directory.Exists(fixture.StagingDirectory));
+    }
+
+    [Fact]
+    public async Task Execute_returns_rollback_failed_when_health_check_removes_backup()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var runtime = new FakeRuntime
+        {
+            HealthCheckResult = false,
+            BeforeHealthCheck = () => Directory.Delete(fixture.BackupDirectory, recursive: true)
+        };
+        var transaction = new UpdateTransaction(runtime, new FakeMutex { Acquired = true });
+
+        var result = await transaction.ExecuteAsync(fixture.Options);
+
+        Assert.Equal(UpdateTransactionResult.RollbackFailed, result);
+        Assert.False(Directory.Exists(fixture.TargetDirectory));
+    }
+
+    [Fact]
+    public async Task Execute_returns_rollback_failed_when_cancellation_is_requested_during_rollback()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var runtime = new FakeRuntime { HealthCheckResult = false };
+        var transaction = new UpdateTransaction(runtime, new FakeMutex { Acquired = true });
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await transaction.ExecuteAsync(fixture.Options, cancellation.Token);
+
+        Assert.Equal(UpdateTransactionResult.RollbackFailed, result);
+        Assert.Equal("new", await fixture.ReadAsync(fixture.TargetDirectory));
+    }
+
+    [Fact]
+    public async Task Execute_uses_default_parent_timeout_when_configured_timeout_is_nonpositive()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        await fixture.WriteAsync(fixture.StagingDirectory, "new");
+        var runtime = new FakeRuntime { HealthCheckResult = true };
+        var transaction = new UpdateTransaction(runtime, new FakeMutex { Acquired = true });
+        var options = fixture.Options with { ParentWaitTimeout = TimeSpan.Zero };
+
+        var result = await transaction.ExecuteAsync(options);
+
+        Assert.Equal(UpdateTransactionResult.Success, result);
+    }
+
+    [Fact]
+    public async Task Execute_rejects_an_executable_that_is_not_under_the_target_directory()
+    {
+        using var fixture = UpdateFixture.Create();
+        await fixture.WriteAsync(fixture.TargetDirectory, "old");
+        var options = fixture.Options with
+        {
+            ApplicationExecutablePath = Path.Combine(fixture.Root, "RouterPlus.exe")
+        };
+        var transaction = new UpdateTransaction(new FakeRuntime(), new FakeMutex { Acquired = true });
+
+        var result = await transaction.ExecuteAsync(options);
+
+        Assert.Equal(UpdateTransactionResult.ValidationFailed, result);
+        Assert.Equal("old", await fixture.ReadAsync(fixture.TargetDirectory));
+    }
+
+    [Fact]
     public async Task Execute_waits_for_parent_then_returns_distinct_timeout_result()
     {
         using var fixture = UpdateFixture.Create(parentWaitTimeout: TimeSpan.FromMilliseconds(40));
@@ -431,6 +558,7 @@ public sealed class UpdateTransactionTests
         public bool HealthCheckResult { get; init; }
         public Exception? HealthCheckException { get; init; }
         public bool ThrowOperationCanceled { get; init; }
+        public Exception? LaunchException { get; init; }
         public Action? BeforeHealthCheck { get; init; }
         public CancellationTokenSource? CancelDuringDelay { get; init; }
         public string? StartedExecutable { get; private set; }
@@ -447,6 +575,7 @@ public sealed class UpdateTransactionTests
         {
             StartedExecutable = executablePath;
             BeforeHealthCheck?.Invoke();
+<<<<<<< HEAD
             if (HealthCheckException is not null)
             {
                 throw HealthCheckException;
@@ -455,6 +584,11 @@ public sealed class UpdateTransactionTests
             if (ThrowOperationCanceled)
             {
                 throw new OperationCanceledException(cancellationToken);
+            }
+
+            if (LaunchException is not null)
+            {
+                return Task.FromException<bool>(LaunchException);
             }
 
             return Task.FromResult(HealthCheckResult);
