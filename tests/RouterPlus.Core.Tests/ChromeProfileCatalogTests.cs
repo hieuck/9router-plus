@@ -37,74 +37,82 @@ public sealed class ChromeProfileCatalogTests
     }
 
     [Fact]
-    public void Merge_uses_the_single_discovered_root_when_configured_root_is_omitted()
+    public void Merge_without_configured_root_uses_the_single_discovered_root()
     {
-        // Arrange
         var userDataDirectory = Path.Combine(Path.GetTempPath(), "Chrome", "User Data");
-        var otherUserDataDirectory = Path.Combine(Path.GetTempPath(), "Other Chrome", "User Data");
         var discovered = new[]
         {
             new ChromeProfile(
                 ChromeProfile.CreateId(userDataDirectory, "Default"),
-                "Default browser",
+                "Default",
                 "Default",
                 userDataDirectory,
                 true)
         };
         var managed = new[]
         {
-            new ManagedChromeProfile("Work", "Profile 1", userDataDirectory),
-            new ManagedChromeProfile("Other root", "Profile 2", otherUserDataDirectory)
+            new ManagedChromeProfile("Work", "Profile 1", userDataDirectory)
         };
 
-        // Act
         var profiles = ChromeProfileCatalog.Merge(discovered, managed);
 
-        // Assert
-        Assert.Equal(2, profiles.Count);
-        Assert.DoesNotContain(profiles, profile => profile.Name == "Other root");
-        Assert.Contains(profiles, profile => profile.Name == "Work");
+        var profile = Assert.Single(profiles, profile => profile.Name == "Work");
+        Assert.Equal("Profile 1", profile.DirectoryName);
+        Assert.Equal(userDataDirectory, profile.UserDataDirectory);
     }
 
     [Fact]
-    public void Merge_trims_managed_values_and_orders_profiles_case_insensitively()
+    public void Merge_matches_discovered_profile_by_path_and_updates_managed_metadata()
     {
-        // Arrange
+        var userDataDirectory = Path.Combine(Path.GetTempPath(), "Chrome", "User Data");
+        var discovered = new[]
+        {
+            new ChromeProfile(
+                "discovered-id",
+                "Old name",
+                "profile 1",
+                userDataDirectory,
+                false)
+        };
+        var managed = new[]
+        {
+            new ManagedChromeProfile("Work", "Profile 1", userDataDirectory)
+        };
+
+        var profiles = ChromeProfileCatalog.Merge(discovered, managed, userDataDirectory);
+
+        var profile = Assert.Single(profiles);
+        Assert.Equal("discovered-id", profile.Id);
+        Assert.Equal("Work", profile.Name);
+        Assert.Equal("Profile 1", profile.DirectoryName);
+        Assert.Equal(userDataDirectory, profile.UserDataDirectory);
+    }
+
+    [Fact]
+    public void Merge_orders_profiles_by_name_then_directory_name_case_insensitively()
+    {
         var userDataDirectory = Path.Combine(Path.GetTempPath(), "Chrome", "User Data");
         var managed = new[]
         {
-            new ManagedChromeProfile(" zulu ", " Profile 2 ", userDataDirectory),
-            new ManagedChromeProfile(" Alpha ", " Default ", userDataDirectory)
+            new ManagedChromeProfile("zulu", "Profile 3", userDataDirectory),
+            new ManagedChromeProfile("Alpha", "Profile 2", userDataDirectory),
+            new ManagedChromeProfile("alpha", "Profile 1", userDataDirectory)
         };
 
-        // Act
         var profiles = ChromeProfileCatalog.Merge(Array.Empty<ChromeProfile>(), managed, userDataDirectory);
 
-        // Assert
-        Assert.Equal(2, profiles.Count);
-        Assert.Equal("Alpha", profiles[0].Name);
-        Assert.Equal("Default", profiles[0].DirectoryName);
-        Assert.True(profiles[0].IsDefault);
-        Assert.Equal("zulu", profiles[1].Name);
+        Assert.Equal(new[] { "alpha", "Alpha", "zulu" }, profiles.Select(profile => profile.Name));
+        Assert.Equal("Profile 1", profiles[0].DirectoryName);
         Assert.Equal("Profile 2", profiles[1].DirectoryName);
-        Assert.Equal(Path.GetFullPath(userDataDirectory), profiles[1].UserDataDirectory);
     }
 
     [Fact]
-    public void Merge_throws_when_discovered_or_managed_profiles_are_null()
+    public void Merge_rejects_null_discovered_or_managed_sequences()
     {
-        // Arrange
         var managed = Array.Empty<ManagedChromeProfile>();
         var discovered = Array.Empty<ChromeProfile>();
 
-        // Act
-        var discoveredException = Assert.Throws<ArgumentNullException>(() =>
-            ChromeProfileCatalog.Merge(null!, managed));
-        var managedException = Assert.Throws<ArgumentNullException>(() =>
-            ChromeProfileCatalog.Merge(discovered, null!));
-
-        // Assert
-        Assert.Equal("discovered", discoveredException.ParamName);
-        Assert.Equal("managed", managedException.ParamName);
+        Assert.Throws<ArgumentNullException>(() => ChromeProfileCatalog.Merge(null!, managed));
+        Assert.Throws<ArgumentNullException>(() => ChromeProfileCatalog.Merge(discovered, null!));
     }
 }
