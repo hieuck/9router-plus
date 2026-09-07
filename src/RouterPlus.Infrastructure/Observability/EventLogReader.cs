@@ -76,10 +76,12 @@ public sealed class ObservabilityEvent
 public sealed class EventLogReader
 {
     private readonly ObservabilityPaths _paths;
+    private readonly Func<DateTime> _utcNow;
 
-    public EventLogReader(ObservabilityPaths paths)
+    public EventLogReader(ObservabilityPaths paths, Func<DateTime>? utcNow = null)
     {
         _paths = paths ?? throw new ArgumentNullException(nameof(paths));
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -191,7 +193,7 @@ public sealed class EventLogReader
     /// <returns>Events within the time range, newest first</returns>
     public List<ObservabilityEvent> ReadRecentEvents(string sessionId, TimeSpan duration)
     {
-        var cutoff = DateTime.UtcNow - duration;
+        var cutoff = _utcNow() - duration;
         var allEvents = ReadEventsFromSession(sessionId, maxCount: null);
 
         return allEvents
