@@ -328,4 +328,48 @@ public sealed class ProfileProviderFilterOptionTests
         // Assert
         Assert.Equal(ProviderFilterState.Has, option.FilterState);
     }
+
+    [Fact]
+    public void SetProfileCount_DoesNotRaisePropertyChangedWhenValueIsUnchanged()
+    {
+        // Arrange
+        var option = new ProfileProviderFilterOption(ProviderKind.Codex, "Codex", "CX", "Filter");
+        var eventRaisedCount = 0;
+        option.PropertyChanged += (s, e) => eventRaisedCount++;
+
+        // Act
+        option.SetProfileCount(0);
+
+        // Assert
+        Assert.Equal(0, eventRaisedCount);
+    }
+
+    [Fact]
+    public void SetProfileCounts_DoesNotRaisePropertyChangedWhenValuesAreUnchanged()
+    {
+        // Arrange
+        var option = new ProfileProviderFilterOption(ProviderKind.Codex, "Codex", "CX", "Filter");
+        var eventRaisedCount = 0;
+        option.PropertyChanged += (s, e) => eventRaisedCount++;
+
+        // Act
+        option.SetProfileCounts(hasCount: 0, notHasCount: 0);
+
+        // Assert
+        Assert.Equal(0, eventRaisedCount);
+    }
+
+    [Fact]
+    public void CycleFilterState_ResetsUnknownStateToOff()
+    {
+        // Arrange
+        var option = new ProfileProviderFilterOption(ProviderKind.Codex, "Codex", "CX", "Filter");
+        option.FilterState = (ProviderFilterState)99;
+
+        // Act
+        option.CycleFilterState();
+
+        // Assert
+        Assert.Equal(ProviderFilterState.Off, option.FilterState);
+    }
 }
