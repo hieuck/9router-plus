@@ -52,6 +52,57 @@ public sealed class MainViewModelApiKeyTests
     }
 
     [Fact]
+    public async Task AddApiKey_rejects_provider_without_api_key_workflow_without_http_call()
+    {
+        var handler = new ApiKeyAddHandler();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = new MainViewModel(httpClient: httpClient);
+
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.Kimchi, "test-key");
+
+        Assert.False(added);
+        Assert.Equal("Kimchi không dùng API key.", viewModel.StatusText);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task AddApiKey_requires_selected_profile_without_http_call()
+    {
+        var handler = new ApiKeyAddHandler();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = new MainViewModel(httpClient: httpClient);
+
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "test-key");
+
+        Assert.False(added);
+        Assert.Equal("Hãy chọn Chrome profile trước.", viewModel.StatusText);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task AddApiKey_rejects_blank_key_without_http_call()
+    {
+        var profile = new ChromeProfile(
+            "profile-id",
+            "Work",
+            "Default",
+            Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N")),
+            IsDefault: true);
+        var handler = new ApiKeyAddHandler();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = new MainViewModel(httpClient: httpClient)
+        {
+            SelectedProfile = profile
+        };
+
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "  \t ");
+
+        Assert.False(added);
+        Assert.Equal("Hãy dán API key vào ô bảo mật.", viewModel.StatusText);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
     public async Task AddApiKey_tests_created_connection_before_refreshing_status()
     {
         var profile = new ChromeProfile(
