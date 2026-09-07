@@ -269,4 +269,167 @@ public sealed class DiagnosticsViewModelTests : IDisposable
         // Assert
         Assert.True(canExecute);
     }
+
+    [Fact]
+    public void EventsView_FiltersByCategoryLevelAndSearchContext()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(new ObservabilityEvent
+        {
+            LevelInt = 3,
+            Category = "Chrome",
+            Operation = "Launch",
+            Message = "Browser failed",
+            Context = new Dictionary<string, System.Text.Json.JsonElement>
+            {
+                ["profile"] = System.Text.Json.JsonDocument.Parse("\"work\"").RootElement.Clone()
+            }
+        });
+        _viewModel.Events.Add(new ObservabilityEvent
+        {
+            LevelInt = 1,
+            Category = "Network",
+            Operation = "Connect",
+            Message = "Connected",
+        });
+
+        // Act / Assert: category and level conditions both participate in filtering.
+        _viewModel.SelectedCategory = "Chrome";
+        Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>());
+        _viewModel.SelectedLevel = "Error";
+        Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>());
+
+        // Context is one of the searchable fields.
+        _viewModel.SearchText = "work";
+        Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>());
+
+        _viewModel.SearchText = "missing";
+        Assert.Empty(_viewModel.EventsView.Cast<ObservabilityEvent>());
+    }
+
+    [Fact]
+    public void EventsView_SearchMatchesOperationCategoryAndMessage()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(new ObservabilityEvent
+        {
+            LevelInt = 1,
+            Category = "Network",
+            Operation = "Connect",
+            Message = "Connected"
+        });
+
+        // Act / Assert: exercise each searchable field and the no-search path.
+        _viewModel.SearchText = "connected";
+        Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>());
+        _viewModel.SearchText = "connect";
+        Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>());
+        _viewModel.SearchText = "network";
+        Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>());
+        _viewModel.SearchText = "   ";
+        Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>());
+    }
+
+    [Fact]
+    public void Filter_ReturnsFalseForNonObservabilityObject()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+
+        // Act
+        var included = _viewModel.EventsView.Filter!(new object());
+
+        // Assert
+        Assert.False(included);
+    }
+
+    [Fact]
+    public void Metrics_ReflectFilteredEventsAndTotalCount()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(new ObservabilityEvent { LevelInt = 3, Category = "Chrome", Message = "failure" });
+        _viewModel.Events.Add(new ObservabilityEvent { LevelInt = 2, Category = "Chrome", Message = "warning" });
+        _viewModel.Events.Add(new ObservabilityEvent { LevelInt = 1, Category = "Network", Message = "info" });
+
+        // Act
+        _viewModel.SelectedCategory = "Chrome";
+
+        // Assert
+        Assert.Equal(3, _viewModel.TotalEventCount);
+        Assert.NotNull(_viewModel.Metrics);
+        Assert.Equal(2, _viewModel.Metrics!.TotalEvents);
+        Assert.Equal(1, _viewModel.Metrics.ErrorCount);
+        Assert.Equal(1, _viewModel.Metrics.WarningCount);
+        Assert.Equal(2, _viewModel.Metrics.CategoryCounts["Chrome"]);
+    }
+
+    [Fact]
+    public void ExportCommand_CanExecute_TrueWhenEventsExist()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(new ObservabilityEvent());
+
+        // Act / Assert
+        Assert.True(_viewModel.ExportCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task RefreshCommand_ReportsNotInitializedWithoutSession()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+
+        // Act
+        _viewModel.RefreshCommand.Execute(null);
+        await Task.Delay(25);
+
+        // Assert
+        Assert.Equal("Observability not initialized", _viewModel.StatusMessage);
+        Assert.False(_viewModel.IsLoading);
+    }
+
+    [Fact]
+    public async Task ClearLogsCommand_ReportsNotInitializedWithoutSession()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+
+        // Act
+        _viewModel.ClearLogsCommand.Execute(null);
+        await Task.Delay(25);
+
+        // Assert
+        Assert.Equal("Observability not initialized", _viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public void OpenLogFolderCommand_ReportsNotInitializedWithoutSession()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+
+        // Act
+        _viewModel.OpenLogFolderCommand.Execute(null);
+
+        // Assert
+        Assert.Equal("Observability not initialized", _viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public void CopyEventCommand_DoesNothingWithoutSelectedEvent()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var status = _viewModel.StatusMessage;
+
+        // Act
+        _viewModel.CopyEventCommand.Execute(null);
+
+        // Assert
+        Assert.Equal(status, _viewModel.StatusMessage);
+    }
 }
