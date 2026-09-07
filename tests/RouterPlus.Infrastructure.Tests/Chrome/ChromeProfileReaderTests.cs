@@ -6,7 +6,7 @@ namespace RouterPlus.Infrastructure.Tests.Chrome;
 public sealed class ChromeProfileReaderTests
 {
     [Fact]
-    public void Read_returns_profiles_from_local_state_in_parser_order()
+    public void Read_returns_profiles_sorted_by_display_name()
     {
         // Arrange
         using var temporaryDirectory = new TemporaryDirectory();
@@ -29,10 +29,20 @@ public sealed class ChromeProfileReaderTests
 
         // Assert
         Assert.Equal(2, profiles.Count);
-        Assert.Equal("Automation", profiles[0].Name);
-        Assert.Equal("Profile 2", profiles[0].DirectoryName);
-        Assert.Equal("Personal", profiles[1].Name);
-        Assert.True(profiles[1].IsDefault);
+        Assert.Collection(
+            profiles,
+            automation =>
+            {
+                Assert.Equal("Automation", automation.Name);
+                Assert.Equal("Profile 2", automation.DirectoryName);
+                Assert.False(automation.IsDefault);
+            },
+            personal =>
+            {
+                Assert.Equal("Personal", personal.Name);
+                Assert.Equal("Default", personal.DirectoryName);
+                Assert.True(personal.IsDefault);
+            });
         Assert.All(profiles, profile => Assert.Equal(temporaryDirectory.Path, profile.UserDataDirectory));
     }
 
@@ -75,7 +85,7 @@ public sealed class ChromeProfileReaderTests
         var exception = Assert.Throws<ArgumentException>(() => reader.Read(" "));
 
         // Assert
-        Assert.Contains("userDataDirectory", exception.Message);
+        Assert.Equal("userDataDirectory", exception.ParamName);
     }
 
     private sealed class TemporaryDirectory : IDisposable

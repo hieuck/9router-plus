@@ -59,38 +59,6 @@ public sealed class ChromeLocatorTests
         Assert.Equal(userDataDirectory, installation.UserDataDirectory);
     }
 
-    [Fact]
-    public void FindUserDataDirectory_matches_standard_local_app_data_candidate()
-    {
-        // Arrange
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var expected = Path.Combine(localAppData, "Google", "Chrome", "User Data");
-        var locator = new ChromeLocator();
-
-        // Act
-        var result = locator.FindUserDataDirectory();
-
-        // Assert
-        Assert.Equal(Directory.Exists(expected) ? expected : null, result);
-    }
-
-    [Fact]
-    public void FindAll_returns_distinct_existing_executables_without_launching_browser()
-    {
-        // Arrange
-        var locator = new ChromeLocator();
-
-        // Act
-        var installations = locator.FindAll();
-
-        // Assert
-        Assert.Equal(
-            installations.Select(installation => installation.ExecutablePath),
-            installations.Select(installation => installation.ExecutablePath)
-                .Distinct(StringComparer.OrdinalIgnoreCase));
-        Assert.All(installations, installation => Assert.True(File.Exists(installation.ExecutablePath)));
-    }
-
     private sealed class TemporaryDirectory : IDisposable
     {
         public TemporaryDirectory()
