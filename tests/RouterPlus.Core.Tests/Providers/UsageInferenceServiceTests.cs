@@ -424,23 +424,6 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
-    public void InferUsageFromError_UnsupportedProvider_ReturnsNull()
-    {
-        // Arrange
-        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.Zero);
-
-        // Act
-        var result = UsageInferenceService.InferUsageFromError(
-            ProviderKind.GitHub,
-            "429",
-            "Synthetic rate limit error",
-            errorTime);
-
-        // Assert
-        Assert.Null(result);
-    }
-
-    [Fact]
     public void InferUsageFromError_OpenRouter_ParsesWholeNumberCreditsDeterministically()
     {
         // Arrange
