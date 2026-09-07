@@ -26,6 +26,21 @@ public sealed class ChromeLauncher
 
     internal ChromeLauncher(
         Func<string, CancellationToken, Task<string>>? httpGetAsync,
+        Func<ProcessStartInfo, Process?> startProcess)
+        : this(httpGetAsync, startProcess, ChromeManagedSession.CreateAsync, ChromeManagedSession.GetAvailableLoopbackPort)
+    {
+    }
+
+    internal ChromeLauncher(
+        Func<string, CancellationToken, Task<string>>? httpGetAsync,
+        Func<ProcessStartInfo, Process?> startProcess,
+        Func<int> getAvailableLoopbackPort)
+        : this(httpGetAsync, startProcess, ChromeManagedSession.CreateAsync, getAvailableLoopbackPort)
+    {
+    }
+
+    internal ChromeLauncher(
+        Func<string, CancellationToken, Task<string>>? httpGetAsync,
         Func<ProcessStartInfo, Process?> startProcess,
         Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>> createManagedSession)
         : this(httpGetAsync, startProcess, createManagedSession, ChromeManagedSession.GetAvailableLoopbackPort)
