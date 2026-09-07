@@ -196,4 +196,50 @@ public sealed class ProfileHealthCheckerTests
             Directory.Delete(tempUserData, true);
         }
     }
+
+    [Fact]
+    public void CheckFilesystemHealth_ExistingProfileWithMissingFiles_ReturnsCompleteIssueSet()
+    {
+        // Arrange
+        var tempUserData = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var tempProfile = Path.Combine(tempUserData, "Profile 1");
+        Directory.CreateDirectory(tempProfile);
+        var profile = new ChromeProfile("test-id", "Test Profile", "Profile 1", tempUserData, false);
+        var checker = new ProfileHealthChecker();
+
+        try
+        {
+            // Act
+            var issues = checker.CheckFilesystemHealth(profile);
+
+            // Assert
+            Assert.Equal(3, issues.Count);
+            Assert.Contains(issues, issue =>
+                issue.Severity == IssueSeverity.Warning &&
+                issue.Description == "Chrome Local State file missing");
+            Assert.Contains(issues, issue =>
+                issue.Severity == IssueSeverity.Warning &&
+                issue.Description == "Profile Preferences file missing");
+            Assert.Contains(issues, issue =>
+                issue.Severity == IssueSeverity.Info &&
+                issue.Description.StartsWith("Secure Preferences file missing", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(tempUserData, true);
+        }
+    }
+
+    [Fact]
+    public void CheckFilesystemHealth_NullProfile_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var checker = new ProfileHealthChecker();
+
+        // Act
+        var exception = Assert.Throws<ArgumentNullException>(() => checker.CheckFilesystemHealth(null!));
+
+        // Assert
+        Assert.Equal("profile", exception.ParamName);
+    }
 }
