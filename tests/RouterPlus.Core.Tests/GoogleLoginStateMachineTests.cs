@@ -778,6 +778,66 @@ public class GoogleLoginStateMachineTests
         Assert.Equal(GoogleLoginResultCategory.InvalidCredentials, result.Category);
     }
 
+    [Fact]
+    public async Task RunAsync_returns_invalid_credentials_when_totp_is_rejected()
+    {
+        var credential = new GoogleLoginCredential("profile-1", "user@example.com", "password123", "JBSWY3DPEHPK3PXP");
+        var browser = new FakeBrowser()
+            .ReturnState(new GoogleLoginPageState(new Uri("https://accounts.google.com/signin"), true, false, false, false, false, false, false))
+            .ReturnState(new GoogleLoginPageState(new Uri("https://accounts.google.com/signin/password"), false, true, false, false, false, false, false))
+            .ReturnState(new GoogleLoginPageState(new Uri("https://accounts.google.com/signin/challenge/totp"), false, false, true, false, false, false, false))
+            .ReturnState(new GoogleLoginPageState(new Uri("https://accounts.google.com/signin/challenge/totp"), false, false, false, true, false, false, false));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.InvalidCredentials, result.Category);
+        Assert.Equal(new[] { "Email", "Password", "Totp" }, browser.FilledFields);
+    }
+
+    [Fact]
+    public async Task RunAsync_rejects_when_authenticator_method_cannot_be_selected()
+    {
+        var credential = new GoogleLoginCredential("profile-1", "user@example.com", "password123", "JBSWY3DPEHPK3PXP");
+        var browser = new FakeBrowser()
+            .SelectAuthenticatorMethod(false)
+            .ReturnState(new GoogleLoginPageState(new Uri("https://accounts.google.com/signin/challenge/ selector"), false, false, false, false, true, false, false));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.UnsupportedPage, result.Category);
+        Assert.Contains("Could not select Authenticator", result.Message);
+    }
+
+    [Fact]
+    public async Task RunAsync_processes_authenticator_picker_then_totp()
+    {
+        var credential = new GoogleLoginCredential("profile-1", "user@example.com", "password123", "JBSWY3DPEHPK3PXP");
+        var browser = new FakeBrowser()
+            .SelectAuthenticatorMethod(true)
+            .ReturnState(new GoogleLoginPageState(new Uri("https://accounts.google.com/signin/challenge/selector"), false, false, false, false, true, false, false))
+            .ReturnState(new GoogleLoginPageState(new Uri("https://accounts.google.com/signin/challenge/totp"), false, false, true, false, false, false, false))
+            .ReturnState(new GoogleLoginPageState(new Uri("https://myaccount.google.com/"), false, false, false, false, false, true, false));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
+        Assert.Equal(new[] { "Totp" }, browser.FilledFields);
+        Assert.Equal(new[] { "Totp" }, browser.SubmittedFields);
+    }
+
+    [Fact]
+    public async Task RunAsync_maps_google_rejection_to_invalid_credentials()
+    {
+        var credential = new GoogleLoginCredential("profile-1", "user@example.com", "password123", "JBSWY3DPEHPK3PXP");
+        var browser = new FakeBrowser()
+            .ThrowOnFill(new InvalidOperationException("Google rejected the credentials"))
+            .ReturnState(new GoogleLoginPageState(new Uri("https://accounts.google.com/signin"), true, false, false, false, false, false, false));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.InvalidCredentials, result.Category);
+    }
+
     private sealed class FakeBrowser : IGoogleLoginBrowser
     {
         private readonly Queue<GoogleLoginPageState> _states = new();
@@ -786,6 +846,7 @@ public class GoogleLoginStateMachineTests
         private Action? _onFill;
         private Exception? _readStateException;
         private Exception? _fillException;
+        private bool _selectAuthenticatorMethod;
 
         public IReadOnlyList<string> FilledFields => _filledFields;
         public IReadOnlyList<string> SubmittedFields => _submittedFields;
@@ -811,6 +872,12 @@ public class GoogleLoginStateMachineTests
         public FakeBrowser ThrowOnFill(Exception exception)
         {
             _fillException = exception;
+            return this;
+        }
+
+        public FakeBrowser SelectAuthenticatorMethod(bool selected)
+        {
+            _selectAuthenticatorMethod = selected;
             return this;
         }
 
@@ -858,7 +925,8 @@ public class GoogleLoginStateMachineTests
 
         public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
         {
-            return Task.FromResult(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(_selectAuthenticatorMethod);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
