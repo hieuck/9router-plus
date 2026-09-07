@@ -29,10 +29,10 @@ public sealed class AsyncRelayCommandDeterministicTests
 
         // Act
         command.Execute(null);
-        await started.Task;
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         command.Execute(null);
         release.SetResult(true);
-        await completed.Task;
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
         Assert.Equal(1, executionCount);
@@ -86,9 +86,9 @@ public sealed class AsyncRelayCommandDeterministicTests
 
         // Act
         command.Execute("expected");
-        await started.Task;
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         release.SetResult(true);
-        await completed.Task;
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
         Assert.Equal("expected", receivedValue);
