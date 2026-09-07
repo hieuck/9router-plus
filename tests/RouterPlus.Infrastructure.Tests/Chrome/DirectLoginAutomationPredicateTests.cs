@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Text;
@@ -31,6 +30,23 @@ public sealed class DirectLoginAutomationPredicateTests
         Assert.Equal(expected, result);
         Assert.Single(cdp.EvaluatedExpressions);
         Assert.Contains("Runtime.evaluate", cdp.Methods);
+        AssertProviderPredicateExpression(automationType, cdp.EvaluatedExpressions[0]);
+    }
+
+    private static void AssertProviderPredicateExpression(Type automationType, string expression)
+    {
+        var expectedFragments = automationType == typeof(GitHubDirectLoginAutomation)
+            ? new[] { "host === 'github.com'", "path.includes('/login')", "input#login_field" }
+            : automationType == typeof(OpenRouterDirectLoginAutomation)
+                ? new[] { "host === 'openrouter.ai'", "path.includes('/signin')", "input[type=\"email\"]" }
+                : automationType == typeof(KiroDirectLoginAutomation)
+                    ? new[] { "host === 'view.awsapps.com'", "auth.us-east-1.amazoncognito.com", "input[name=\"mfacode\"]" }
+                    : new[] { "host === 'chatgpt.com'", "platform.openai.com", "auth.openai.com" };
+
+        foreach (var fragment in expectedFragments)
+        {
+            Assert.Contains(fragment, expression);
+        }
     }
 
     [Theory]
@@ -116,18 +132,27 @@ public sealed class DirectLoginAutomationPredicateTests
 
         public static async Task<FakeCdpServer> StartAsync(FakeCdpResponse response)
         {
-            var probe = new TcpListener(IPAddress.Loopback, 0);
-            probe.Start();
-            var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-            probe.Stop();
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                var listener = new HttpListener();
+                var port = Random.Shared.Next(30000, 60000);
+                listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+                try
+                {
+                    listener.Start();
+                    var server = new FakeCdpServer(listener, response, port);
+                    await Task.Yield();
+                    return server;
+                }
+                catch (HttpListenerException) when (attempt < 9)
+                {
+                    listener.Close();
+                }
+            }
 
-            var listener = new HttpListener();
-            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            listener.Start();
-            var server = new FakeCdpServer(listener, response, port);
-            await Task.Yield();
-            return server;
+            throw new InvalidOperationException("Unable to bind fake CDP listener.");
         }
+
 
         private async Task ServeAsync()
         {
