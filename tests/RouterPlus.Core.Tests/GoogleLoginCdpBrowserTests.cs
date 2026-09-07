@@ -43,6 +43,69 @@ public sealed class GoogleLoginCdpBrowserTests
     }
 
     [Fact]
+    public void Challenge_element_is_detected_as_manual_challenge()
+    {
+        // Arrange
+        var pageUri = new Uri("https://accounts.google.com/signin/challenge/verify");
+
+        // Act
+        var isManualChallenge = GoogleLoginCdpBrowser.IsManualChallenge(
+            pageUri,
+            hasChallengeElement: true);
+
+        // Assert
+        Assert.True(isManualChallenge);
+    }
+
+    [Fact]
+    public void Recaptcha_path_detection_is_case_insensitive()
+    {
+        // Arrange
+        var pageUri = new Uri("https://accounts.google.com/v3/signin/CHALLENGE/RECAPTCHA");
+
+        // Act
+        var isManualChallenge = GoogleLoginCdpBrowser.IsManualChallenge(
+            pageUri,
+            hasChallengeElement: false);
+
+        // Assert
+        Assert.True(isManualChallenge);
+    }
+
+    [Fact]
+    public void Non_recaptcha_page_without_challenge_element_is_not_manual_challenge()
+    {
+        // Arrange
+        var pageUri = new Uri("https://accounts.google.com/signin/v2/identifier");
+
+        // Act
+        var isManualChallenge = GoogleLoginCdpBrowser.IsManualChallenge(
+            pageUri,
+            hasChallengeElement: false);
+
+        // Assert
+        Assert.False(isManualChallenge);
+    }
+
+    [Fact]
+    public void Null_page_uri_is_rejected()
+    {
+        // Arrange
+        Uri? pageUri = null;
+
+        // Act
+        Action action = () =>
+        {
+            GoogleLoginCdpBrowser.IsManualChallenge(
+                pageUri!,
+                hasChallengeElement: false);
+        };
+
+        // Assert
+        Assert.Throws<ArgumentNullException>(action);
+    }
+
+    [Fact]
     public async Task FillAsync_records_field_and_value()
     {
         var browser = new FakeGoogleLoginBrowser();
