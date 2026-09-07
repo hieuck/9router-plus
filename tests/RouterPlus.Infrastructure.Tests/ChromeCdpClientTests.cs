@@ -9,6 +9,8 @@ namespace RouterPlus.Infrastructure.Tests;
 
 public sealed class ChromeCdpClientTests
 {
+    private static readonly TimeSpan TransportWaitTimeout = TimeSpan.FromSeconds(5);
+
     [Fact]
     public async Task CallAsync_round_trips_response_and_preserves_request_fields()
     {
@@ -24,7 +26,7 @@ public sealed class ChromeCdpClientTests
             CancellationToken.None,
             sessionId: "session-1");
 
-        var request = await requestTask;
+        var request = await requestTask.WaitAsync(TransportWaitTimeout);
         Assert.Equal("Runtime.evaluate", request.GetProperty("method").GetString());
         Assert.Equal("session-1", request.GetProperty("sessionId").GetString());
         Assert.Equal("1 + 1", request.GetProperty("params").GetProperty("expression").GetString());
@@ -32,7 +34,7 @@ public sealed class ChromeCdpClientTests
 
         await server.SendResponseAsync(request.GetProperty("id").GetInt32(), "{\"value\":2}");
 
-        var result = await callTask;
+        var result = await callTask.WaitAsync(TransportWaitTimeout);
         Assert.Equal(2, result.GetProperty("value").GetInt32());
     }
 
@@ -46,13 +48,13 @@ public sealed class ChromeCdpClientTests
 
         var requestTask = server.ReceiveRequestAsync();
         var callTask = client.CallAsync("Runtime.evaluate", null, CancellationToken.None);
-        var request = await requestTask;
+        var request = await requestTask.WaitAsync(TransportWaitTimeout);
 
         await server.SendFragmentedResponseAsync(
             request.GetProperty("id").GetInt32(),
             "{\"value\":\"fragmented response\"}");
 
-        var result = await callTask;
+        var result = await callTask.WaitAsync(TransportWaitTimeout);
         Assert.Equal("fragmented response", result.GetProperty("value").GetString());
     }
 
@@ -66,14 +68,15 @@ public sealed class ChromeCdpClientTests
 
         var requestTask = server.ReceiveRequestAsync();
         var callTask = client.CallAsync("Runtime.evaluate", null, CancellationToken.None);
-        var request = await requestTask;
+        var request = await requestTask.WaitAsync(TransportWaitTimeout);
 
         await server.SendErrorResponseAsync(
             request.GetProperty("id").GetInt32(),
             -32000,
             "synthetic failure");
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => callTask);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => callTask.WaitAsync(TransportWaitTimeout));
         Assert.Contains("Runtime.evaluate", exception.Message);
         Assert.Contains("synthetic failure", exception.Message);
         Assert.Contains("-32000", exception.Message);
@@ -103,12 +106,30 @@ public sealed class ChromeCdpClientTests
 
         public static Task<FakeCdpServer> StartAsync()
         {
-            var port = GetFreePort();
-            var listener = new HttpListener();
-            var baseUri = new Uri($"http://127.0.0.1:{port}/");
-            listener.Prefixes.Add(baseUri.ToString());
-            listener.Start();
-            return Task.FromResult(new FakeCdpServer(listener, baseUri));
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                var listener = new HttpListener();
+                var baseUri = new Uri($"http://127.0.0.1:{GetAvailablePort()}/");
+                listener.Prefixes.Add(baseUri.ToString());
+                try
+                {
+                    listener.Start();
+                    return Task.FromResult(new FakeCdpServer(listener, baseUri));
+                }
+                catch (HttpListenerException) when (attempt < 9)
+                {
+                    listener.Close();
+                }
+            }
+
+            throw new InvalidOperationException("Unable to bind a loopback fake CDP listener.");
+        }
+
+        private static int GetAvailablePort()
+        {
+            using var socket = new TcpListener(IPAddress.Loopback, 0);
+            socket.Start();
+            return ((IPEndPoint)socket.LocalEndpoint).Port;
         }
 
         public Task<JsonElement> ReceiveRequestAsync()
@@ -309,11 +330,5 @@ public sealed class ChromeCdpClientTests
             _disposalCts.Dispose();
         }
 
-        private static int GetFreePort()
-        {
-            using var socket = new TcpListener(IPAddress.Loopback, 0);
-            socket.Start();
-            return ((IPEndPoint)socket.LocalEndpoint).Port;
-        }
     }
 }
