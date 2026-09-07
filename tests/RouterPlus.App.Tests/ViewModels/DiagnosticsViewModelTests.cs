@@ -1,3 +1,4 @@
+using System.Text.Json;
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Observability;
@@ -101,6 +102,112 @@ public sealed class DiagnosticsViewModelTests : IDisposable
         // Assert
         Assert.Equal("test query", _viewModel.SearchText);
         Assert.NotNull(_viewModel.EventsView.Filter);
+    }
+
+    [Fact]
+    public void SelectedCategory_WhenSetToSameValue_DoesNotRaisePropertyChanged()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var propertyChangedCount = 0;
+        _viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(DiagnosticsViewModel.SelectedCategory))
+                propertyChangedCount++;
+        };
+
+        // Act
+        _viewModel.SelectedCategory = "All";
+
+        // Assert
+        Assert.Equal(0, propertyChangedCount);
+    }
+
+    [Fact]
+    public void SearchText_WhenWhitespace_ShowsAllEvents()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var evt = new ObservabilityEvent
+        {
+            Category = "Diagnostics",
+            Operation = "Refresh",
+            Message = "Loaded events"
+        };
+        _viewModel.Events.Add(evt);
+
+        // Act
+        _viewModel.SearchText = "   ";
+
+        // Assert
+        Assert.Same(evt, Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>()));
+    }
+
+    [Fact]
+    public void SearchText_MatchesContextValue()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var evt = new ObservabilityEvent
+        {
+            Category = "Diagnostics",
+            Operation = "Refresh",
+            Message = "Loaded events",
+            Context = new Dictionary<string, JsonElement>
+            {
+                ["session_id"] = JsonSerializer.SerializeToElement("session-123")
+            }
+        };
+        _viewModel.Events.Add(evt);
+
+        // Act
+        _viewModel.SearchText = "SESSION-123";
+
+        // Assert
+        Assert.Same(evt, Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>()));
+    }
+
+    [Fact]
+    public void Filters_ExcludeEventsByCategoryAndLevel()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var matching = new ObservabilityEvent { Category = "Diagnostics", LevelInt = 3, Message = "match" };
+        var wrongCategory = new ObservabilityEvent { Category = "Other", LevelInt = 3, Message = "wrong category" };
+        var wrongLevel = new ObservabilityEvent { Category = "Diagnostics", LevelInt = 1, Message = "wrong level" };
+        _viewModel.Events.Add(matching);
+        _viewModel.Events.Add(wrongCategory);
+        _viewModel.Events.Add(wrongLevel);
+
+        // Act
+        _viewModel.SelectedCategory = "Diagnostics";
+        _viewModel.SelectedLevel = "Error";
+
+        // Assert
+        Assert.Same(matching, Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>()));
+    }
+
+    [Fact]
+    public void SearchText_MatchesOperationAndCategory()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var operationEvent = new ObservabilityEvent { Category = "Unique", Operation = "RefreshNow" };
+        var categoryEvent = new ObservabilityEvent { Category = "Diagnostics", Operation = "Different" };
+        _viewModel.Events.Add(operationEvent);
+        _viewModel.Events.Add(categoryEvent);
+
+        // Act
+        _viewModel.SearchText = "refreshnow";
+
+        // Assert
+        Assert.Same(operationEvent, Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>()));
+
+        // Act
+        _viewModel.SearchText = "diagnostics";
+
+        // Assert
+        Assert.Same(categoryEvent, Assert.Single(_viewModel.EventsView.Cast<ObservabilityEvent>()));
     }
 
     [Fact]
