@@ -16,7 +16,8 @@ public sealed class SelfUpdateServiceTests
         var checksum = Convert.ToHexString(SHA256.HashData(archiveBytes)).ToLowerInvariant();
         var handler = new AssetHandler(archiveBytes, $"{checksum}  RouterPlus-v1.1.0-win-x64.zip");
         using var httpClient = new HttpClient(handler);
-        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"));
+        var updateRoot = CreateUpdateRoot();
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), updateRoot: updateRoot);
 
         try
         {
@@ -28,7 +29,7 @@ public sealed class SelfUpdateServiceTests
         }
         finally
         {
-            DeleteVersionRoot();
+            DeleteUpdateRoot(updateRoot);
         }
     }
 
@@ -40,18 +41,19 @@ public sealed class SelfUpdateServiceTests
             ThrowOnChecksumRequest = true
         };
         using var httpClient = new HttpClient(handler);
-        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"));
+        var updateRoot = CreateUpdateRoot();
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), updateRoot: updateRoot);
 
         try
         {
             await Assert.ThrowsAsync<HttpRequestException>(() =>
                 service.DownloadAndStageAsync(CreateAvailableResult()));
 
-            Assert.False(Directory.Exists(UpdatePaths.VersionRoot(ReleaseVersion.Parse("1.1.0"))));
+            Assert.False(Directory.Exists(UpdatePaths.ResolveUnderRoot(updateRoot, "1.1.0")));
         }
         finally
         {
-            DeleteVersionRoot();
+            DeleteUpdateRoot(updateRoot);
         }
     }
 
@@ -69,7 +71,8 @@ public sealed class SelfUpdateServiceTests
     public async Task Download_and_stage_rejects_unapproved_asset_before_download()
     {
         using var httpClient = new HttpClient(new ThrowingHandler());
-        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"));
+        var updateRoot = CreateUpdateRoot();
+        var service = new SelfUpdateService(httpClient, ReleaseVersion.Parse("1.0.0"), updateRoot: updateRoot);
         var release = CreateAvailableResult() with
         {
             Archive = CreateAvailableResult().Archive! with
@@ -81,11 +84,11 @@ public sealed class SelfUpdateServiceTests
         try
         {
             await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadAndStageAsync(release));
-            Assert.False(Directory.Exists(UpdatePaths.VersionRoot(ReleaseVersion.Parse("1.1.0"))));
+            Assert.False(Directory.Exists(UpdatePaths.ResolveUnderRoot(updateRoot, "1.1.0")));
         }
         finally
         {
-            DeleteVersionRoot();
+            DeleteUpdateRoot(updateRoot);
         }
     }
 
@@ -167,12 +170,14 @@ public sealed class SelfUpdateServiceTests
         return stream.ToArray();
     }
 
-    private static void DeleteVersionRoot()
+    private static string CreateUpdateRoot() =>
+        Path.Combine(Path.GetTempPath(), "RouterPlusUpdateTests", Guid.NewGuid().ToString("N"));
+
+    private static void DeleteUpdateRoot(string updateRoot)
     {
-        var versionRoot = UpdatePaths.VersionRoot(ReleaseVersion.Parse("1.1.0"));
-        if (Directory.Exists(versionRoot))
+        if (Directory.Exists(updateRoot))
         {
-            Directory.Delete(versionRoot, recursive: true);
+            Directory.Delete(updateRoot, recursive: true);
         }
     }
 

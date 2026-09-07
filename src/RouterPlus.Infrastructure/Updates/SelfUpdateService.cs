@@ -11,15 +11,18 @@ public sealed class SelfUpdateService : IUpdateService
     private readonly UpdatePackageVerifier _packageVerifier;
     private readonly IUpdaterProcessLauncher _updaterLauncher;
     private readonly ReleaseVersion _currentVersion;
+    private readonly string _updateRoot;
     private readonly bool _isInstallSupported;
 
     public SelfUpdateService(
         HttpClient httpClient,
         ReleaseVersion currentVersion,
-        IUpdaterProcessLauncher? updaterLauncher = null)
+        IUpdaterProcessLauncher? updaterLauncher = null,
+        string? updateRoot = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _currentVersion = currentVersion ?? throw new ArgumentNullException(nameof(currentVersion));
+        _updateRoot = string.IsNullOrWhiteSpace(updateRoot) ? UpdatePaths.Root : updateRoot;
         _packageVerifier = new UpdatePackageVerifier();
         _updaterLauncher = updaterLauncher ?? new WindowsUpdaterProcessLauncher();
         _isInstallSupported = OperatingSystem.IsWindows();
@@ -46,7 +49,8 @@ public sealed class SelfUpdateService : IUpdateService
             throw new InvalidDataException("No verified update is available.");
         }
 
-        var versionRoot = UpdatePaths.VersionRoot(release.AvailableVersion);
+        var versionRoot = UpdatePaths.ResolveUnderRoot(_updateRoot, release.AvailableVersion.ToString());
+
         if (Directory.Exists(versionRoot))
         {
             Directory.Delete(versionRoot, recursive: true);
