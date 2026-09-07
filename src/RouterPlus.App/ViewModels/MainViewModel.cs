@@ -58,6 +58,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IUpdateService _updateService;
     private readonly IExternalLinkLauncher _linkLauncher;
     private readonly Func<ChromeProfile, string, Task> _launchUrl;
+<<<<<<< HEAD
+=======
+    private Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>> _launchManagedChrome;
+>>>>>>> 0a2ea92 (test: cover device code automation)
     private readonly bool _runStartupUpdateCheck;
     private readonly IReadOnlyList<ChromeProfile>? _harnessProfiles;
     private readonly bool _harnessMode;
@@ -141,7 +145,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IReadOnlyList<ChromeProfile>? harnessProfiles = null,
         IGoogleAuthenticationService? googleAuthenticationService = null,
         ProfileHealthService? profileHealthService = null,
+<<<<<<< HEAD
         Func<ChromeProfile, string, Task>? launchUrl = null)
+=======
+        Func<ChromeProfile, string, Task>? launchUrl = null,
+        Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>>? launchManagedChrome = null)
+>>>>>>> 0a2ea92 (test: cover device code automation)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
@@ -154,6 +163,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         });
 
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
+        _launchUrl = launchUrl ?? ((profile, url) =>
+        {
+            _installation ??= _chromeLocator.Find(ChromeExecutablePath, ChromeUserDataDirectory)
+                ?? throw new InvalidOperationException("Không tìm thấy Chrome. Hãy thêm đường dẫn chrome.exe và User Data Directory.");
+            _chromeLauncher.Launch(_installation, profile, url);
+            return Task.CompletedTask;
+        });
+        _launchManagedChrome = launchManagedChrome ?? ((installation, profile, uri, cancellationToken) =>
+            _chromeLauncher.LaunchManagedAsync(
+                installation,
+                profile,
+                uri,
+                cancellationToken,
+                useOriginalProfile: true));
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
@@ -3453,12 +3476,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 "Device code automation start",
                 new { profile_name = SelectedProfile.Name });
 
-            chromeSession = await _chromeLauncher.LaunchManagedAsync(
+            chromeSession = await _launchManagedChrome(
                 _installation,
                 SelectedProfile,
                 new Uri(verificationUri),
-                cancellationToken,
-                useOriginalProfile: true);
+                cancellationToken);
 
             StatusText = $"Đã mở Chrome với profile {SelectedProfile.Name}. Đang tự động xác nhận…";
 
@@ -4787,6 +4809,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
             throw new InvalidOperationException("Select a Chrome profile first.");
         }
 
+<<<<<<< HEAD
+=======
+        _installation ??= _chromeLocator.Find(ChromeExecutablePath, ChromeUserDataDirectory);
+        if (_installation is null)
+        {
+            throw new InvalidOperationException("Không tìm thấy Chrome. Hãy thêm đường dẫn chrome.exe và User Data Directory.");
+        }
+
+>>>>>>> 0a2ea92 (test: cover device code automation)
         return _launchUrl(SelectedProfile, url);
     }
 
