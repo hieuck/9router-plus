@@ -73,10 +73,13 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task Starts_locked_when_vault_has_no_remembered_key()
     {
+        // Arrange
         var viewModel = CreateViewModel();
 
+        // Act
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
 
+        // Assert
         Assert.True(viewModel.IsVaultLocked);
         Assert.Contains("locked", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.False(viewModel.GoogleAccounts[0].HasCredentials);
@@ -86,11 +89,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task Loads_profile_rows_after_main_view_model_becomes_ready()
     {
+        // Arrange
         var viewModel = CreateViewModel();
 
+        // Act
         await _mainViewModel.InitializeAsync();
         await WaitForAsync(() => viewModel.InitializationTask.IsCompleted);
 
+        // Assert
         Assert.Single(viewModel.GoogleAccounts);
         Assert.Equal(_profile.Name, Assert.Single(viewModel.GoogleAccounts).ProfileName);
     }
@@ -98,11 +104,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task UnlockVaultAsync_creates_new_vault_and_loads_profile_rows()
     {
+        // Arrange
         var viewModel = CreateViewModel();
-
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+
+        // Act
         await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
 
+        // Assert
         Assert.False(viewModel.IsVaultLocked);
         Assert.True(File.Exists(_vaultPaths.VaultPath));
         Assert.Single(viewModel.GoogleAccounts);
@@ -112,12 +121,15 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task UnlockVaultAsync_does_not_unlock_with_wrong_password()
     {
+        // Arrange
         await CreateVaultAsync("synthetic-password");
         var viewModel = CreateViewModel();
-
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+
+        // Act
         await viewModel.UnlockVaultAsync("wrong-password", remember: false);
 
+        // Assert
         Assert.True(viewModel.IsVaultLocked);
         Assert.Contains("Unable to unlock vault", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("synthetic-password", viewModel.StatusMessage, StringComparison.Ordinal);
@@ -126,11 +138,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task UnlockVaultAsync_rejects_blank_password_without_creating_vault()
     {
+        // Arrange
         var viewModel = CreateViewModel();
-
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+
+        // Act
         await viewModel.UnlockVaultAsync("  ", remember: false);
 
+        // Assert
         Assert.True(viewModel.IsVaultLocked);
         Assert.False(File.Exists(_vaultPaths.VaultPath));
         Assert.Contains("password is required", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
@@ -139,11 +154,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task UnlockVaultAsync_remember_true_writes_remembered_key()
     {
+        // Arrange
         var viewModel = CreateViewModel();
-
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+
+        // Act
         await viewModel.UnlockVaultAsync("synthetic-password", remember: true);
 
+        // Assert
         Assert.False(viewModel.IsVaultLocked);
         Assert.True(File.Exists(_vaultPaths.RememberedKeyPath));
     }
@@ -151,16 +169,19 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task UnlockVaultAsync_loads_existing_credentials()
     {
+        // Arrange
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
             "Test Profile",
             "user@example.test",
             "synthetic-login-password",
             "NONE"));
         var viewModel = CreateViewModel();
-
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+
+        // Act
         await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
 
+        // Assert
         var row = Assert.Single(viewModel.GoogleAccounts);
         Assert.False(viewModel.IsVaultLocked);
         Assert.True(row.HasCredentials);
