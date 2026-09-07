@@ -1,3 +1,4 @@
+using System.Text.Json;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Chrome;
 
@@ -5,6 +6,31 @@ namespace RouterPlus.Core.Tests;
 
 public sealed class ChromeProfileDeleterTests
 {
+    [Fact]
+    public void Delete_rejects_null_profile()
+    {
+        var userDataDirectory = CreateTempDirectory();
+
+        try
+        {
+            Assert.Throws<ArgumentNullException>(() => new ChromeProfileDeleter().Delete(null!, userDataDirectory));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Delete_rejects_blank_user_data_directory(string userDataDirectory)
+    {
+        var profile = CreateProfile(Path.GetTempPath(), "Profile 1");
+
+        Assert.Throws<ArgumentException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+    }
+
     [Fact]
     public void Delete_closes_configured_browser_before_removing_profile()
     {
@@ -29,6 +55,30 @@ public sealed class ChromeProfileDeleterTests
 
             Assert.Equal(executablePath, closedExecutablePath);
             Assert.Equal(userDataDirectory, closedUserDataDirectory);
+            Assert.False(Directory.Exists(profileDirectory));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_skips_browser_close_when_executable_path_is_blank()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
+        Directory.CreateDirectory(profileDirectory);
+        var closeCalled = false;
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+            var deleter = new ChromeProfileDeleter((_, _) => closeCalled = true);
+
+            deleter.Delete(profile, userDataDirectory, "   ");
+
+            Assert.False(closeCalled);
             Assert.False(Directory.Exists(profileDirectory));
         }
         finally
@@ -93,6 +143,175 @@ public sealed class ChromeProfileDeleterTests
 
             Assert.Throws<InvalidOperationException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
             Assert.True(Directory.Exists(userDataDirectory));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_rejects_profile_nested_below_user_data_directory()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var nestedDirectory = Path.Combine(userDataDirectory, "Profiles", "Profile 1");
+        Directory.CreateDirectory(nestedDirectory);
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, Path.Combine("Profiles", "Profile 1"));
+            var exception = Assert.Throws<InvalidOperationException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+
+            Assert.Contains("immediate child", exception.Message);
+            Assert.True(Directory.Exists(nestedDirectory));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_rejects_profile_path_that_is_a_file()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profilePath = Path.Combine(userDataDirectory, "Profile 1");
+        File.WriteAllText(profilePath, "not a directory");
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+            var exception = Assert.Throws<InvalidOperationException>(() => new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+
+            Assert.Contains("not a directory", exception.Message);
+            Assert.True(File.Exists(profilePath));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_handles_local_state_without_profile_metadata_without_rewriting_it()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
+        Directory.CreateDirectory(profileDirectory);
+        var localStatePath = Path.Combine(userDataDirectory, "Local State");
+        var localStateJson = "{\"profile\": {\"info_cache\": {\"Default\": {\"name\": \"Default\"}}}}";
+        File.WriteAllText(localStatePath, localStateJson);
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+
+            new ChromeProfileDeleter().Delete(profile, userDataDirectory);
+
+            Assert.Equal(localStateJson, File.ReadAllText(localStatePath));
+            Assert.False(Directory.Exists(profileDirectory));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_handles_null_local_state_json_without_rewriting_it()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
+        Directory.CreateDirectory(profileDirectory);
+        var localStatePath = Path.Combine(userDataDirectory, "Local State");
+        File.WriteAllText(localStatePath, "null");
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+
+            new ChromeProfileDeleter().Delete(profile, userDataDirectory);
+
+            Assert.Equal("null", File.ReadAllText(localStatePath));
+            Assert.False(Directory.Exists(profileDirectory));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_handles_profile_metadata_with_non_array_order_properties_without_rewriting_it()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
+        Directory.CreateDirectory(profileDirectory);
+        var localStatePath = Path.Combine(userDataDirectory, "Local State");
+        var localStateJson = "{\"profile\": {\"info_cache\": {\"Default\": {\"name\": \"Default\"}}, \"profiles_order\": \"Profile 1\"}}";
+        File.WriteAllText(localStatePath, localStateJson);
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+
+            new ChromeProfileDeleter().Delete(profile, userDataDirectory);
+
+            Assert.Equal(localStateJson, File.ReadAllText(localStatePath));
+            Assert.False(Directory.Exists(profileDirectory));
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_removes_all_case_insensitive_matches_from_local_state_arrays()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
+        Directory.CreateDirectory(profileDirectory);
+        var localStatePath = Path.Combine(userDataDirectory, "Local State");
+        File.WriteAllText(localStatePath, "{\"profile\": {\"profiles_order\": [\"profile 1\", \"Default\", \"PROFILE 1\"], \"last_active_profiles\": [\"Profile 1\"]}}" );
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+
+            new ChromeProfileDeleter().Delete(profile, userDataDirectory);
+
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(localStatePath));
+            var profileMetadata = document.RootElement.GetProperty("profile");
+            Assert.Equal(new[] { "Default" }, profileMetadata.GetProperty("profiles_order").EnumerateArray().Select(item => item.GetString()));
+            Assert.Empty(profileMetadata.GetProperty("last_active_profiles").EnumerateArray());
+        }
+        finally
+        {
+            DeleteTempDirectory(userDataDirectory);
+        }
+    }
+
+    [Fact]
+    public void Delete_preserves_non_string_local_state_array_values()
+    {
+        var userDataDirectory = CreateTempDirectory();
+        var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
+        Directory.CreateDirectory(profileDirectory);
+        var localStatePath = Path.Combine(userDataDirectory, "Local State");
+        File.WriteAllText(localStatePath, "{\"profile\": {\"profiles_order\": [\"Profile 1\", 7, null]}}" );
+
+        try
+        {
+            var profile = CreateProfile(userDataDirectory, "Profile 1");
+
+            new ChromeProfileDeleter().Delete(profile, userDataDirectory);
+
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(localStatePath));
+            var values = document.RootElement.GetProperty("profile").GetProperty("profiles_order").EnumerateArray().ToArray();
+            Assert.Equal(2, values.Length);
+            Assert.Equal(JsonValueKind.Number, values[0].ValueKind);
+            Assert.Equal(JsonValueKind.Null, values[1].ValueKind);
         }
         finally
         {
