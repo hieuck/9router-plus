@@ -271,6 +271,81 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
+    public void InferUsageFromError_UnsupportedProvider_ReturnsNullForLimitError()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.Zero);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.GitHub,
+            "429",
+            "Provider limit reached",
+            errorTime);
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void InferUsageFromError_Ollama_WeeklyLimitOnMonday_ResetsFollowingMonday()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 7, 10, 30, 0, TimeSpan.Zero);
+        Assert.Equal(DayOfWeek.Monday, errorTime.DayOfWeek);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Ollama,
+            "429",
+            "Weekly limit reached",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.Equal(new DateTimeOffset(2026, 9, 14, 0, 0, 0, errorTime.Offset), result.UsageResetAt.Value);
+    }
+
+    [Fact]
+    public void InferUsageFromError_Ollama_SessionLimitAtYearBoundary_ResetsNextDay()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 12, 31, 23, 45, 0, TimeSpan.FromHours(5.5));
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Ollama,
+            "429",
+            "Session limit reached",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.Equal(new DateTimeOffset(2027, 1, 1, 0, 0, 0, errorTime.Offset), result.UsageResetAt.Value);
+    }
+
+    [Fact]
+    public void InferUsageFromError_Codex_MonthlyResetPreservesOffset()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.FromHours(-7));
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Codex,
+            "429",
+            "Usage limit reached",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 1, 0, 0, 0, errorTime.Offset), result.UsageResetAt.Value);
+    }
+
+    [Fact]
     public void InferUsageFromError_WithNullErrorTime_UsesCurrentTime()
     {
         // Arrange & Act
