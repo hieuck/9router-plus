@@ -3,6 +3,7 @@ using Xunit;
 
 namespace RouterPlus.Core.Tests.Observability;
 
+[Collection("Observability")]
 public class StateSnapshotTests
 {
     [Fact]
