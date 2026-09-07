@@ -114,39 +114,49 @@ public sealed class ChromeLauncherTests
             });
 
         // Act
-        var session = await launcher.LaunchManagedAsync(
-            installation,
-            profile,
-            new Uri("https://example.test/login?source=test#device-user-code"),
-            CancellationToken.None);
+        var isolatedUserDataDirectory = string.Empty;
+        try
+        {
+            var session = await launcher.LaunchManagedAsync(
+                installation,
+                profile,
+                new Uri("https://example.test/login?source=test#device-user-code"),
+                CancellationToken.None);
 
-        // Assert
-        Assert.Same(fakeSession, session);
-        Assert.NotNull(capturedStartInfo);
-        Assert.NotNull(capturedMarker);
-        Assert.StartsWith("__9rp_session_", capturedMarker);
-        Assert.Equal(executablePath, capturedStartInfo!.FileName);
-        Assert.False(capturedStartInfo.UseShellExecute);
-        Assert.Contains("--profile-directory=Profile 1", capturedStartInfo.ArgumentList);
-        Assert.Contains("--remote-debugging-address=127.0.0.1", capturedStartInfo.ArgumentList);
-        Assert.Contains("--no-first-run", capturedStartInfo.ArgumentList);
-        Assert.Contains("--new-window", capturedStartInfo.ArgumentList);
+            // Assert
+            Assert.Same(fakeSession, session);
+            Assert.NotNull(capturedStartInfo);
+            Assert.NotNull(capturedMarker);
+            Assert.StartsWith("__9rp_session_", capturedMarker);
+            Assert.Equal(executablePath, capturedStartInfo!.FileName);
+            Assert.False(capturedStartInfo.UseShellExecute);
+            Assert.Contains("--profile-directory=Profile 1", capturedStartInfo.ArgumentList);
+            Assert.Contains("--remote-debugging-address=127.0.0.1", capturedStartInfo.ArgumentList);
+            Assert.Contains("--no-first-run", capturedStartInfo.ArgumentList);
+            Assert.Contains("--new-window", capturedStartInfo.ArgumentList);
 
-        var markedUrl = capturedStartInfo.ArgumentList[^1];
-        Assert.Contains("source=test&__9rp_session=", markedUrl);
-        Assert.EndsWith("#device-user-code", markedUrl);
+            var markedUrl = capturedStartInfo.ArgumentList[^1];
+            Assert.Contains("source=test&__9rp_session=", markedUrl);
+            Assert.EndsWith("#device-user-code", markedUrl);
 
-        var isolatedUserDataDirectory = capturedStartInfo.ArgumentList
-            .Single(argument => argument.StartsWith("--user-data-dir=", StringComparison.Ordinal))
-            .Split('=', 2)[1];
-        Assert.NotEqual(userDataDirectory, isolatedUserDataDirectory);
-        Assert.True(File.Exists(Path.Combine(isolatedUserDataDirectory, "Local State")));
-        Assert.Equal("local-state", File.ReadAllText(Path.Combine(isolatedUserDataDirectory, "Local State")));
-        Assert.Equal(
-            "network-cookies",
-            File.ReadAllText(Path.Combine(isolatedUserDataDirectory, "Profile 1", "Network", "Cookies")));
+            isolatedUserDataDirectory = capturedStartInfo.ArgumentList
+                .Single(argument => argument.StartsWith("--user-data-dir=", StringComparison.Ordinal))
+                .Split('=', 2)[1];
+            Assert.NotEqual(userDataDirectory, isolatedUserDataDirectory);
+            Assert.True(File.Exists(Path.Combine(isolatedUserDataDirectory, "Local State")));
+            Assert.Equal("local-state", File.ReadAllText(Path.Combine(isolatedUserDataDirectory, "Local State")));
+            Assert.Equal(
+                "network-cookies",
+                File.ReadAllText(Path.Combine(isolatedUserDataDirectory, "Profile 1", "Network", "Cookies")));
+        }
+        finally
+        {
+            if (Directory.Exists(isolatedUserDataDirectory))
+            {
+                Directory.Delete(isolatedUserDataDirectory, recursive: true);
+            }
+        }
 
-        Directory.Delete(isolatedUserDataDirectory, recursive: true);
         Assert.False(Directory.Exists(isolatedUserDataDirectory));
     }
 
