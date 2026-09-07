@@ -21,6 +21,27 @@ namespace RouterPlus.App.Diagnostics;
 /// </summary>
 internal static class DebugAutoLoginRunner
 {
+    internal static ChromeProfile? SelectProfile(
+        IEnumerable<ChromeProfile> profiles,
+        string profileName) =>
+        profiles.FirstOrDefault(p => p.Name == profileName)
+        ?? profiles.FirstOrDefault(p => p.DirectoryName == profileName);
+
+    internal static GoogleLoginCredential? ResolveCredential(
+        GoogleAccountVault vault,
+        ChromeProfile profile,
+        IReadOnlyCollection<ChromeProfile> profiles)
+    {
+        var credential = vault.Find(profile.Id);
+        if (credential != null)
+        {
+            return credential;
+        }
+
+        var profilesWithSameName = profiles.Count(p => p.Name == profile.Name);
+        return profilesWithSameName == 1 ? vault.Find(profile.Name) : null;
+    }
+
     public static async Task RunAsync()
     {
         Console.WriteLine("=== Debug Auto Login Runner ===");
@@ -71,8 +92,7 @@ internal static class DebugAutoLoginRunner
             Console.WriteLine($"Found {profiles.Count} profile(s).");
 
             // Search by Name or DirectoryName
-            var profile = profiles.FirstOrDefault(p => p.Name == profileName)
-                ?? profiles.FirstOrDefault(p => p.DirectoryName == profileName);
+            var profile = SelectProfile(profiles, profileName);
 
             if (profile == null)
             {
@@ -124,19 +144,10 @@ internal static class DebugAutoLoginRunner
             Console.WriteLine("Vault unlocked from remembered device.");
 
             // Find credential: stable Id first, fallback to legacy display name
-            var credential = session.Vault.Find(profile.Id);
-            if (credential == null)
+            var credential = ResolveCredential(session.Vault, profile, profiles);
+            if (credential != null && credential.ProfileId == profile.Name && credential.ProfileId != profile.Id)
             {
-                // Legacy compatibility: try profile name if it's unique
-                var profilesWithSameName = profiles.Count(p => p.Name == profile.Name);
-                if (profilesWithSameName == 1)
-                {
-                    credential = session.Vault.Find(profile.Name);
-                    if (credential != null)
-                    {
-                        Console.WriteLine($"Found credential using legacy name key: {profile.Name}");
-                    }
-                }
+                Console.WriteLine($"Found credential using legacy name key: {profile.Name}");
             }
 
             if (credential == null)
