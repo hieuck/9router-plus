@@ -1399,6 +1399,146 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
 
         Assert.Equal("Health check failed: synthetic health failure", row.HealthStatus!.Message);
         Assert.Contains("synthetic health failure", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("synthetic-login-password", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ToggleSelectAllGoogleCommand_selects_only_configured_accounts_and_toggles_back()
+    {
+        var secondProfile = new ChromeProfile(
+            ChromeProfile.CreateId(_rootDirectory, "Profile 2"),
+            "Test Profile 2",
+            "Profile 2",
+            _rootDirectory,
+            true);
+        _mainViewModel.Profiles.Add(secondProfile);
+        _mainViewModel.FilteredProfiles.Add(secondProfile);
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            _profile.Id,
+            "configured@example.test",
+            "synthetic-login-password",
+            "NONE"));
+        var viewModel = CreateViewModel();
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 2);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var configured = viewModel.GoogleAccounts.Single(row => row.ProfileId == _profile.Id);
+        var empty = viewModel.GoogleAccounts.Single(row => row.ProfileId == secondProfile.Id);
+
+        viewModel.ToggleSelectAllGoogleCommand.Execute(null);
+
+        Assert.True(configured.IsSelected);
+        Assert.False(empty.IsSelected);
+        Assert.Equal(1, viewModel.SelectedCount);
+        Assert.True(viewModel.IsAllGoogleSelected);
+        Assert.False(viewModel.IsGoogleSelectionIndeterminate);
+
+        viewModel.ToggleSelectAllGoogleCommand.Execute(null);
+
+        Assert.False(configured.IsSelected);
+        Assert.Equal(0, viewModel.SelectedCount);
+        Assert.False(viewModel.IsAllGoogleSelected);
+    }
+
+    [Fact]
+    public async Task SaveAndRemoveCodexDirectConnection_persists_synthetic_credentials_only_in_test_vault()
+    {
+        var viewModel = CreateViewModel();
+
+        await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+        var row = Assert.Single(viewModel.CodexConnections);
+        row.AuthMethod = AuthMethod.Direct;
+        row.Email = "codex@example.test";
+        row.Password = "synthetic-codex-password";
+        row.TotpSecret = "synthetic-totp";
+
+        viewModel.SaveCodexRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Saved Codex credentials", StringComparison.OrdinalIgnoreCase));
+
+        var saved = await _providerVaultStore.GetConnectionAsync(
+            _profile.Name,
+            ProviderKind.Codex,
+            CancellationToken.None);
+        Assert.NotNull(saved);
+        Assert.Equal(AuthMethod.Direct, saved!.PreferredMethod);
+        Assert.Equal("codex@example.test", saved.DirectCredential!.Email);
+        Assert.Equal("synthetic-codex-password", saved.DirectCredential.Password);
+
+        viewModel.SelectedCodexConnection = row;
+        viewModel.RemoveCodexConnectionCommand.Execute(null);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Removed Codex credentials", StringComparison.OrdinalIgnoreCase));
+
+        Assert.False(row.HasCredentials);
+        Assert.Null(await _providerVaultStore.GetConnectionAsync(
+            _profile.Name,
+            ProviderKind.Codex,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SaveLoginAndRemoveProviderConnection_uses_provider_specific_collection()
+    {
+        var viewModel = CreateViewModel();
+
+        await WaitForAsync(() => viewModel.KiroConnections.Count == 1);
+        var row = Assert.Single(viewModel.KiroConnections);
+        row.AuthMethod = AuthMethod.Direct;
+        row.Email = "kiro@example.test";
+        row.Password = "synthetic-kiro-password";
+
+        viewModel.SaveProviderRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Saved Kiro credentials", StringComparison.OrdinalIgnoreCase));
+
+        Assert.NotNull(await _providerVaultStore.GetConnectionAsync(
+            _profile.Name,
+            ProviderKind.Kiro,
+            CancellationToken.None));
+
+        viewModel.LoginKiroRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("not yet integrated", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Kiro", viewModel.StatusMessage, StringComparison.Ordinal);
+
+        viewModel.SelectedKiroConnection = row;
+        viewModel.RemoveKiroConnectionCommand.Execute(null);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Removed Kiro credentials", StringComparison.OrdinalIgnoreCase));
+
+        Assert.False(row.HasCredentials);
+        Assert.Null(await _providerVaultStore.GetConnectionAsync(
+            _profile.Name,
+            ProviderKind.Kiro,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task LoginCodexRowCommand_direct_method_passes_row_credential_to_fake_runner()
+    {
+        CodexLoginCredential? receivedCredential = null;
+        ChromeProfile? receivedProfile = null;
+        var viewModel = CreateViewModel(
+            codexAuthentication: (profile, credential, _) =>
+            {
+                receivedProfile = profile;
+                receivedCredential = credential;
+                return Task.FromResult(CodexLoginResult.Success());
+            });
+
+        await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+        var row = Assert.Single(viewModel.CodexConnections);
+        row.AuthMethod = AuthMethod.Direct;
+        row.Email = "codex@example.test";
+        row.Password = "synthetic-codex-password";
+        row.TotpSecret = "synthetic-totp";
+        row.HasCredentials = true;
+
+        viewModel.LoginCodexRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Codex login successful", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Same(_profile, receivedProfile);
+        Assert.NotNull(receivedCredential);
+        Assert.Equal(_profile.Id, receivedCredential!.ProfileId);
+        Assert.Equal("codex@example.test", receivedCredential.Email);
+        Assert.Equal("synthetic-codex-password", receivedCredential.Password);
+        Assert.Equal("synthetic-totp", receivedCredential.TotpSecret);
     }
 
     [Fact]
