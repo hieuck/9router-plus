@@ -383,6 +383,14 @@ public sealed class UpdateTransactionTests
     }
 
     [Fact]
+    public void WindowsRuntime_reports_missing_parent_as_not_running()
+    {
+        var runtime = new WindowsUpdateTransactionRuntime();
+
+        Assert.False(runtime.IsProcessRunning(-1));
+    }
+
+    [Fact]
     public async Task Execute_swaps_after_parent_exits()
     {
         using var fixture = UpdateFixture.Create();
