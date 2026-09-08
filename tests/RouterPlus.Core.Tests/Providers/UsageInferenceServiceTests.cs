@@ -249,6 +249,25 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
+    public void InferUsageFromError_Ollama_SessionLimitWithNullTimestamp_UsesCurrentTime()
+    {
+        var before = DateTimeOffset.UtcNow;
+
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Ollama,
+            "429",
+            "Session limit reached",
+            null);
+
+        var after = DateTimeOffset.UtcNow;
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.InRange(result.UsageResetAt.Value, before.Date.AddDays(1), after.Date.AddDays(2));
+        Assert.Equal(0, result.UsageResetAt.Value.Hour);
+        Assert.Equal(0, result.UsageResetAt.Value.Minute);
+    }
+
+    [Fact]
     public void InferUsageFromError_Kimchi_ReturnsMonthlyLimit()
     {
         // Arrange
