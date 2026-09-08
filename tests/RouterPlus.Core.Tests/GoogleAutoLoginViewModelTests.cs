@@ -128,6 +128,106 @@ public sealed class GoogleAutoLoginViewModelTests
     }
 
     [Fact]
+    public async Task Constructor_auto_unlocks_remembered_vault_and_loads_profile_credentials()
+    {
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedVault = new GoogleAccountVault(new[]
+            {
+                new GoogleLoginCredential("profile-1", "remembered@example.com", "synthetic-password", "SYNTHETIC-TOTP")
+            })
+        };
+
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+        await WaitForAsync(() => viewModel.IsVaultUnlocked);
+
+        Assert.Equal(1, vaultStore.TryOpenRememberedCallCount);
+        Assert.True(viewModel.IsVaultUnlocked);
+        Assert.Equal("Vault unlocked from remembered device", viewModel.StatusText);
+        Assert.Equal("remembered@example.com", viewModel.Email);
+        Assert.Equal("synthetic-password", viewModel.Password);
+        Assert.Equal("SYNTHETIC-TOTP", viewModel.TotpSecret);
+
+        await viewModel.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Constructor_auto_unlock_uses_profile_name_fallback_for_legacy_credentials()
+    {
+        var profile = new ChromeProfile("profile-1", "legacy-profile", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedVault = new GoogleAccountVault(new[]
+            {
+                new GoogleLoginCredential("legacy-profile", "legacy@example.com", "synthetic-password", "SYNTHETIC-TOTP")
+            })
+        };
+
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+        await WaitForAsync(() => viewModel.IsVaultUnlocked);
+
+        Assert.True(viewModel.IsVaultUnlocked);
+        Assert.Equal("legacy@example.com", viewModel.Email);
+        Assert.Equal("synthetic-password", viewModel.Password);
+        Assert.Equal("SYNTHETIC-TOTP", viewModel.TotpSecret);
+
+        await viewModel.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Constructor_auto_unlocks_remembered_empty_vault_without_credentials()
+    {
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedVault = new GoogleAccountVault()
+        };
+
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+        await WaitForAsync(() => viewModel.IsVaultUnlocked);
+
+        Assert.True(viewModel.IsVaultUnlocked);
+        Assert.Equal(string.Empty, viewModel.Email);
+        Assert.Equal(string.Empty, viewModel.Password);
+        Assert.Equal(string.Empty, viewModel.TotpSecret);
+
+        await viewModel.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Constructor_stays_locked_when_no_remembered_vault_is_available()
+    {
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var vaultStore = new FakeVaultStore();
+
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+
+        Assert.Equal(1, vaultStore.TryOpenRememberedCallCount);
+        Assert.False(viewModel.IsVaultUnlocked);
+        Assert.Equal(string.Empty, viewModel.StatusText);
+
+        await viewModel.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Constructor_silently_ignores_remembered_unlock_failure()
+    {
+        var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedUnlockException = new System.Security.Cryptography.CryptographicException("synthetic unlock failure")
+        };
+
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation);
+
+        Assert.False(viewModel.IsVaultUnlocked);
+        Assert.Equal(string.Empty, viewModel.StatusText);
+
+        await viewModel.DisposeAsync();
+    }
+
+    [Fact]
     public async Task New_record_leaves_email_empty_until_saved()
     {
         var profile = new ChromeProfile("profile-1", "test.user@example.com", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
@@ -320,6 +420,17 @@ public sealed class GoogleAutoLoginViewModelTests
         return Task.FromResult(GoogleLoginResult.Success());
     }
 
+    private static async Task WaitForAsync(Func<bool> predicate)
+    {
+        var timeout = DateTime.UtcNow.AddSeconds(1);
+        while (!predicate() && DateTime.UtcNow < timeout)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(predicate());
+    }
+
     private sealed class FakeVaultStore : IGoogleAccountVaultStore
     {
         private FakeSession? _currentSession;
@@ -328,6 +439,7 @@ public sealed class GoogleAutoLoginViewModelTests
         public GoogleAccountVault? RememberedVault { get; set; }
         public Exception? RememberedUnlockException { get; set; }
         public bool RememberedUnlockCalled { get; private set; }
+        public int TryOpenRememberedCallCount { get; private set; }
         public bool RememberCalled { get; private set; }
         public bool ImportCalled { get; private set; }
         public string? ImportSourcePath { get; private set; }
@@ -357,8 +469,9 @@ public sealed class GoogleAutoLoginViewModelTests
         public Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default)
         {
             RememberedUnlockCalled = true;
+            TryOpenRememberedCallCount++;
             if (RememberedUnlockException != null)
-                throw RememberedUnlockException;
+                return Task.FromException<GoogleAccountVaultSession?>(RememberedUnlockException);
 
             if (RememberedVault == null)
                 return Task.FromResult<GoogleAccountVaultSession?>(null);
