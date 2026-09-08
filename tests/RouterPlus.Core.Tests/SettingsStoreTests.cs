@@ -149,6 +149,27 @@ public sealed class SettingsStoreTests
     }
 
     [Fact]
+    public void Synchronous_load_missing_settings_defaults_to_light_theme()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            var settings = new SettingsStore(filePath).Load();
+
+            Assert.True(settings.UseLightTheme);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task SaveAndLoad_preserves_managed_profile_metadata()
     {
         var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
