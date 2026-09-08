@@ -1,7 +1,3 @@
-using System.Net;
-using System.Net.WebSockets;
-using System.Net.Sockets;
-using System.Text;
 using System.Text.Json;
 using RouterPlus.Infrastructure.Chrome;
 
@@ -9,65 +5,118 @@ namespace RouterPlus.Infrastructure.Tests.Chrome;
 
 public sealed class DirectLoginAutomationTests
 {
-    public static TheoryData<string> Providers => new()
-    {
-        "github",
-        "codex",
-        "kiro",
-        "openrouter"
-    };
-
-    [Theory]
-    [MemberData(nameof(Providers))]
-    public async Task RunAsync_CompletesAfterFillingCredentialsWithoutTotp(string provider)
+    [Fact]
+    public async Task RunAsync_CompletesAfterFillingCredentialsWithoutTotp()
     {
         // Arrange
-        await using var cdp = new FakeCdpServer((expression, _) =>
+        var client = new FakeCdpClient
         {
-            if (expression.Contains("querySelectorAll", StringComparison.Ordinal))
-            {
-                return !IsTotpSelector(expression);
-            }
-
-            if (expression.Contains("window.location.host", StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            return true;
-        });
-        await cdp.StartAsync();
-        await using var client = new ChromeCdpClient(cdp.BaseUri);
-        await client.ConnectAsync(CancellationToken.None);
-        var automation = CreateAutomation(provider, client);
+            Responses =
+            [
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(false),
+                Result(true)
+            ]
+        };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
 
         // Act
-        var result = await automation.RunAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
 
         // Assert
         Assert.True(result.Success);
         Assert.Equal("Login completed", result.Message);
-        Assert.Equal(7, cdp.RuntimeEvaluateCount);
+        Assert.Equal(6, client.Calls.Count);
+        Assert.Equal([TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(2)], automation.Delays);
+        Assert.Equal(["FillEmail", "FillPassword"], automation.FilledActions);
     }
 
     [Fact]
-    public async Task RunAsync_FillsAndSubmitsTotpOnce_WhenChallengeIsVisible()
+    public async Task RunAsync_ClicksLoginButtonBeforeWaitingForEmail()
     {
         // Arrange
-        await using var cdp = new FakeCdpServer((expression, _) =>
+        var client = new FakeCdpClient
         {
-            if (expression.Contains("querySelectorAll", StringComparison.Ordinal))
-            {
-                return true;
-            }
+            Responses =
+            [
+                Result(false),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(false),
+                Result(true)
+            ]
+        };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
 
-            return true;
-        });
-        await cdp.StartAsync();
-        await using var client = new ChromeCdpClient(cdp.BaseUri);
-        await client.ConnectAsync(CancellationToken.None);
+        // Act
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(7, client.Calls.Count);
+        Assert.Equal("TryClickLoginButton", client.Calls[1].Operation);
+    }
+
+    [Fact]
+    public async Task RunAsync_RetriesAfterLoginButtonAndEmailLookupFail()
+    {
+        // Arrange
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                Result(false),
+                Result(false),
+                ResultString("https://example.test/login"),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(false)
+            ]
+        };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
+        {
+            SelectorResults = [false, true]
+        };
+
+        // Act
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal("GetCurrentUrl", client.Calls[2].Operation);
+        Assert.Contains(TimeSpan.FromMilliseconds(500), automation.Delays);
+    }
+
+    [Fact]
+    public async Task RunAsync_FillsAndSubmitsTotpOnce_WhenChallengeHasCode()
+    {
+        // Arrange
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true)
+            ]
+        };
         var totpCalls = 0;
-        var automation = new GitHubDirectLoginAutomation(
+        var automation = new ProbeDirectLoginAutomation(
             client,
             "session",
             "target",
@@ -80,64 +129,55 @@ public sealed class DirectLoginAutomationTests
             });
 
         // Act
-        var result = await automation.RunAsync(TimeSpan.FromSeconds(15), CancellationToken.None);
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
 
         // Assert
         Assert.True(result.Success);
         Assert.Equal(1, totpCalls);
-        Assert.Equal(9, cdp.RuntimeEvaluateCount);
+        Assert.Equal(["FillEmail", "FillPassword", "FillTotp"], automation.FilledActions);
+        Assert.Equal(8, client.Calls.Count);
     }
 
     [Fact]
-    public async Task RunAsync_ClicksLoginButtonBeforeWaitingForEmail()
+    public async Task RunAsync_DoesNotFillTotp_WhenGeneratorReturnsBlankCode()
     {
         // Arrange
-        await using var cdp = new FakeCdpServer((expression, evaluationNumber) =>
+        var client = new FakeCdpClient
         {
-            if (expression.Contains("loginButton", StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            if (expression.Contains("querySelectorAll", StringComparison.Ordinal))
-            {
-                return evaluationNumber > 2 && !IsTotpSelector(expression);
-            }
-
-            return true;
-        });
-        await cdp.StartAsync();
-        await using var client = new ChromeCdpClient(cdp.BaseUri);
-        await client.ConnectAsync(CancellationToken.None);
-        var automation = new GitHubDirectLoginAutomation(
+            Responses =
+            [
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true)
+            ]
+        };
+        var automation = new ProbeDirectLoginAutomation(
             client,
             "session",
             "target",
             "user@example.test",
-            "synthetic-password");
+            "synthetic-password",
+            () => Task.FromResult<string?>(" "));
 
         // Act
-        var result = await automation.RunAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
 
         // Assert
         Assert.True(result.Success);
-        Assert.True(cdp.RuntimeEvaluateCount >= 8);
+        Assert.Equal(["FillEmail", "FillPassword"], automation.FilledActions);
+        Assert.Equal(6, client.Calls.Count);
     }
 
     [Fact]
     public async Task RunAsync_ReturnsTimeoutWithoutCallingCdp_WhenDeadlineAlreadyPassed()
     {
         // Arrange
-        await using var cdp = new FakeCdpServer((_, _) => true);
-        await cdp.StartAsync();
-        await using var client = new ChromeCdpClient(cdp.BaseUri);
-        await client.ConnectAsync(CancellationToken.None);
-        var automation = new GitHubDirectLoginAutomation(
-            client,
-            "session",
-            "target",
-            "user@example.test",
-            "synthetic-password");
+        var client = new FakeCdpClient();
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
 
         // Act
         var result = await automation.RunAsync(TimeSpan.Zero, CancellationToken.None);
@@ -145,193 +185,376 @@ public sealed class DirectLoginAutomationTests
         // Assert
         Assert.False(result.Success);
         Assert.Equal("Timeout waiting for login completion", result.Message);
-        Assert.Equal(0, cdp.RuntimeEvaluateCount);
+        Assert.Empty(client.Calls);
     }
 
-    private static DirectLoginAutomation CreateAutomation(string provider, ChromeCdpClient client)
+    [Fact]
+    public async Task IsElementVisibleAsync_ReturnsFalseForMissingValueAndCdpFailure()
     {
-        return provider switch
+        // Arrange
+        var noValueClient = new FakeCdpClient { Responses = [ResultWithoutValue()] };
+        var failingClient = new FakeCdpClient { Exceptions = [new InvalidOperationException("synthetic CDP failure")] };
+        var noValueAutomation = new ProbeDirectLoginAutomation(noValueClient, "session", "target", "user@example.test", "synthetic-password");
+        var failingAutomation = new ProbeDirectLoginAutomation(failingClient, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var noValueResult = await noValueAutomation.IsVisibleAsync("input[name='email']", CancellationToken.None);
+        var failureResult = await failingAutomation.IsVisibleAsync("input[name='email']", CancellationToken.None);
+
+        // Assert
+        Assert.False(noValueResult);
+        Assert.False(failureResult);
+    }
+
+    [Fact]
+    public async Task HelperMethods_ReturnFalseOrUnknownWhenCdpResultIsMissing()
+    {
+        // Arrange
+        var visibleAutomation = new ProbeDirectLoginAutomation(new FakeCdpClient { Responses = [EmptyResult()] }, "session", "target", "user@example.test", "synthetic-password");
+        var urlAutomation = new ProbeDirectLoginAutomation(new FakeCdpClient { Responses = [EmptyResult()] }, "session", "target", "user@example.test", "synthetic-password");
+        var buttonAutomation = new ProbeDirectLoginAutomation(new FakeCdpClient { Responses = [EmptyResult()] }, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var visibleResult = await visibleAutomation.IsVisibleAsync("input[name='email']", CancellationToken.None);
+        var urlResult = await urlAutomation.CurrentUrlAsync(CancellationToken.None);
+        var buttonResult = await buttonAutomation.TryClickAsync(CancellationToken.None);
+
+        // Assert
+        Assert.False(visibleResult);
+        Assert.Equal("unknown", urlResult);
+        Assert.False(buttonResult);
+    }
+
+    [Fact]
+    public async Task WaitForSelectorAsync_RetriesAfterInvisibleResultWithoutSleeping()
+    {
+        // Arrange
+        var client = new FakeCdpClient { Responses = [Result(false), Result(true)] };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var result = await automation.WaitForSelectorPublicAsync("input[name='email']", CancellationToken.None, timeoutMs: 1000);
+
+        // Assert
+        Assert.True(result);
+        Assert.Equal(2, client.Calls.Count);
+        Assert.Contains(TimeSpan.FromMilliseconds(200), automation.Delays);
+    }
+
+    [Fact]
+    public async Task FillInputAsync_ThrowsWhenCdpReturnsExceptionDetails()
+    {
+        // Arrange
+        var client = new FakeCdpClient { Responses = [ResultWithExceptionDetails()] };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var action = () => automation.FillAsync("input[name='email']", "user@example.test", CancellationToken.None);
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(action);
+        Assert.Equal("Failed to fill input with selector: input[name='email']", exception.Message);
+    }
+
+    [Fact]
+    public async Task ClickAsync_ThrowsWhenCdpReturnsExceptionDetails()
+    {
+        // Arrange
+        var client = new FakeCdpClient { Responses = [ResultWithExceptionDetails()] };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var action = () => automation.ClickAsync("button[type='submit']", CancellationToken.None);
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(action);
+        Assert.Equal("Failed to click element with selector: button[type='submit']", exception.Message);
+    }
+
+    [Fact]
+    public async Task GetCurrentUrlAsync_ReturnsUnknownForMissingValueAndErrorForCdpFailure()
+    {
+        // Arrange
+        var noValueClient = new FakeCdpClient { Responses = [ResultWithoutValue()] };
+        var failingClient = new FakeCdpClient { Exceptions = [new InvalidOperationException("synthetic CDP failure")] };
+        var noValueAutomation = new ProbeDirectLoginAutomation(noValueClient, "session", "target", "user@example.test", "synthetic-password");
+        var failingAutomation = new ProbeDirectLoginAutomation(failingClient, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var noValueResult = await noValueAutomation.CurrentUrlAsync(CancellationToken.None);
+        var failureResult = await failingAutomation.CurrentUrlAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal("unknown", noValueResult);
+        Assert.Equal("error", failureResult);
+    }
+
+    [Fact]
+    public async Task TryClickLoginButtonAsync_ReturnsFalseForMissingValueAndCdpFailure()
+    {
+        // Arrange
+        var noValueClient = new FakeCdpClient { Responses = [ResultWithoutValue()] };
+        var failingClient = new FakeCdpClient { Exceptions = [new InvalidOperationException("synthetic CDP failure")] };
+        var noValueAutomation = new ProbeDirectLoginAutomation(noValueClient, "session", "target", "user@example.test", "synthetic-password");
+        var failingAutomation = new ProbeDirectLoginAutomation(failingClient, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var noValueResult = await noValueAutomation.TryClickAsync(CancellationToken.None);
+        var failureResult = await failingAutomation.TryClickAsync(CancellationToken.None);
+
+        // Assert
+        Assert.False(noValueResult);
+        Assert.False(failureResult);
+    }
+
+    [Fact]
+    public async Task FillTotpAsync_ThrowsWhenProviderHasNoTotpSelector()
+    {
+        // Arrange
+        var automation = new NoTotpDirectLoginAutomation(
+            new FakeCdpClient(),
+            "session",
+            "target",
+            "user@example.test",
+            "synthetic-password");
+
+        // Act
+        var action = () => automation.FillTotpPublicAsync("123456", CancellationToken.None);
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(action);
+        Assert.Equal("TOTP selector not defined for this provider", exception.Message);
+    }
+
+    [Fact]
+    public async Task IsTotpRequiredAsync_ReturnsFalseWhenProviderHasNoTotpSelector()
+    {
+        // Arrange
+        var automation = new NoTotpDirectLoginAutomation(
+            new FakeCdpClient(),
+            "session",
+            "target",
+            "user@example.test",
+            "synthetic-password");
+
+        // Act
+        var result = await automation.IsTotpRequiredPublicAsync(CancellationToken.None);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task WaitForSelectorAsync_ReturnsFalseWhenTimeoutHasElapsed()
+    {
+        // Arrange
+        var client = new FakeCdpClient();
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var result = await automation.WaitForSelectorPublicAsync("input[name='email']", CancellationToken.None, timeoutMs: 0);
+
+        // Assert
+        Assert.False(result);
+        Assert.Empty(client.Calls);
+    }
+
+    [Fact]
+    public async Task WaitForSelectorAsync_ReturnsTrueWhenElementIsVisible()
+    {
+        // Arrange
+        var client = new FakeCdpClient { Responses = [Result(true)] };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var result = await automation.WaitForSelectorPublicAsync("input[name='email']", CancellationToken.None, timeoutMs: 1000);
+
+        // Assert
+        Assert.True(result);
+        Assert.Single(client.Calls);
+    }
+
+    [Fact]
+    public async Task GetCurrentUrlAsync_ReturnsUnknownWhenCdpValueIsNull()
+    {
+        // Arrange
+        var client = new FakeCdpClient { Responses = [ResultWithNullValue()] };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var result = await automation.CurrentUrlAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal("unknown", result);
+    }
+
+    [Fact]
+    public async Task RunAsync_ReturnsCancellationWhenTokenIsAlreadyCanceled()
+    {
+        // Arrange
+        var client = new FakeCdpClient();
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        // Act
+        var action = () => automation.RunAsync(TimeSpan.FromSeconds(1), cancellation.Token);
+
+        // Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(action);
+        Assert.Empty(client.Calls);
+    }
+
+    [Fact]
+    public async Task RunAsync_SkipsTotpWhenNoGeneratorIsConfigured()
+    {
+        // Arrange
+        var client = new FakeCdpClient
         {
-            "github" => new GitHubDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password"),
-            "codex" => new CodexDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password"),
-            "kiro" => new KiroDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password"),
-            "openrouter" => new OpenRouterDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password"),
-            _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, null)
+            Responses =
+            [
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true)
+            ]
         };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(["FillEmail", "FillPassword"], automation.FilledActions);
+        Assert.Equal(6, client.Calls.Count);
     }
 
-    private static bool IsTotpSelector(string expression)
-    {
-        return expression.Contains("otp", StringComparison.OrdinalIgnoreCase)
-            || expression.Contains("mfacode", StringComparison.OrdinalIgnoreCase)
-            || expression.Contains("one-time-code", StringComparison.OrdinalIgnoreCase)
-            || expression.Contains("verification", StringComparison.OrdinalIgnoreCase);
-    }
+    private static JsonElement Result(bool value) => JsonSerializer.SerializeToDocument(new { result = new { value } }).RootElement.Clone();
 
-    private sealed class FakeCdpServer : IAsyncDisposable
-    {
-        private readonly System.Net.Sockets.TcpListener _listener;
-        private readonly Func<string, int, bool> _evaluate;
-        private Task? _serverTask;
-        private int _runtimeEvaluateCount;
-        private int _disposed;
+    private static JsonElement ResultString(string value) => JsonSerializer.SerializeToDocument(new { result = new { value } }).RootElement.Clone();
 
-        public FakeCdpServer(Func<string, int, bool> evaluate)
+    private static JsonElement ResultWithoutValue() => JsonSerializer.SerializeToDocument(new { result = new { } }).RootElement.Clone();
+
+    private static JsonElement EmptyResult() => JsonSerializer.SerializeToDocument(new { }).RootElement.Clone();
+
+    private static JsonElement ResultWithNullValue() => JsonSerializer.SerializeToDocument(new { result = new { value = (string?)null } }).RootElement.Clone();
+
+    private static JsonElement ResultWithExceptionDetails() => JsonSerializer.SerializeToDocument(new { exceptionDetails = new { text = "synthetic error" } }).RootElement.Clone();
+
+    private sealed record CdpCall(string Operation, string? Selector, string? Value);
+
+    private sealed class FakeCdpClient : IChromeCdpClient
+    {
+        public List<JsonElement> Responses { get; init; } = [];
+        public List<Exception> Exceptions { get; init; } = [];
+        public List<CdpCall> Calls { get; } = [];
+
+        public Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken, string? sessionId = null)
         {
-            _evaluate = evaluate;
-            var port = GetFreePort();
-            BaseUri = new Uri($"http://127.0.0.1:{port}");
-            _listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, port);
+            var expression = parameters?.GetType().GetProperty("expression")?.GetValue(parameters)?.ToString();
+            var selector = parameters?.GetType().GetProperty("selector")?.GetValue(parameters)?.ToString();
+            var operation = expression switch
+            {
+                not null when expression.Contains("loginButton", StringComparison.Ordinal) => "TryClickLoginButton",
+                not null when expression.Contains("window.location.href", StringComparison.Ordinal) => "GetCurrentUrl",
+                not null when expression.Contains("element.value", StringComparison.Ordinal) => "FillInput",
+                not null when expression.Contains("element.click", StringComparison.Ordinal) => "Click",
+                not null when expression.Contains("querySelectorAll", StringComparison.Ordinal) => "IsElementVisible",
+                _ => method
+            };
+            Calls.Add(new CdpCall(operation, selector, null));
+
+            if (Exceptions.Count > 0)
+                return Task.FromException<JsonElement>(Exceptions[0]);
+            if (Responses.Count == 0)
+                throw new InvalidOperationException("No fake CDP response configured.");
+
+            var response = Responses[0];
+            Responses.RemoveAt(0);
+            return Task.FromResult(response);
+        }
+    }
+
+    private class ProbeDirectLoginAutomation : DirectLoginAutomation
+    {
+        public ProbeDirectLoginAutomation(
+            IChromeCdpClient client,
+            string sessionId,
+            string targetId,
+            string email,
+            string password,
+            Func<Task<string?>>? totpGenerator = null)
+            : base(client, sessionId, targetId, email, password, totpGenerator)
+        {
         }
 
-        public Uri BaseUri { get; }
-        public int RuntimeEvaluateCount => Volatile.Read(ref _runtimeEvaluateCount);
+        public List<string> FilledActions { get; } = [];
+        public List<TimeSpan> Delays { get; } = [];
+        public List<bool> SelectorResults { get; init; } = [];
 
-        public Task StartAsync()
+        public Task<bool> IsVisibleAsync(string selector, CancellationToken cancellationToken) => IsElementVisibleAsync(selector, cancellationToken);
+        public Task<bool> IsTotpRequiredPublicAsync(CancellationToken cancellationToken) => IsTotpRequiredAsync(cancellationToken);
+        public Task<bool> WaitForSelectorPublicAsync(string selector, CancellationToken cancellationToken, int timeoutMs) => WaitForSelectorAsync(selector, cancellationToken, timeoutMs);
+        public Task FillAsync(string selector, string value, CancellationToken cancellationToken) => FillInputAsync(selector, value, cancellationToken);
+        public new Task ClickAsync(string selector, CancellationToken cancellationToken) => base.ClickAsync(selector, cancellationToken);
+        public Task<string> CurrentUrlAsync(CancellationToken cancellationToken) => GetCurrentUrlAsync(cancellationToken);
+        public Task<bool> TryClickAsync(CancellationToken cancellationToken) => TryClickLoginButtonAsync(cancellationToken);
+
+        protected override string GetEmailSelector() => "input[name='email']";
+        protected override string GetPasswordSelector() => "input[name='password']";
+        protected override string? GetTotpSelector() => "input[name='otp']";
+        protected override string GetSubmitSelector() => "button[type='submit']";
+
+        protected override Task<bool> IsLoginCompleteAsync(CancellationToken cancellationToken) => Task.FromResult(true);
+
+        protected override async Task<bool> WaitForSelectorAsync(string selector, CancellationToken cancellationToken, int timeoutMs = 5000)
         {
-            _listener.Start();
-            _serverTask = Task.Run(ServeAsync);
+            if (SelectorResults.Count == 0)
+                return await base.WaitForSelectorAsync(selector, cancellationToken, timeoutMs);
+
+            var result = SelectorResults[0];
+            SelectorResults.RemoveAt(0);
+            return result;
+        }
+
+        protected override async Task FillEmailAsync(CancellationToken cancellationToken)
+        {
+            FilledActions.Add("FillEmail");
+            await base.FillEmailAsync(cancellationToken);
+        }
+
+        protected override async Task FillPasswordAsync(CancellationToken cancellationToken)
+        {
+            FilledActions.Add("FillPassword");
+            await base.FillPasswordAsync(cancellationToken);
+        }
+
+        protected override async Task FillTotpAsync(string totpCode, CancellationToken cancellationToken)
+        {
+            FilledActions.Add("FillTotp");
+            await base.FillTotpAsync(totpCode, cancellationToken);
+        }
+
+        protected override Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            Delays.Add(delay);
             return Task.CompletedTask;
         }
+    }
 
-        private async Task ServeAsync()
+    private sealed class NoTotpDirectLoginAutomation : ProbeDirectLoginAutomation
+    {
+        public NoTotpDirectLoginAutomation(IChromeCdpClient client, string sessionId, string targetId, string email, string password)
+            : base(client, sessionId, targetId, email, password)
         {
-            try
-            {
-                while (Volatile.Read(ref _disposed) == 0)
-                {
-                    var tcp = await _listener.AcceptTcpClientAsync();
-                    _ = Task.Run(() => ServeConnectionAsync(tcp));
-                }
-            }
-            catch (ObjectDisposedException) when (Volatile.Read(ref _disposed) != 0)
-            {
-            }
-            catch (System.Net.Sockets.SocketException) when (Volatile.Read(ref _disposed) != 0)
-            {
-            }
         }
 
-        private async Task ServeConnectionAsync(System.Net.Sockets.TcpClient tcp)
-        {
-            using var client = tcp;
-            using var stream = client.GetStream();
-            using var requestBuffer = new MemoryStream();
-            var one = new byte[1];
-            while (requestBuffer.Length < 16_384)
-            {
-                var read = await stream.ReadAsync(one);
-                if (read == 0) return;
-                requestBuffer.WriteByte(one[0]);
-                if (requestBuffer.Length >= 4)
-                {
-                    var bytes = requestBuffer.ToArray();
-                    if (bytes[^4] == '\r' && bytes[^3] == '\n' && bytes[^2] == '\r' && bytes[^1] == '\n') break;
-                }
-            }
+        public Task FillTotpPublicAsync(string code, CancellationToken cancellationToken) => FillTotpAsync(code, cancellationToken);
 
-            var headers = Encoding.ASCII.GetString(requestBuffer.ToArray());
-            if (headers.StartsWith("GET /json/version", StringComparison.Ordinal))
-            {
-                var payload = JsonSerializer.Serialize(new { webSocketDebuggerUrl = $"ws://127.0.0.1:{BaseUri.Port}/devtools/page/test" });
-                var body = Encoding.UTF8.GetBytes(payload);
-                var response = Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
-                await stream.WriteAsync(response);
-                await stream.WriteAsync(body);
-                return;
-            }
-
-            var key = headers.Split("\r\n", StringSplitOptions.RemoveEmptyEntries)
-                .First(line => line.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))
-                .Split(':', 2)[1].Trim();
-            var accept = Convert.ToBase64String(System.Security.Cryptography.SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
-            var handshake = Encoding.ASCII.GetBytes($"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n");
-            await stream.WriteAsync(handshake);
-            while (Volatile.Read(ref _disposed) == 0)
-            {
-                var frame = await ReadWebSocketFrameAsync(stream);
-                if (frame is null) return;
-                using var request = JsonDocument.Parse(frame);
-                var root = request.RootElement;
-                var id = root.GetProperty("id").GetInt32();
-                var method = root.GetProperty("method").GetString();
-                var response = method == "Runtime.evaluate" ? Evaluate(root, id) : new { id, result = new { } };
-                await WriteWebSocketFrameAsync(stream, JsonSerializer.SerializeToUtf8Bytes(response));
-            }
-        }
-
-        private static async Task<byte[]?> ReadWebSocketFrameAsync(NetworkStream stream)
-        {
-            var header = new byte[2];
-            if (await stream.ReadAsync(header) != 2) return null;
-            var length = header[1] & 0x7f;
-            if (length == 126)
-            {
-                var extended = new byte[2];
-                await stream.ReadExactlyAsync(extended);
-                length = (extended[0] << 8) | extended[1];
-            }
-            var mask = new byte[4];
-            await stream.ReadExactlyAsync(mask);
-            var payload = new byte[length];
-            await stream.ReadExactlyAsync(payload);
-            for (var i = 0; i < payload.Length; i++) payload[i] ^= mask[i % 4];
-            return payload;
-        }
-
-        private static async Task WriteWebSocketFrameAsync(NetworkStream stream, byte[] payload)
-        {
-            var header = payload.Length < 126 ? new[] { (byte)0x81, (byte)payload.Length } : new[] { (byte)0x81, (byte)126, (byte)(payload.Length >> 8), (byte)payload.Length };
-            await stream.WriteAsync(header);
-            await stream.WriteAsync(payload);
-        }
-
-        private object Evaluate(JsonElement root, int id)
-        {
-            var expression = root.GetProperty("params").GetProperty("expression").GetString() ?? string.Empty;
-            var count = Interlocked.Increment(ref _runtimeEvaluateCount);
-            return new
-            {
-                id,
-                result = new
-                {
-                    result = new
-                    {
-                        type = "boolean",
-                        value = _evaluate(expression, count)
-                    }
-                }
-            };
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            {
-                return;
-            }
-
-            try
-            {
-                _listener.Stop();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-
-            if (_serverTask is not null)
-            {
-                await _serverTask;
-            }
-        }
-
-        private static int GetFreePort()
-        {
-            using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-            listener.Stop();
-            return port;
-        }
+        protected override string? GetTotpSelector() => null;
     }
 }

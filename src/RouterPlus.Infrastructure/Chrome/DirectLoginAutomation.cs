@@ -9,7 +9,7 @@ namespace RouterPlus.Infrastructure.Chrome;
 /// </summary>
 public abstract class DirectLoginAutomation
 {
-    protected readonly ChromeCdpClient _client;
+    protected readonly IChromeCdpClient _client;
     protected readonly string _sessionId;
     protected readonly string _targetId;
     protected readonly string _email;
@@ -17,7 +17,7 @@ public abstract class DirectLoginAutomation
     protected readonly Func<Task<string?>>? _totpGenerator;
 
     protected DirectLoginAutomation(
-        ChromeCdpClient client,
+        IChromeCdpClient client,
         string sessionId,
         string targetId,
         string email,
@@ -70,7 +70,7 @@ public abstract class DirectLoginAutomation
                         "DirectLogin",
                         "LoginButtonClicked",
                         "Clicked Log in button, waiting for email field");
-                    await Task.Delay(2000, cancellationToken);
+                    await DelayAsync(TimeSpan.FromSeconds(2), cancellationToken);
                     continue;
                 }
             }
@@ -93,7 +93,7 @@ public abstract class DirectLoginAutomation
                     "Email field not found, retrying",
                     new { current_url = currentUrl });
 
-                await Task.Delay(500, cancellationToken);
+                await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
                 continue;
             }
 
@@ -105,7 +105,7 @@ public abstract class DirectLoginAutomation
 
             // Fill email
             await FillEmailAsync(cancellationToken);
-            await Task.Delay(500, cancellationToken);
+            await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
 
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Debug,
@@ -115,7 +115,7 @@ public abstract class DirectLoginAutomation
 
             // Fill password
             await FillPasswordAsync(cancellationToken);
-            await Task.Delay(500, cancellationToken);
+            await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
 
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Debug,
@@ -125,7 +125,7 @@ public abstract class DirectLoginAutomation
 
             // Submit
             await SubmitLoginAsync(cancellationToken);
-            await Task.Delay(2000, cancellationToken);
+            await DelayAsync(TimeSpan.FromSeconds(2), cancellationToken);
 
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Info,
@@ -154,9 +154,9 @@ public abstract class DirectLoginAutomation
                             "TotpAutoFilling",
                             "Auto-filling TOTP code for direct login");
                         await FillTotpAsync(totpCode, cancellationToken);
-                        await Task.Delay(1000, cancellationToken);
+                        await DelayAsync(TimeSpan.FromSeconds(1), cancellationToken);
                         await SubmitTotpAsync(cancellationToken);
-                        await Task.Delay(2000, cancellationToken);
+                        await DelayAsync(TimeSpan.FromSeconds(2), cancellationToken);
                     }
                 }
             }
@@ -277,14 +277,17 @@ public abstract class DirectLoginAutomation
 
     // ========== Shared CDP helpers ==========
 
-    protected async Task<bool> WaitForSelectorAsync(string selector, CancellationToken cancellationToken, int timeoutMs = 5000)
+    protected virtual Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) =>
+        Task.Delay(delay, cancellationToken);
+
+    protected virtual async Task<bool> WaitForSelectorAsync(string selector, CancellationToken cancellationToken, int timeoutMs = 5000)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(timeoutMs);
         while (DateTimeOffset.UtcNow < deadline)
         {
             if (await IsElementVisibleAsync(selector, cancellationToken))
                 return true;
-            await Task.Delay(200, cancellationToken);
+            await DelayAsync(TimeSpan.FromMilliseconds(200), cancellationToken);
         }
         return false;
     }

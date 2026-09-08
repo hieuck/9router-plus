@@ -9,7 +9,7 @@ namespace RouterPlus.Infrastructure.Chrome;
 public sealed class CodexDirectLoginAutomation : DirectLoginAutomation
 {
     public CodexDirectLoginAutomation(
-        ChromeCdpClient client,
+        IChromeCdpClient client,
         string sessionId,
         string targetId,
         string email,

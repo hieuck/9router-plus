@@ -10,7 +10,7 @@ namespace RouterPlus.Infrastructure.Chrome;
 /// <summary>
 /// Minimal CDP transport with loopback-only validation and allowed method filtering.
 /// </summary>
-public sealed class ChromeCdpClient : IAsyncDisposable
+public sealed class ChromeCdpClient : IChromeCdpClient, IAsyncDisposable
 {
     private static readonly HashSet<string> AllowedMethods = new(StringComparer.Ordinal)
     {
