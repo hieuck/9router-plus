@@ -202,6 +202,146 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         Assert.Equal("NONE", row.TotpSecret);
     }
 
+    [Theory]
+    [InlineData("argument", "Invalid vault password")]
+    [InlineData("unauthorized", "Access denied")]
+    [InlineData("invalid-operation", "synthetic vault state failure")]
+    [InlineData("unexpected", "Vault could not be opened")]
+    public async Task UnlockVaultAsync_maps_open_errors_to_safe_status_messages(string errorKind, string expectedMessage)
+    {
+        var viewModel = CreateViewModel(googleVaultStore: new ThrowingGoogleVaultStore(CreateVaultOpenException(errorKind)));
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+
+        Assert.True(viewModel.IsVaultLocked);
+        Assert.Contains(expectedMessage, viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("synthetic secret", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LoadProviderConnectionsAsync_populates_each_provider_row_from_synthetic_vault()
+    {
+        await _providerVaultStore.SaveConnectionAsync(new ProviderAuthConnection
+        {
+            ProfileName = _profile.Name,
+            Provider = ProviderKind.Codex,
+            PreferredMethod = AuthMethod.GoogleOAuth,
+            LinkedGoogleAccount = "codex@example.test"
+        });
+        await _providerVaultStore.SaveConnectionAsync(new ProviderAuthConnection
+        {
+            ProfileName = _profile.Name,
+            Provider = ProviderKind.Kiro,
+            PreferredMethod = AuthMethod.Direct,
+            DirectCredential = new ProviderCredential
+            {
+                Email = "kiro@example.test",
+                Password = "synthetic-kiro-password",
+                TotpSecret = "synthetic-kiro-totp"
+            }
+        });
+        await _providerVaultStore.SaveConnectionAsync(new ProviderAuthConnection
+        {
+            ProfileName = _profile.Name,
+            Provider = ProviderKind.GitHub,
+            PreferredMethod = AuthMethod.GoogleOAuth,
+            LinkedGoogleAccount = "github@example.test"
+        });
+        await _providerVaultStore.SaveConnectionAsync(new ProviderAuthConnection
+        {
+            ProfileName = _profile.Name,
+            Provider = ProviderKind.OpenRouter,
+            PreferredMethod = AuthMethod.Direct,
+            DirectCredential = new ProviderCredential
+            {
+                Email = "openrouter@example.test",
+                Password = "synthetic-openrouter-password"
+            }
+        });
+
+        var viewModel = CreateViewModel();
+        await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+
+        var codex = Assert.Single(viewModel.CodexConnections);
+        Assert.Equal(AuthMethod.GoogleOAuth, codex.AuthMethod);
+        Assert.Equal("codex@example.test", codex.LinkedGoogleAccount);
+        Assert.True(codex.HasCredentials);
+        var kiro = Assert.Single(viewModel.KiroConnections);
+        Assert.Equal("kiro@example.test", kiro.Email);
+        Assert.Equal("synthetic-kiro-password", kiro.Password);
+        var github = Assert.Single(viewModel.GitHubConnections);
+        Assert.Equal("github@example.test", github.LinkedGoogleAccount);
+        var openRouter = Assert.Single(viewModel.OpenRouterConnections);
+        Assert.Equal("openrouter@example.test", openRouter.Email);
+        Assert.Equal("synthetic-openrouter-password", openRouter.Password);
+    }
+
+    [Fact]
+    public async Task SaveProviderRowCommand_persists_direct_credentials_for_the_row_provider()
+    {
+        var viewModel = CreateViewModel();
+        await WaitForAsync(() => viewModel.KiroConnections.Count == 1);
+        var row = Assert.Single(viewModel.KiroConnections);
+        row.AuthMethod = AuthMethod.Direct;
+        row.Email = "  kiro@example.test  ";
+        row.Password = "synthetic-kiro-password";
+        row.TotpSecret = "  synthetic-kiro-totp  ";
+
+        viewModel.SaveProviderRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Saved Kiro credentials", StringComparison.Ordinal));
+
+        var saved = await _providerVaultStore.GetConnectionAsync(_profile.Name, ProviderKind.Kiro);
+        Assert.NotNull(saved);
+        Assert.Equal("kiro@example.test", saved!.DirectCredential!.Email);
+        Assert.Equal("synthetic-kiro-totp", saved.DirectCredential.TotpSecret);
+    }
+
+    [Fact]
+    public async Task Provider_login_commands_report_the_provider_specific_unintegrated_flow()
+    {
+        var viewModel = CreateViewModel();
+        await WaitForAsync(() => viewModel.KiroConnections.Count == 1);
+
+        foreach (var (command, row, provider) in new[]
+        {
+            (viewModel.LoginKiroRowCommand, Assert.Single(viewModel.KiroConnections), "Kiro"),
+            (viewModel.LoginGitHubRowCommand, Assert.Single(viewModel.GitHubConnections), "GitHub"),
+            (viewModel.LoginOpenRouterRowCommand, Assert.Single(viewModel.OpenRouterConnections), "OpenRouter")
+        })
+        {
+            command.Execute(row);
+            await WaitForAsync(() => viewModel.StatusMessage.Contains($"{provider} direct login", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task RemoveProviderCommands_remove_the_selected_connection_for_each_provider()
+    {
+        foreach (var provider in new[] { ProviderKind.Kiro, ProviderKind.GitHub, ProviderKind.OpenRouter })
+        {
+            await _providerVaultStore.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = _profile.Name,
+                Provider = provider,
+                PreferredMethod = AuthMethod.Direct,
+                DirectCredential = new ProviderCredential { Email = $"{provider}@example.test", Password = "synthetic-password" }
+            });
+        }
+
+        var viewModel = CreateViewModel();
+        await WaitForAsync(() => viewModel.KiroConnections.Count == 1);
+        viewModel.SelectedKiroConnection = Assert.Single(viewModel.KiroConnections);
+        viewModel.RemoveKiroConnectionCommand.Execute(null);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Removed Kiro credentials", StringComparison.Ordinal));
+        viewModel.SelectedGitHubConnection = Assert.Single(viewModel.GitHubConnections);
+        viewModel.RemoveGitHubConnectionCommand.Execute(null);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Removed GitHub credentials", StringComparison.Ordinal));
+        viewModel.SelectedOpenRouterConnection = Assert.Single(viewModel.OpenRouterConnections);
+        viewModel.RemoveOpenRouterConnectionCommand.Execute(null);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Removed OpenRouter credentials", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task LoginRowCommand_invokes_automation_with_row_credentials()
     {
@@ -1624,11 +1764,12 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     private CredentialsManagerViewModel CreateViewModel(
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? automation = null,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? healthCheck = null,
-        Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>>? codexAuthentication = null)
+        Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>>? codexAuthentication = null,
+        IGoogleAccountVaultStore? googleVaultStore = null)
     {
         var viewModel = new CredentialsManagerViewModel(
             _mainViewModel,
-            _googleVaultStore,
+            googleVaultStore ?? _googleVaultStore,
             _providerVaultStore,
             _vaultPaths,
             automation ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
@@ -1636,6 +1777,24 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             codexAuthentication ?? ((_, _, _) => Task.FromResult(CodexLoginResult.Success())));
         _viewModels.Add(viewModel);
         return viewModel;
+    }
+
+    private static Exception CreateVaultOpenException(string errorKind) => errorKind switch
+    {
+        "argument" => new ArgumentException("synthetic secret: invalid password"),
+        "unauthorized" => new UnauthorizedAccessException("synthetic secret: denied"),
+        "invalid-operation" => new InvalidOperationException("synthetic vault state failure"),
+        _ => new Exception("synthetic secret: unexpected failure")
+    };
+
+    private sealed class ThrowingGoogleVaultStore(Exception exception) : IGoogleAccountVaultStore
+    {
+        public Task<GoogleAccountVaultSession> CreateAsync(string path, string vaultPassword, CancellationToken cancellationToken = default) => Task.FromException<GoogleAccountVaultSession>(exception);
+        public Task<GoogleAccountVaultSession> OpenAsync(string path, string vaultPassword, CancellationToken cancellationToken = default) => Task.FromException<GoogleAccountVaultSession>(exception);
+        public Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult<GoogleAccountVaultSession?>(null);
+        public Task SaveAsync(GoogleAccountVaultSession session, CancellationToken cancellationToken = default) => Task.FromException(exception);
+        public Task ExportAsync(GoogleAccountVaultSession session, string destinationPath, string exportPassword, CancellationToken cancellationToken = default) => Task.FromException(exception);
+        public Task ImportAsync(string currentPath, string sourcePath, string sourcePassword, CancellationToken cancellationToken = default) => Task.FromException(exception);
     }
 
     private CredentialsManagerViewModel CreateSyntheticViewModel(
