@@ -11,17 +11,22 @@ namespace RouterPlus.Core.Tests.Observability;
 public sealed class ObservabilityHubBranchTests
 {
     [Fact]
-    public void SetWriter_rejects_null_writer()
+    public async Task SetWriter_rejects_null_without_replacing_existing_writer()
     {
         // Arrange
         using var hub = CreateHub();
+        var writer = new RecordingWriter();
+        hub.SetWriter(writer);
 
-        // Act
-        var exception = Record.Exception(() => hub.SetWriter(null!));
+        // Act / Assert
+        var exception = Assert.Throws<ArgumentNullException>(() => hub.SetWriter(null!));
+        Assert.Equal("writer", exception.ParamName);
 
-        // Assert
-        var argumentException = Assert.IsType<ArgumentNullException>(exception);
-        Assert.Equal("writer", argumentException.ParamName);
+        hub.LogEvent(LogLevel.Info, "Test", "Preserved", "message");
+        await hub.FlushAsync();
+
+        var loggedEvent = Assert.Single(writer.Events);
+        Assert.Equal("Preserved", loggedEvent.Event);
     }
 
     [Fact]
