@@ -424,7 +424,7 @@ public class RouterApiClientQuotaTests
             .ThrowsAsync(new OperationCanceledException());
 
         // Act & Assert
-        await Assert.ThrowsAsync<OperationCanceledException>(
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => InvokeFetchQuotaAsync(connectionId, cts.Token));
     }
 

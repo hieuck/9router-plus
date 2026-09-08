@@ -16,15 +16,22 @@ public sealed class UpdatePackageValidationTests
         var package = await CreatePackageAsync(includeTraversalEntry: false);
         var verifier = new UpdatePackageVerifier();
 
-        var result = await verifier.VerifyAsync(
-            package.ArchivePath,
-            package.ChecksumPath,
-            package.StagingPath,
-            ReleaseVersion.Parse("1.3.0"));
+        try
+        {
+            var result = await verifier.VerifyAsync(
+                package.ArchivePath,
+                package.ChecksumPath,
+                package.StagingPath,
+                ReleaseVersion.Parse("1.3.0"));
 
-        Assert.Equal("1.3.0", result.Version.ToString());
-        Assert.True(File.Exists(Path.Combine(package.StagingPath, "RouterPlus.exe")));
-        Assert.True(File.Exists(Path.Combine(package.StagingPath, "RouterPlus.Updater.exe")));
+            Assert.Equal("1.3.0", result.Version.ToString());
+            Assert.True(File.Exists(Path.Combine(package.StagingPath, "RouterPlus.exe")));
+            Assert.True(File.Exists(Path.Combine(package.StagingPath, "RouterPlus.Updater.exe")));
+        }
+        finally
+        {
+            DeletePackageRoot(package);
+        }
     }
 
     [Fact]
@@ -34,11 +41,18 @@ public sealed class UpdatePackageValidationTests
         await File.WriteAllTextAsync(package.ChecksumPath, $"{new string('0', 64)}  {Path.GetFileName(package.ArchivePath)}");
         var verifier = new UpdatePackageVerifier();
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
-            package.ArchivePath,
-            package.ChecksumPath,
-            package.StagingPath,
-            ReleaseVersion.Parse("1.3.0")));
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
+                package.ArchivePath,
+                package.ChecksumPath,
+                package.StagingPath,
+                ReleaseVersion.Parse("1.3.0")));
+        }
+        finally
+        {
+            DeletePackageRoot(package);
+        }
     }
 
     [Fact]
@@ -47,11 +61,123 @@ public sealed class UpdatePackageValidationTests
         var package = await CreatePackageAsync(includeTraversalEntry: true);
         var verifier = new UpdatePackageVerifier();
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
-            package.ArchivePath,
-            package.ChecksumPath,
-            package.StagingPath,
-            ReleaseVersion.Parse("1.3.0")));
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
+                package.ArchivePath,
+                package.ChecksumPath,
+                package.StagingPath,
+                ReleaseVersion.Parse("1.3.0")));
+        }
+        finally
+        {
+            DeletePackageRoot(package);
+        }
+    }
+
+    [Fact]
+    public async Task VerifyAsync_rejects_a_non_empty_staging_directory()
+    {
+        var package = await CreatePackageAsync(includeTraversalEntry: false);
+        Directory.CreateDirectory(package.StagingPath);
+        await File.WriteAllTextAsync(Path.Combine(package.StagingPath, "existing.txt"), "existing");
+        var verifier = new UpdatePackageVerifier();
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
+                package.ArchivePath,
+                package.ChecksumPath,
+                package.StagingPath,
+                ReleaseVersion.Parse("1.3.0")));
+        }
+        finally
+        {
+            DeletePackageRoot(package);
+        }
+    }
+
+    [Fact]
+    public async Task VerifyAsync_rejects_a_package_missing_a_required_file()
+    {
+        var package = await CreatePackageAsync(["RouterPlus.exe"]);
+        var verifier = new UpdatePackageVerifier();
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
+                package.ArchivePath,
+                package.ChecksumPath,
+                package.StagingPath,
+                ReleaseVersion.Parse("1.3.0")));
+        }
+        finally
+        {
+            DeletePackageRoot(package);
+        }
+    }
+
+    [Fact]
+    public async Task VerifyAsync_rejects_duplicate_archive_entries()
+    {
+        var package = await CreatePackageAsync(["RouterPlus.exe", "RouterPlus.Updater.exe", "RouterPlus.exe"]);
+        var verifier = new UpdatePackageVerifier();
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
+                package.ArchivePath,
+                package.ChecksumPath,
+                package.StagingPath,
+                ReleaseVersion.Parse("1.3.0")));
+        }
+        finally
+        {
+            DeletePackageRoot(package);
+        }
+    }
+
+    [Fact]
+    public async Task VerifyAsync_rejects_a_malformed_checksum_file()
+    {
+        var package = await CreatePackageAsync(includeTraversalEntry: false);
+        await File.WriteAllTextAsync(package.ChecksumPath, "not-a-checksum");
+        var verifier = new UpdatePackageVerifier();
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => verifier.VerifyAsync(
+                package.ArchivePath,
+                package.ChecksumPath,
+                package.StagingPath,
+                ReleaseVersion.Parse("1.3.0")));
+        }
+        finally
+        {
+            DeletePackageRoot(package);
+        }
+    }
+
+    [Fact]
+    public async Task VerifyAsync_rejects_missing_archive_file()
+    {
+        var package = await CreatePackageAsync(includeTraversalEntry: false);
+        var verifier = new UpdatePackageVerifier();
+
+        try
+        {
+            File.Delete(package.ArchivePath);
+
+            await Assert.ThrowsAsync<FileNotFoundException>(() => verifier.VerifyAsync(
+                package.ArchivePath,
+                package.ChecksumPath,
+                package.StagingPath,
+                ReleaseVersion.Parse("1.3.0")));
+        }
+        finally
+        {
+            DeletePackageRoot(package);
+        }
     }
 
     [Fact]
@@ -67,38 +193,62 @@ public sealed class UpdatePackageValidationTests
     {
         var root = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
         var outside = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var link = Path.Combine(root, "linked");
         Directory.CreateDirectory(root);
         Directory.CreateDirectory(outside);
-        var link = Path.Combine(root, "linked");
 
-        var startInfo = new ProcessStartInfo
+        try
         {
-            FileName = "cmd.exe",
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("/d");
-        startInfo.ArgumentList.Add("/c");
-        startInfo.ArgumentList.Add("mklink");
-        startInfo.ArgumentList.Add("/J");
-        startInfo.ArgumentList.Add(link);
-        startInfo.ArgumentList.Add(outside);
-        using var process = Process.Start(startInfo);
-        if (process is null)
-        {
-            throw SkipException.ForSkip("The test environment cannot create a reparse point.");
-        }
-        process.WaitForExit();
-        if (process.ExitCode != 0)
-        {
-            throw SkipException.ForSkip("The test environment cannot create a reparse point.");
-        }
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("/d");
+            startInfo.ArgumentList.Add("/c");
+            startInfo.ArgumentList.Add("mklink");
+            startInfo.ArgumentList.Add("/J");
+            startInfo.ArgumentList.Add(link);
+            startInfo.ArgumentList.Add(outside);
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                throw SkipException.ForSkip("The test environment cannot create a reparse point.");
+            }
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                throw SkipException.ForSkip("The test environment cannot create a reparse point.");
+            }
 
-        Assert.Throws<InvalidDataException>(() => UpdatePaths.ResolveUnderRoot(root, "linked\\file.txt"));
+            Assert.Throws<InvalidDataException>(() => UpdatePaths.ResolveUnderRoot(root, "linked\\file.txt"));
+        }
+        finally
+        {
+            if (Directory.Exists(link))
+            {
+                Directory.Delete(link);
+            }
+
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+
+            if (Directory.Exists(outside))
+            {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
     }
 
-    private static async Task<PackageFixture> CreatePackageAsync(
-        bool includeTraversalEntry)
+    private static Task<PackageFixture> CreatePackageAsync(bool includeTraversalEntry) =>
+        CreatePackageAsync(includeTraversalEntry
+            ? ["RouterPlus.exe", "RouterPlus.Updater.exe", "..\\evil.exe"]
+            : ["RouterPlus.exe", "RouterPlus.Updater.exe"]);
+
+    private static async Task<PackageFixture> CreatePackageAsync(IReadOnlyList<string> entries)
     {
         var root = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -109,25 +259,33 @@ public sealed class UpdatePackageValidationTests
         await using (var stream = File.Create(archivePath))
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
         {
-            foreach (var fileName in new[] { "RouterPlus.exe", "RouterPlus.Updater.exe" })
+            foreach (var entryName in entries)
             {
-                await using var file = archive.CreateEntry(fileName).Open();
-                await file.WriteAsync(Encoding.UTF8.GetBytes("test executable"));
-            }
-
-            if (includeTraversalEntry)
-            {
-                await using var file = archive.CreateEntry("..\\evil.exe").Open();
-                await file.WriteAsync(Encoding.UTF8.GetBytes("evil"));
+                var entry = archive.CreateEntry(entryName);
+                if (!entryName.EndsWith("/", StringComparison.Ordinal))
+                {
+                    await using var file = entry.Open();
+                    await file.WriteAsync(Encoding.UTF8.GetBytes("test executable"));
+                }
             }
         }
 
-        var hash = Convert.ToHexString(await SHA256.HashDataAsync(File.OpenRead(archivePath))).ToLowerInvariant();
+        await using var archiveFile = File.OpenRead(archivePath);
+        var hash = Convert.ToHexString(await SHA256.HashDataAsync(archiveFile)).ToLowerInvariant();
         await File.WriteAllTextAsync(checksumPath, $"{hash}  {Path.GetFileName(archivePath)}");
-        return new PackageFixture(archivePath, checksumPath, stagingPath);
+        return new PackageFixture(root, archivePath, checksumPath, stagingPath);
+    }
+
+    private static void DeletePackageRoot(PackageFixture package)
+    {
+        if (Directory.Exists(package.Root))
+        {
+            Directory.Delete(package.Root, recursive: true);
+        }
     }
 
     private sealed record PackageFixture(
+        string Root,
         string ArchivePath,
         string ChecksumPath,
         string StagingPath);

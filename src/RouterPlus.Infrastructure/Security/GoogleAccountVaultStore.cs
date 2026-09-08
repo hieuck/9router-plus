@@ -139,6 +139,10 @@ public sealed class GoogleAccountVaultStore : VaultStoreBase, IGoogleAccountVaul
             {
                 throw new CryptographicException("Invalid vault format.");
             }
+            catch (ArgumentException)
+            {
+                throw new CryptographicException("Invalid vault format.");
+            }
         }, cancellationToken);
     }
 

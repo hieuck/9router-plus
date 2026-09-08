@@ -56,7 +56,7 @@ public abstract class GoogleOAuthFlowAutomation
             cancellationToken.ThrowIfCancellationRequested();
 
             // Detect Google first so provider automation never owns a Google page.
-            var googleState = await GoogleOAuthPageDetector.TryDetectAsync(_client, _sessionId, cancellationToken);
+            var googleState = await ReadGooglePageStateAsync(cancellationToken);
             var providerState = googleState is null
                 ? await ReadProviderPageStateAsync(cancellationToken)
                 : null;
@@ -110,14 +110,14 @@ public abstract class GoogleOAuthFlowAutomation
                 var screenKey = $"provider-initial:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
                     continue;
                 }
 
                 var clicked = await TryClickProviderInitialButtonAsync(combinedState, cancellationToken);
                 if (clicked)
                 {
-                    await Task.Delay(1500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(1500), cancellationToken);
                     continue;
                 }
 
@@ -134,7 +134,7 @@ public abstract class GoogleOAuthFlowAutomation
                 var screenKey = $"picker:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
                     continue;
                 }
 
@@ -149,7 +149,7 @@ public abstract class GoogleOAuthFlowAutomation
                     combinedState, cancellationToken);
                 if (accountClicked)
                 {
-                    await Task.Delay(1500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(1500), cancellationToken);
                     continue;
                 }
 
@@ -166,14 +166,14 @@ public abstract class GoogleOAuthFlowAutomation
                 var screenKey = $"provider-picker:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
                     continue;
                 }
 
                 var accountClicked = await TryClickProviderAccountPickerAsync(combinedState, cancellationToken);
                 if (accountClicked)
                 {
-                    await Task.Delay(1500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(1500), cancellationToken);
                     continue;
                 }
 
@@ -199,11 +199,10 @@ public abstract class GoogleOAuthFlowAutomation
                             "GoogleOAuth",
                             "TotpAutoFilling",
                             "Auto-filling Google TOTP code");
-                        var filled = await GoogleOAuthPageDetector.TryFillTotpAsync(
-                            _client, _sessionId, totpCode, cancellationToken);
+                        var filled = await TryFillGoogleTotpAsync(totpCode, cancellationToken);
                         if (filled)
                         {
-                            await Task.Delay(2000, cancellationToken);
+                            await DelayAsync(TimeSpan.FromMilliseconds(2000), cancellationToken);
                             continue;
                         }
                     }
@@ -214,7 +213,7 @@ public abstract class GoogleOAuthFlowAutomation
                     "GoogleOAuth",
                     "TotpWaitingManual",
                     "Waiting for manual Google TOTP entry");
-                await Task.Delay(1000, cancellationToken);
+                await DelayAsync(TimeSpan.FromMilliseconds(1000), cancellationToken);
                 continue;
             }
 
@@ -224,7 +223,7 @@ public abstract class GoogleOAuthFlowAutomation
                 var screenKey = $"google-consent:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
                     continue;
                 }
 
@@ -233,11 +232,10 @@ public abstract class GoogleOAuthFlowAutomation
                     "GoogleOAuth",
                     "ClickingConsent",
                     "Clicking Google consent button");
-                var clicked = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
-                    _client, _sessionId, cancellationToken);
+                var clicked = await TryClickGoogleConsentAsync(cancellationToken);
                 if (clicked)
                 {
-                    await Task.Delay(1500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(1500), cancellationToken);
                     continue;
                 }
 
@@ -254,7 +252,7 @@ public abstract class GoogleOAuthFlowAutomation
                 var screenKey = $"provider-consent:{combinedState.CurrentUrl}";
                 if (!clickedScreenUrls.Add(screenKey))
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
                     continue;
                 }
 
@@ -267,7 +265,7 @@ public abstract class GoogleOAuthFlowAutomation
                 var clicked = await TryClickProviderConsentButtonAsync(combinedState, cancellationToken);
                 if (clicked)
                 {
-                    await Task.Delay(1500, cancellationToken);
+                    await DelayAsync(TimeSpan.FromMilliseconds(1500), cancellationToken);
                     continue;
                 }
 
@@ -278,7 +276,7 @@ public abstract class GoogleOAuthFlowAutomation
                     Message: "Could not click provider consent button");
             }
 
-            await Task.Delay(500, cancellationToken);
+            await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
         }
 
         return new OAuthConsentResult(
@@ -286,6 +284,40 @@ public abstract class GoogleOAuthFlowAutomation
             AlreadyAuthorized: false,
             Message: "Timeout waiting for OAuth consent flow");
     }
+
+    // ========== Browser seams (virtual for deterministic flow tests) ==========
+
+    /// <summary>
+    /// Reads Google page state while preserving the production detector by default.
+    /// </summary>
+    protected virtual Task<GoogleOAuthPageState?> ReadGooglePageStateAsync(
+        CancellationToken cancellationToken) =>
+        GoogleOAuthPageDetector.TryDetectAsync(_client, _sessionId, cancellationToken);
+
+    /// <summary>
+    /// Fills Google TOTP while preserving the production detector by default.
+    /// </summary>
+    protected virtual Task<bool> TryFillGoogleTotpAsync(
+        string totpCode,
+        CancellationToken cancellationToken) =>
+        GoogleOAuthPageDetector.TryFillTotpAsync(
+            _client, _sessionId, totpCode, cancellationToken);
+
+    /// <summary>
+    /// Clicks Google consent while preserving the production detector by default.
+    /// </summary>
+    protected virtual Task<bool> TryClickGoogleConsentAsync(
+        CancellationToken cancellationToken) =>
+        GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
+            _client, _sessionId, cancellationToken);
+
+    /// <summary>
+    /// Delays between polling and browser actions; production uses the real delay.
+    /// </summary>
+    protected virtual Task DelayAsync(
+        TimeSpan delay,
+        CancellationToken cancellationToken) =>
+        Task.Delay(delay, cancellationToken);
 
     // ========== Abstract methods (must override) ==========
 

@@ -13,6 +13,45 @@ public sealed class OAuthCallbackListenerTests
             listener.WaitForCallbackAsync(TimeSpan.FromMilliseconds(25)));
     }
 
+    [Fact]
+    public void ParseCallbackUri_reads_error_details()
+    {
+        var callback = OAuthCallbackListener.ParseCallbackUri(new Uri(
+            "http://127.0.0.1:38579/callback?error=access_denied&error_description=User+denied+access"));
+
+        Assert.Null(callback.Code);
+        Assert.Null(callback.Token);
+        Assert.Equal("access_denied", callback.Error);
+        Assert.Equal("User denied access", callback.ErrorDescription);
+    }
+
+    [Fact]
+    public void ParseCallbackUri_merges_fragment_values_over_query_values()
+    {
+        var callback = OAuthCallbackListener.ParseCallbackUri(new Uri(
+            "http://127.0.0.1:38579/callback?code=query-code&state=query-state#code=fragment-code&token=fragment-token"));
+
+        Assert.Equal("fragment-code", callback.Code);
+        Assert.Equal("fragment-token", callback.Token);
+        Assert.Equal("query-state", callback.State);
+    }
+
+    [Fact]
+    public void ParseCallbackUri_decodes_encoded_values_and_supports_key_without_value()
+    {
+        var callback = OAuthCallbackListener.ParseCallbackUri(new Uri(
+            "http://127.0.0.1:38579/callback?code=hello%20world&state"));
+
+        Assert.Equal("hello world", callback.Code);
+        Assert.Equal(string.Empty, callback.State);
+    }
+
+    [Fact]
+    public void ParseCallbackUri_throws_for_null_uri()
+    {
+        Assert.Throws<ArgumentNullException>(() => OAuthCallbackListener.ParseCallbackUri(null!));
+    }
+
     [Theory]
     [InlineData("http://127.0.0.1:38579/callback?code=abc&state=xyz", "abc", "", "xyz")]
     [InlineData("http://127.0.0.1:38579/callback?token=kimchi-token&state=xyz", "", "kimchi-token", "xyz")]

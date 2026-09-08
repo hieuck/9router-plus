@@ -1,3 +1,4 @@
+using System.Globalization;
 using RouterPlus.Core.Providers;
 
 namespace RouterPlus.Core.Tests;
@@ -216,10 +217,10 @@ public class ProviderConnectionCalculationsTests
     }
 
     [Theory]
-    [InlineData(0.01)]
-    [InlineData(49.99)]
-    [InlineData(79.99)]
-    public void IsNearLimit_ReturnsFalse_WhenJustBelowThreshold(decimal percentage)
+    [InlineData(1, 100)]
+    [InlineData(4999, 10000)]
+    [InlineData(7999, 10000)]
+    public void IsNearLimit_ReturnsFalse_WhenJustBelowThreshold(long usageCount, long limitCount)
     {
         var connection = new ProviderConnection(
             "conn-1",
@@ -227,17 +228,17 @@ public class ProviderConnectionCalculationsTests
             "Test",
             1,
             true,
-            UsageCount: (long)percentage,
-            LimitCount: 100);
+            UsageCount: usageCount,
+            LimitCount: limitCount);
 
         Assert.False(connection.IsNearLimit);
     }
 
     [Theory]
-    [InlineData(80.0)]
-    [InlineData(85.5)]
-    [InlineData(99.9)]
-    public void IsNearLimit_ReturnsTrue_WhenAtOrAboveThreshold(decimal percentage)
+    [InlineData(80, 100)]
+    [InlineData(855, 1000)]
+    [InlineData(999, 1000)]
+    public void IsNearLimit_ReturnsTrue_WhenAtOrAboveThreshold(long usageCount, long limitCount)
     {
         var connection = new ProviderConnection(
             "conn-1",
@@ -245,10 +246,28 @@ public class ProviderConnectionCalculationsTests
             "Test",
             1,
             true,
-            UsageCount: (long)percentage,
-            LimitCount: 100);
+            UsageCount: usageCount,
+            LimitCount: limitCount);
 
         Assert.True(connection.IsNearLimit);
+    }
+
+    [Fact]
+    public void ProviderQuota_FormattingUsesExplicitCulture()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("vi-VN");
+            var quota = new ProviderQuota("credits", 49.54m, 50m, 0.46m, null);
+
+            Assert.Equal("49,54 / 50", quota.UsageText);
+            Assert.Equal("99,08%", quota.PercentageText);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     [Fact]
@@ -309,8 +328,8 @@ public class ProviderConnectionCalculationsTests
     {
         var quota = new ProviderQuota("credits", 49.54m, 50m, 0.46m, null);
 
-        // Vietnamese culture uses comma as decimal separator
-        Assert.Equal("49,54 / 50", quota.UsageText);
+        var expected = $"{49.54m.ToString("0.##", CultureInfo.CurrentCulture)} / {50m.ToString("0.##", CultureInfo.CurrentCulture)}";
+        Assert.Equal(expected, quota.UsageText);
     }
 
     [Fact]
@@ -326,8 +345,8 @@ public class ProviderConnectionCalculationsTests
     {
         var quota = new ProviderQuota("requests", 75.567m, 100m, 24.433m, null);
 
-        // Vietnamese culture uses comma as decimal separator
-        Assert.Equal("75,57%", quota.PercentageText);
+        var expected = $"{quota.UsagePercentage!.Value:0.##}%";
+        Assert.Equal(expected, quota.PercentageText);
     }
 
     [Fact]
@@ -430,4 +449,147 @@ public class ProviderConnectionCalculationsTests
 
         Assert.Equal(0m, quota.UsagePercentage);
     }
+
+    [Theory]
+    [InlineData("active")]
+    [InlineData(" OK ")]
+    [InlineData("healthy")]
+    [InlineData("available")]
+    [InlineData("ready")]
+    [InlineData("success")]
+    [InlineData("connected")]
+    public void HasSuccessfulTestStatus_ReturnsTrue_ForRecognizedStatusIgnoringCaseAndWhitespace(string status)
+    {
+        // Arrange
+        var connection = CreateConnection(testStatus: status);
+
+        // Act
+        var result = connection.HasSuccessfulTestStatus;
+
+        // Assert
+        Assert.True(result);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("pending")]
+    [InlineData("unknown")]
+    public void HasSuccessfulTestStatus_ReturnsFalse_ForMissingOrUnrecognizedStatus(string? status)
+    {
+        // Arrange
+        var connection = CreateConnection(testStatus: status);
+
+        // Act
+        var result = connection.HasSuccessfulTestStatus;
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void HasUnknownTestStatus_ReturnsTrue_WhenStatusIsMissingOrUnrecognizedWithoutError()
+    {
+        // Arrange
+        var missingStatus = CreateConnection();
+        var unrecognizedStatus = CreateConnection(testStatus: "pending");
+
+        // Act
+        var missingResult = missingStatus.HasUnknownTestStatus;
+        var unrecognizedResult = unrecognizedStatus.HasUnknownTestStatus;
+
+        // Assert
+        Assert.True(missingResult);
+        Assert.True(unrecognizedResult);
+    }
+
+    [Fact]
+    public void HasUnknownTestStatus_ReturnsFalse_WhenStatusIsSuccessfulOrErrored()
+    {
+        // Arrange
+        var successful = CreateConnection(testStatus: "ready");
+        var errored = CreateConnection(testStatus: "failed");
+
+        // Act
+        var successfulResult = successful.HasUnknownTestStatus;
+        var erroredResult = errored.HasUnknownTestStatus;
+
+        // Assert
+        Assert.False(successfulResult);
+        Assert.False(erroredResult);
+    }
+
+    [Theory]
+    [InlineData("error", null, null)]
+    [InlineData("expired", null, null)]
+    [InlineData("unavailable", null, null)]
+    [InlineData("invalid", null, null)]
+    [InlineData("failed", null, null)]
+    [InlineData("pending", "AUTH_ERROR", null)]
+    [InlineData("pending", null, "request failed")]
+    public void HasError_ReturnsTrue_ForErrorStatusesOrErrorDetails(
+        string? status,
+        string? errorCode,
+        string? lastError)
+    {
+        // Arrange
+        var connection = CreateConnection(
+            testStatus: status,
+            errorCode: errorCode,
+            lastError: lastError);
+
+        // Act
+        var result = connection.HasError;
+
+        // Assert
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void HasError_ReturnsFalse_WhenStatusIsSuccessfulEvenWithErrorDetails()
+    {
+        // Arrange
+        var connection = CreateConnection(
+            testStatus: "CONNECTED",
+            errorCode: "STALE_ERROR",
+            lastError: "stale error");
+
+        // Act
+        var result = connection.HasError;
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsDisabled_IsInverseOfIsActive()
+    {
+        // Arrange
+        var active = CreateConnection(isActive: true);
+        var inactive = CreateConnection(isActive: false);
+
+        // Act
+        var activeResult = active.IsDisabled;
+        var inactiveResult = inactive.IsDisabled;
+
+        // Assert
+        Assert.False(activeResult);
+        Assert.True(inactiveResult);
+    }
+
+    private static ProviderConnection CreateConnection(
+        bool isActive = true,
+        string? testStatus = null,
+        string? errorCode = null,
+        string? lastError = null) =>
+        new(
+            "conn-1",
+            ProviderKind.Codex,
+            "Test",
+            1,
+            isActive,
+            TestStatus: testStatus,
+            ErrorCode: errorCode,
+            LastError: lastError);
 }

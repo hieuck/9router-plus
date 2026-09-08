@@ -10,7 +10,14 @@ public static class UpdatePaths
         "updates");
 
     public static string VersionRoot(ReleaseVersion version) =>
-        ResolveUnderRoot(Root, version.ToString());
+        VersionRoot(Root, version);
+
+    public static string VersionRoot(string root, ReleaseVersion version)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        ArgumentNullException.ThrowIfNull(version);
+        return ResolveUnderRoot(root, version.ToString());
+    }
 
     public static string ResolveUnderRoot(string root, string relativePath)
     {

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Security;
 
@@ -13,7 +14,7 @@ public sealed class GoogleAccountVaultStoreTests : IDisposable
     {
         _testDirectory = Path.Combine(Path.GetTempPath(), $"GoogleVaultTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testDirectory);
-        _paths = new GoogleAccountVaultPaths(Path.Combine(_testDirectory, "remembered.dat"));
+        _paths = new GoogleAccountVaultPaths(_testDirectory);
     }
 
     public void Dispose()
@@ -22,6 +23,121 @@ public sealed class GoogleAccountVaultStoreTests : IDisposable
         {
             Directory.Delete(_testDirectory, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task OpenAsync_MalformedEnvelope_ThrowsInvalidVaultFormat()
+    {
+        var store = new GoogleAccountVaultStore(_paths);
+        var vaultPath = Path.Combine(_testDirectory, "malformed.vault");
+        await File.WriteAllTextAsync(vaultPath, "{ not valid json");
+
+        var exception = await Assert.ThrowsAsync<CryptographicException>(() =>
+            store.OpenAsync(vaultPath, "synthetic-password"));
+
+        Assert.Equal("Invalid vault format.", exception.Message);
+    }
+
+    [Fact]
+    public async Task OpenAsync_EnvelopeWithUnsupportedVersion_ThrowsSpecificError()
+    {
+        var store = new GoogleAccountVaultStore(_paths);
+        var vaultPath = Path.Combine(_testDirectory, "unsupported-version.vault");
+        await File.WriteAllTextAsync(vaultPath, "{\"Version\":99}");
+
+        var exception = await Assert.ThrowsAsync<CryptographicException>(() =>
+            store.OpenAsync(vaultPath, "synthetic-password"));
+
+        Assert.Equal("Unsupported vault version: 99", exception.Message);
+    }
+
+    [Fact]
+    public async Task ExportAsync_ThenImportAsync_ReplacesCurrentVaultAndCreatesBackup()
+    {
+        var store = new GoogleAccountVaultStore(_paths);
+        var currentPath = Path.Combine(_testDirectory, "current.vault");
+        var exportPath = Path.Combine(_testDirectory, "export.vault");
+
+        await using var current = await store.CreateAsync(currentPath, "current-password");
+        current.Replace(new GoogleAccountVault().Upsert(
+            new GoogleLoginCredential("source-profile", "source@example.test", "source-password", "SYNTHETIC-TOTP")));
+        await store.SaveAsync(current);
+        await store.ExportAsync(current, exportPath, "export-password");
+
+        current.Replace(new GoogleAccountVault().Upsert(
+            new GoogleLoginCredential("current-profile", "current@example.test", "current-password", "SYNTHETIC-TOTP")));
+        await store.SaveAsync(current);
+        await store.ImportAsync(currentPath, exportPath, "export-password");
+
+        await using var imported = await store.OpenAsync(currentPath, "export-password");
+        Assert.NotNull(imported.Vault.Find("source-profile"));
+        Assert.Null(imported.Vault.Find("current-profile"));
+        Assert.True(File.Exists(currentPath + ".bak"));
+    }
+
+    [Fact]
+    public async Task ImportAsync_InvalidSource_LeavesCurrentVaultAndRememberedUnlockIntact()
+    {
+        var store = new GoogleAccountVaultStore(_paths);
+        var currentPath = Path.Combine(_testDirectory, "current.vault");
+        var sourcePath = Path.Combine(_testDirectory, "source.vault");
+
+        await using var current = await store.CreateAsync(currentPath, "current-password");
+        current.Replace(new GoogleAccountVault().Upsert(
+            new GoogleLoginCredential("current-profile", "current@example.test", "current-password", "SYNTHETIC-TOTP")));
+        await store.SaveAsync(current);
+        await current.RememberAsync();
+        var original = await File.ReadAllTextAsync(currentPath);
+
+        await using var source = await store.CreateAsync(sourcePath, "source-password");
+        await store.SaveAsync(source);
+        var sourceText = await File.ReadAllTextAsync(sourcePath);
+        await File.WriteAllTextAsync(sourcePath, sourceText[..^2] + "xx");
+
+        await Assert.ThrowsAsync<CryptographicException>(() =>
+            store.ImportAsync(currentPath, sourcePath, "source-password"));
+
+        Assert.Equal(original, await File.ReadAllTextAsync(currentPath));
+        Assert.False(File.Exists(currentPath + ".bak"));
+        Assert.True(File.Exists(_paths.RememberedKeyPath));
+        await using var remembered = await store.TryOpenRememberedAsync(currentPath);
+        Assert.NotNull(remembered);
+        Assert.NotNull(remembered.Vault.Find("current-profile"));
+    }
+
+    [Fact]
+    public async Task ImportAsync_Success_InvalidatesRememberedUnlock()
+    {
+        var store = new GoogleAccountVaultStore(_paths);
+        var currentPath = Path.Combine(_testDirectory, "current.vault");
+        var sourcePath = Path.Combine(_testDirectory, "source.vault");
+
+        await using var current = await store.CreateAsync(currentPath, "current-password");
+        await store.SaveAsync(current);
+        await current.RememberAsync();
+        Assert.True(File.Exists(_paths.RememberedKeyPath));
+
+        await using var source = await store.CreateAsync(sourcePath, "source-password");
+        await store.SaveAsync(source);
+        await store.ImportAsync(currentPath, sourcePath, "source-password");
+
+        Assert.False(File.Exists(_paths.RememberedKeyPath));
+        Assert.Null(await store.TryOpenRememberedAsync(currentPath));
+    }
+
+    [Fact]
+    public async Task TryOpenRememberedAsync_MalformedRememberedEnvelope_RemovesRememberedFile()
+    {
+        var store = new GoogleAccountVaultStore(_paths);
+        var vaultPath = Path.Combine(_testDirectory, "remembered.vault");
+        await using var session = await store.CreateAsync(vaultPath, "synthetic-password");
+        await store.SaveAsync(session);
+        await File.WriteAllTextAsync(_paths.RememberedKeyPath, "{ not valid json");
+
+        var result = await store.TryOpenRememberedAsync(vaultPath);
+
+        Assert.Null(result);
+        Assert.False(File.Exists(_paths.RememberedKeyPath));
     }
 
     [Fact]

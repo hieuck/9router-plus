@@ -19,10 +19,9 @@ public sealed class MainViewModelApiKeyTests
             "Default",
             Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N")),
             IsDefault: true);
-        var secretKey = ProfileSecretKey.Create(profile, ProviderKind.OpenRouter);
         var handler = new ApiKeyAddHandler();
         using var httpClient = new HttpClient(handler);
-        var viewModel = new MainViewModel(httpClient: httpClient)
+        var viewModel = new MainViewModel(httpClient: httpClient, secretVault: new InMemorySecretVault())
         {
             DashboardBaseUrl = "http://router.test"
         };
@@ -38,17 +37,61 @@ public sealed class MainViewModelApiKeyTests
             }
         };
 
-        try
-        {
-            var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "test-key");
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "test-key");
 
-            Assert.True(added);
-            Assert.Equal(profile.Id, viewModel.SelectedProfile?.Id);
-        }
-        finally
+        Assert.True(added);
+        Assert.Equal(profile.Id, viewModel.SelectedProfile?.Id);
+    }
+
+    [Fact]
+    public async Task AddApiKey_rejects_provider_without_api_key_workflow_without_http_call()
+    {
+        var handler = new ApiKeyAddHandler();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = new MainViewModel(httpClient: httpClient);
+
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.Kimchi, "test-key");
+
+        Assert.False(added);
+        Assert.Equal("Kimchi không dùng API key.", viewModel.StatusText);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task AddApiKey_requires_selected_profile_without_http_call()
+    {
+        var handler = new ApiKeyAddHandler();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = new MainViewModel(httpClient: httpClient);
+
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "test-key");
+
+        Assert.False(added);
+        Assert.Equal("Hãy chọn Chrome profile trước.", viewModel.StatusText);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task AddApiKey_rejects_blank_key_without_http_call()
+    {
+        var profile = new ChromeProfile(
+            "profile-id",
+            "Work",
+            "Default",
+            Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N")),
+            IsDefault: true);
+        var handler = new ApiKeyAddHandler();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = new MainViewModel(httpClient: httpClient, secretVault: new InMemorySecretVault())
         {
-            await new DpapiSecretVault().RemoveAsync(secretKey);
-        }
+            SelectedProfile = profile
+        };
+
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "  \t ");
+
+        Assert.False(added);
+        Assert.Equal("Hãy dán API key vào ô bảo mật.", viewModel.StatusText);
+        Assert.Empty(handler.Requests);
     }
 
     [Fact]
@@ -60,10 +103,9 @@ public sealed class MainViewModelApiKeyTests
             "Default",
             Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N")),
             IsDefault: true);
-        var secretKey = ProfileSecretKey.Create(profile, ProviderKind.OpenRouter);
         var handler = new ApiKeyAddHandler();
         using var httpClient = new HttpClient(handler);
-        var viewModel = new MainViewModel(httpClient: httpClient)
+        var viewModel = new MainViewModel(httpClient: httpClient, secretVault: new InMemorySecretVault())
         {
             DashboardBaseUrl = "http://router.test"
         };
@@ -71,27 +113,40 @@ public sealed class MainViewModelApiKeyTests
         viewModel.ProfileRows.Add(new ProfileRowViewModel(profile, viewModel.Providers));
         viewModel.SelectedProfile = profile;
 
-        try
-        {
-            var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "test-key");
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.OpenRouter, "test-key");
 
-            Assert.True(added);
-            Assert.Equal(
-                [
-                    "GET /api/providers",
-                    "POST /api/providers",
-                    "POST /api/providers/openrouter-1/test",
-                    "GET /api/providers",
-                    "GET /api/usage/openrouter-1"
-                ],
-                handler.Requests);
-            Assert.Equal(
-                ProviderHealthState.Healthy,
-                viewModel.ProviderCards.Single(card => card.Kind == ProviderKind.OpenRouter).HealthState);
-        }
-        finally
+        Assert.True(added);
+        Assert.Equal(
+            [
+                "GET /api/providers",
+                "POST /api/providers",
+                "POST /api/providers/openrouter-1/test",
+                "GET /api/providers",
+                "GET /api/usage/openrouter-1"
+            ],
+            handler.Requests);
+        Assert.Equal(
+            ProviderHealthState.Healthy,
+            viewModel.ProviderCards.Single(card => card.Kind == ProviderKind.OpenRouter).HealthState);
+    }
+
+    private sealed class InMemorySecretVault : ISecretVault
+    {
+        private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
+
+        public Task<string?> ReadAsync(string key, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_values.TryGetValue(key, out var value) ? value : null);
+
+        public Task StoreAsync(string key, string secret, CancellationToken cancellationToken = default)
         {
-            await new DpapiSecretVault().RemoveAsync(secretKey);
+            _values[key] = secret;
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+        {
+            _values.Remove(key);
+            return Task.CompletedTask;
         }
     }
 

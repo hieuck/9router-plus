@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\RouterPlus.Core\RouterPlus.Core.csproj" />
+    <InternalsVisibleTo Include="RouterPlus.Updater.Tests" />
   </ItemGroup>
 </Project>

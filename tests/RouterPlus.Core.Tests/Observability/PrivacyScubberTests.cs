@@ -5,6 +5,105 @@ namespace RouterPlus.Core.Tests.Observability;
 
 public sealed class PrivacyScubberTests
 {
+    private enum SyntheticStatus
+    {
+        Ready
+    }
+
+    private sealed class ThrowingPropertySample
+    {
+        public string SafeValue => "kept";
+
+        public string FailingValue => throw new InvalidOperationException("synthetic getter failure");
+    }
+
+    [Fact]
+    public void Scrub_returns_null_for_null_input()
+    {
+        // Arrange
+        object? input = null;
+
+        // Act
+        var scrubbed = PrivacyScrubber.Scrub(input);
+
+        // Assert
+        Assert.Null(scrubbed);
+    }
+
+    [Theory]
+    [InlineData(42)]
+    [InlineData(true)]
+    public void Scrub_preserves_primitive_values(object input)
+    {
+        // Arrange
+
+        // Act
+        var scrubbed = PrivacyScrubber.Scrub(input);
+
+        // Assert
+        Assert.Equal(input, scrubbed);
+    }
+
+    [Fact]
+    public void Scrub_preserves_value_types_and_enums()
+    {
+        // Arrange
+        var date = new DateTime(2026, 9, 7, 12, 30, 0, DateTimeKind.Utc);
+        var status = SyntheticStatus.Ready;
+
+        // Act
+        var scrubbedDate = PrivacyScrubber.Scrub(date);
+        var scrubbedStatus = PrivacyScrubber.Scrub(status);
+
+        // Assert
+        Assert.Equal(date, scrubbedDate);
+        Assert.Equal(status, scrubbedStatus);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    public void ScrubString_preserves_null_or_empty_text(string? input)
+    {
+        // Arrange
+
+        // Act
+        var scrubbed = PrivacyScrubber.ScrubString(input!);
+
+        // Assert
+        Assert.Equal(input, scrubbed);
+    }
+
+    [Fact]
+    public void Scrub_preserves_null_items_in_collections()
+    {
+        // Arrange
+        var input = new object?[] { null, "password=synthetic-secret" };
+
+        // Act
+        var scrubbed = PrivacyScrubber.Scrub(input) as List<object?>;
+
+        // Assert
+        Assert.NotNull(scrubbed);
+        Assert.Null(scrubbed[0]);
+        Assert.Equal("password=[REDACTED]", scrubbed[1]);
+    }
+
+    [Fact]
+    public void Scrub_marks_property_when_getter_throws()
+    {
+        // Arrange
+        var input = new ThrowingPropertySample();
+
+        // Act
+        var scrubbed = PrivacyScrubber.Scrub(input) as Dictionary<string, object?>;
+
+        // Assert
+        Assert.NotNull(scrubbed);
+        Assert.Equal("kept", scrubbed["SafeValue"]);
+        Assert.Equal("[ERROR_READING_PROPERTY]", scrubbed["FailingValue"]);
+    }
+
     [Fact]
     public void Scrub_removes_password_property()
     {
@@ -95,6 +194,46 @@ public sealed class PrivacyScubberTests
         // Assert
         Assert.Contains("api_key=[REDACTED]", scrubbed);
         Assert.DoesNotContain("sk_live_abc123", scrubbed);
+    }
+
+    [Fact]
+    public void Scrub_dictionary_preserves_entries_and_scrubs_sensitive_values()
+    {
+        // Arrange
+        var obj = new Dictionary<string, object?>
+        {
+            ["Username"] = "user@example.com",
+            ["Password"] = "secret123",
+            ["Nested"] = new Dictionary<string, object?>
+            {
+                ["ApiKey"] = "key123"
+            }
+        };
+
+        // Act
+        var scrubbed = PrivacyScrubber.Scrub(obj) as Dictionary<string, object?>;
+
+        // Assert
+        Assert.NotNull(scrubbed);
+        Assert.Equal("user@example.com", scrubbed["Username"]);
+        Assert.Equal("[REDACTED]", scrubbed["Password"]);
+        var nested = Assert.IsType<Dictionary<string, object?>>(scrubbed["Nested"]);
+        Assert.Equal("[REDACTED]", nested["ApiKey"]);
+    }
+
+    [Fact]
+    public void Scrub_preserves_non_string_scalar_values()
+    {
+        Assert.Equal(42, PrivacyScrubber.Scrub(42));
+        Assert.Equal(true, PrivacyScrubber.Scrub(true));
+        var timestamp = DateTime.UtcNow;
+        Assert.Equal(timestamp, PrivacyScrubber.Scrub(timestamp));
+    }
+
+    [Fact]
+    public void Scrub_scalar_string_still_scrubs_sensitive_patterns()
+    {
+        Assert.Equal("token=[REDACTED]", PrivacyScrubber.Scrub("token=secret123"));
     }
 
     [Fact]

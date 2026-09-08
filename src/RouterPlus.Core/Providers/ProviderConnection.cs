@@ -85,5 +85,6 @@ public sealed record ProviderQuota(
         || Remaining.HasValue && Remaining.Value <= 0m;
 
     private static string FormatValue(decimal value) =>
-        value.ToString("0.##", System.Globalization.CultureInfo.CurrentCulture);
+        // Use invariant culture to ensure '.' as decimal separator regardless of system locale
+        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 }

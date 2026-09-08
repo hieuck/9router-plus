@@ -249,6 +249,25 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
+    public void InferUsageFromError_Ollama_SessionLimitWithNullTimestamp_UsesCurrentTime()
+    {
+        var before = DateTimeOffset.UtcNow;
+
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Ollama,
+            "429",
+            "Session limit reached",
+            null);
+
+        var after = DateTimeOffset.UtcNow;
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.InRange(result.UsageResetAt.Value, before.Date.AddDays(1), after.Date.AddDays(2));
+        Assert.Equal(0, result.UsageResetAt.Value.Hour);
+        Assert.Equal(0, result.UsageResetAt.Value.Minute);
+    }
+
+    [Fact]
     public void InferUsageFromError_Kimchi_ReturnsMonthlyLimit()
     {
         // Arrange
@@ -268,6 +287,81 @@ public sealed class UsageInferenceServiceTests
         Assert.Equal("Inferred from error: credits exhausted", result.Source);
         Assert.NotNull(result.UsageResetAt);
         Assert.Equal(10, result.UsageResetAt.Value.Month);
+    }
+
+    [Fact]
+    public void InferUsageFromError_UnsupportedProvider_ReturnsNullForLimitError()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.Zero);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.GitHub,
+            "429",
+            "Provider limit reached",
+            errorTime);
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void InferUsageFromError_Ollama_WeeklyLimitOnMonday_ResetsFollowingMonday()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 7, 10, 30, 0, TimeSpan.Zero);
+        Assert.Equal(DayOfWeek.Monday, errorTime.DayOfWeek);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Ollama,
+            "429",
+            "Weekly limit reached",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.Equal(new DateTimeOffset(2026, 9, 14, 0, 0, 0, errorTime.Offset), result.UsageResetAt.Value);
+    }
+
+    [Fact]
+    public void InferUsageFromError_Ollama_SessionLimitAtYearBoundary_ResetsNextDay()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 12, 31, 23, 45, 0, TimeSpan.FromHours(5.5));
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Ollama,
+            "429",
+            "Session limit reached",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.Equal(new DateTimeOffset(2027, 1, 1, 0, 0, 0, errorTime.Offset), result.UsageResetAt.Value);
+    }
+
+    [Fact]
+    public void InferUsageFromError_Codex_MonthlyResetPreservesOffset()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.FromHours(-7));
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Codex,
+            "429",
+            "Usage limit reached",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 1, 0, 0, 0, errorTime.Offset), result.UsageResetAt.Value);
     }
 
     [Fact]
@@ -334,6 +428,43 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
+    public void InferUsageFromError_WeeklyReset_OnMonday_ResetsFollowingMonday()
+    {
+        // Arrange - Monday Sep 7, 2026
+        var errorTime = new DateTimeOffset(2026, 9, 7, 10, 30, 0, TimeSpan.Zero);
+        Assert.Equal(DayOfWeek.Monday, errorTime.DayOfWeek);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Ollama,
+            "429",
+            "weekly limit",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotNull(result.UsageResetAt);
+        Assert.Equal(new DateTimeOffset(2026, 9, 14, 0, 0, 0, TimeSpan.Zero), result.UsageResetAt);
+    }
+
+    [Fact]
+    public void InferUsageFromError_WithUnsupportedProvider_ReturnsNull()
+    {
+        // Arrange
+        var unsupportedProvider = (ProviderKind)999;
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            unsupportedProvider,
+            "429",
+            "usage limit exceeded",
+            new DateTimeOffset(2026, 9, 7, 10, 30, 0, TimeSpan.Zero));
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void InferUsageFromError_CaseInsensitive_Keywords()
     {
         // Arrange & Act
@@ -346,6 +477,27 @@ public sealed class UsageInferenceServiceTests
         // Assert
         Assert.NotNull(result1);
         Assert.NotNull(result2);
+    }
+
+    [Fact]
+    public void InferUsageFromError_OpenRouter_ParsesWholeNumberCreditsDeterministically()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.Zero);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.OpenRouter,
+            "402",
+            "You requested 5 credits but only have 2 remaining",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(1_500, result.UsageCount);
+        Assert.Equal(1_700, result.LimitCount);
+        Assert.Equal("Parsed from error message", result.Source);
+        Assert.Equal(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero), result.UsageResetAt);
     }
 
     [Fact]

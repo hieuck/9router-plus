@@ -108,7 +108,13 @@ public sealed class CredentialsManagerAdditionalJourneyTests
 
             var profile = googleList!.FindFirstDescendant(cf => cf.ByName("Harness Alpha"));
             Assert.NotNull(profile);
-            profile!.Click();
+            var profileRow = profile!.Parent;
+            while (profileRow is not null && profileRow.ControlType != ControlType.ListItem)
+            {
+                profileRow = profileRow.Parent;
+            }
+            Assert.NotNull(profileRow);
+            profileRow!.Click();
 
             var removeButton = dialog.FindFirstDescendant(cf => cf.ByAutomationId("RemoveGoogleAccountButton"));
             Assert.NotNull(removeButton);
@@ -145,7 +151,7 @@ public sealed class CredentialsManagerAdditionalJourneyTests
                     var element = dialog.FindFirstDescendant(cf => cf.ByAutomationId("CredentialsManagerStatus"));
                     try
                     {
-                        return element?.Name.Contains("Removed Google account", StringComparison.OrdinalIgnoreCase) == true
+                        return element?.Name.Contains("Removed credentials for", StringComparison.OrdinalIgnoreCase) == true
                             ? element
                             : null;
                     }
@@ -158,9 +164,21 @@ public sealed class CredentialsManagerAdditionalJourneyTests
                 throwOnTimeout: false).Result;
             Assert.NotNull(status);
 
-            var editButton = googleList.FindFirstDescendant(cf =>
-                cf.ByControlType(ControlType.Button).And(cf.ByName("Edit")));
-            Assert.NotNull(editButton);
+            var remainingProfileRow = googleList.FindFirstDescendant(cf =>
+                cf.ByName("Harness Alpha"));
+            Assert.NotNull(remainingProfileRow);
+            var rowContainer = remainingProfileRow!.Parent;
+            while (rowContainer is not null && rowContainer.ControlType != ControlType.ListItem)
+            {
+                rowContainer = rowContainer.Parent;
+            }
+
+            Assert.NotNull(rowContainer);
+            Assert.False(removeButton.IsEnabled);
+            var loginButton = rowContainer!.FindFirstDescendant(cf =>
+                cf.ByAutomationId("GoogleLoginRowButton"));
+            Assert.NotNull(loginButton);
+            Assert.False(loginButton!.IsEnabled);
 
             await CloseCredentialsManagerAsync(app, dialog);
         }

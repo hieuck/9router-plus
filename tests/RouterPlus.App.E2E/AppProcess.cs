@@ -81,8 +81,9 @@ public sealed class AppProcess : IAsyncDisposable
             UseShellExecute = false
         };
 
-        // Enable testing hooks for E2E tests
+        // Enable testing hooks and bypass the first-run wizard for E2E tests.
         startInfo.Environment["ENABLE_TESTING_HOOKS"] = "1";
+        startInfo.Environment["ROUTERPLUS_SKIP_SETUP_WIZARD"] = "1";
 
         if (!useRealChromeData && harnessRoot != null)
         {
@@ -116,6 +117,19 @@ public sealed class AppProcess : IAsyncDisposable
         {
             automation.Dispose();
             application.Close();
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(3000);
+                }
+            }
+            finally
+            {
+                process.Dispose();
+            }
+
             throw;
         }
     }

@@ -156,6 +156,75 @@ public sealed class GoogleAccountVaultStoreTests
     }
 
     [Fact]
+    public async Task Envelope_missing_payload_field_is_rejected_as_invalid_format()
+    {
+        using var root = new TemporaryDirectory();
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
+        await using var session = await store.CreateAsync(paths.VaultPath, VaultPassword);
+        await store.SaveAsync(session);
+
+        var envelope = JsonSerializer.Deserialize<Dictionary<string, object>>(
+            await File.ReadAllTextAsync(paths.VaultPath))!;
+        envelope.Remove("PayloadTag");
+        await File.WriteAllTextAsync(paths.VaultPath, JsonSerializer.Serialize(envelope));
+
+        var exception = await Assert.ThrowsAsync<CryptographicException>(() =>
+            store.OpenAsync(paths.VaultPath, VaultPassword));
+
+        Assert.Equal("Invalid vault format.", exception.Message);
+    }
+
+    [Fact]
+    public async Task OpenAsync_cancellation_is_propagated_for_existing_synthetic_file()
+    {
+        using var root = new TemporaryDirectory();
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
+        await File.WriteAllTextAsync(paths.VaultPath, "{}", CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            store.OpenAsync(paths.VaultPath, VaultPassword, cancellation.Token));
+    }
+
+    [Fact]
+    public async Task TryOpenRememberedAsync_malformed_remembered_file_is_removed()
+    {
+        using var root = new TemporaryDirectory();
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
+        await File.WriteAllTextAsync(paths.VaultPath, "{}", CancellationToken.None);
+        await File.WriteAllTextAsync(paths.RememberedKeyPath, "{ not valid json", CancellationToken.None);
+
+        var result = await store.TryOpenRememberedAsync(paths.VaultPath);
+
+        Assert.Null(result);
+        Assert.False(File.Exists(paths.RememberedKeyPath));
+    }
+
+    [Fact]
+    public async Task TryOpenRememberedAsync_cancellation_preserves_remembered_file()
+    {
+        using var root = new TemporaryDirectory();
+        var paths = new GoogleAccountVaultPaths(root.Path);
+        using var store = new GoogleAccountVaultStore(paths);
+        await File.WriteAllTextAsync(paths.VaultPath, "{}", CancellationToken.None);
+        await File.WriteAllTextAsync(
+            paths.RememberedKeyPath,
+            "{ \"Version\": 1, \"VaultId\": \"synthetic-vault\", \"ProtectedPayloadKey\": \"\" }",
+            CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            store.TryOpenRememberedAsync(paths.VaultPath, cancellation.Token));
+
+        Assert.True(File.Exists(paths.RememberedKeyPath));
+    }
+
+    [Fact]
     public async Task Unsupported_envelope_version_is_rejected()
     {
         using var root = new TemporaryDirectory();

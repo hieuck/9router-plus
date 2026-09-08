@@ -9,6 +9,13 @@ namespace RouterPlus.Core.Chrome;
 /// </summary>
 public sealed class ProfileHealthChecker
 {
+    private readonly Func<string, IEnumerable<string>> _enumerateFiles;
+
+    public ProfileHealthChecker(Func<string, IEnumerable<string>>? enumerateFiles = null)
+    {
+        _enumerateFiles = enumerateFiles ?? Directory.EnumerateFiles;
+    }
+
     /// <summary>
     /// Check filesystem health (directory exists, files readable, required files present).
     /// </summary>
@@ -46,7 +53,7 @@ public sealed class ProfileHealthChecker
         // Check #2: Profile directory readable
         try
         {
-            Directory.EnumerateFiles(profile.ProfilePath).Any();
+            _enumerateFiles(profile.ProfilePath).Any();
         }
         catch (UnauthorizedAccessException)
         {

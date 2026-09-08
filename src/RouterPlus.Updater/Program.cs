@@ -22,7 +22,7 @@ internal static class Program
         }
     }
 
-    private static UpdateTransactionOptions ParseArguments(string[] args)
+    internal static UpdateTransactionOptions ParseArguments(string[] args)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var restart = false;

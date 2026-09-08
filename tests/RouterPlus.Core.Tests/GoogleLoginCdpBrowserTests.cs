@@ -8,19 +8,12 @@ namespace RouterPlus.Core.Tests;
 public sealed class GoogleLoginCdpBrowserTests
 {
     [Fact]
-    public async Task ReadStateAsync_returns_only_booleans_and_uri()
+    public async Task ReadStateAsync_reads_target_and_runtime_state_from_fake_cdp()
     {
-        var browser = new FakeGoogleLoginBrowser();
-        browser.SetPageState(new GoogleLoginPageState(
-            new Uri("https://accounts.google.com/signin"),
-            true,  // HasEmailField
-            false, // HasPasswordField
-            false, // HasTotpField
-            false, // HasTotpError
-            false, // Has2FAMethodPicker
-            false, // HasCompletionSignal
-            false  // HasManualChallenge
-        ));
+        var cdp = new FakeChromeCdpClient();
+        cdp.Enqueue("Target.getTargets", Targets("https://accounts.google.com/signin"));
+        cdp.Enqueue("Runtime.evaluate", PageState("https://accounts.google.com/signin", hasEmailField: true), "session-1");
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
 
         var state = await browser.ReadStateAsync(CancellationToken.None);
 
@@ -30,209 +23,181 @@ public sealed class GoogleLoginCdpBrowserTests
         Assert.False(state.HasTotpField);
         Assert.False(state.HasCompletionSignal);
         Assert.False(state.HasManualChallenge);
+        cdp.AssertComplete();
     }
 
     [Fact]
-    public void Recaptcha_challenge_url_is_detected_as_manual_challenge()
+    public async Task ReadStateAsync_rejects_target_that_navigated_to_unauthorized_host()
     {
-        var isManualChallenge = GoogleLoginCdpBrowser.IsManualChallenge(
-            new Uri("https://accounts.google.com/v3/signin/challenge/recaptcha?TL=synthetic"),
-            hasChallengeElement: false);
+        var cdp = new FakeChromeCdpClient();
+        cdp.Enqueue("Target.getTargets", Targets("https://evil.example/login"));
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
 
-        Assert.True(isManualChallenge);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => browser.ReadStateAsync(CancellationToken.None));
+
+        Assert.Contains("unauthorized host", ex.Message);
+        cdp.AssertComplete();
     }
 
     [Fact]
-    public async Task FillAsync_records_field_and_value()
+    public async Task ReadStateAsync_rejects_missing_target()
     {
-        var browser = new FakeGoogleLoginBrowser();
-        browser.SetPageState(new GoogleLoginPageState(
-            new Uri("https://accounts.google.com/signin"),
-            true,  // HasEmailField
-            false, // HasPasswordField
-            false, // HasTotpField
-            false, // HasTotpError
-            false, // Has2FAMethodPicker
-            false, // HasCompletionSignal
-            false  // HasManualChallenge
-        ));
+        var cdp = new FakeChromeCdpClient();
+        cdp.Enqueue("Target.getTargets", Json("{\"targetInfos\":[]}"));
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
 
-        await browser.FillAsync(GoogleLoginField.Email, "test@example.com", CancellationToken.None);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => browser.ReadStateAsync(CancellationToken.None));
 
-        var fills = browser.GetFills();
-        Assert.Single(fills);
-        Assert.Equal(GoogleLoginField.Email, fills[0].field);
-        // Value is not recorded to avoid storing secrets
+        Assert.Contains("closed", ex.Message);
+        cdp.AssertComplete();
     }
 
     [Fact]
-    public async Task FillAsync_does_not_store_secret_values()
+    public async Task ReadStateAsync_wraps_malformed_runtime_state()
     {
-        var browser = new FakeGoogleLoginBrowser();
-        browser.SetPageState(new GoogleLoginPageState(
-            new Uri("https://accounts.google.com/signin"),
-            false, // HasEmailField
-            true,  // HasPasswordField
-            false, // HasTotpField
-            false, // HasTotpError
-            false, // Has2FAMethodPicker
-            false, // HasCompletionSignal
-            false  // HasManualChallenge
-        ));
+        var cdp = new FakeChromeCdpClient();
+        cdp.Enqueue("Target.getTargets", Targets("https://accounts.google.com/signin"));
+        cdp.Enqueue("Runtime.evaluate", Json("{\"result\":{\"value\":{\"pageUrl\":\"not-a-uri\"}}}"), "session-1");
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
 
-        await browser.FillAsync(GoogleLoginField.Password, "secret123", CancellationToken.None);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => browser.ReadStateAsync(CancellationToken.None));
 
-        var fills = browser.GetFills();
-        Assert.Single(fills);
-        Assert.Equal(GoogleLoginField.Password, fills[0].field);
-        Assert.Null(fills[0].value); // Secrets are not recorded
+        Assert.Contains("Failed to read page state", ex.Message);
+        cdp.AssertComplete();
     }
 
     [Fact]
-    public async Task SubmitAsync_records_submitted_field()
+    public void IsManualChallenge_detects_recaptcha_path_case_insensitively()
     {
-        var browser = new FakeGoogleLoginBrowser();
-        browser.SetPageState(new GoogleLoginPageState(
-            new Uri("https://accounts.google.com/signin"),
-            true,  // HasEmailField
-            false, // HasPasswordField
-            false, // HasTotpField
-            false, // HasTotpError
-            false, // Has2FAMethodPicker
-            false, // HasCompletionSignal
-            false  // HasManualChallenge
-        ));
-
-        await browser.FillAsync(GoogleLoginField.Email, "test@example.com", CancellationToken.None);
-        await browser.SubmitAsync(GoogleLoginField.Email, CancellationToken.None);
-
-        var submits = browser.GetSubmits();
-        Assert.Single(submits);
-        Assert.Equal(GoogleLoginField.Email, submits[0]);
+        Assert.True(GoogleLoginCdpBrowser.IsManualChallenge(
+            new Uri("https://accounts.google.com/v3/signin/CHALLENGE/RECAPTCHA"),
+            hasChallengeElement: false));
     }
 
     [Fact]
-    public async Task Multiple_targets_are_rejected_by_ConnectGoogleLoginAsync()
+    public void IsManualChallenge_detects_challenge_element_and_rejects_null_uri()
     {
-        // This test validates the logic in ChromeManagedSession.ConnectGoogleLoginAsync
-        // which is tested through integration rather than unit tests due to CDP complexity
-        await Task.CompletedTask;
-        Assert.True(true, "Multiple target rejection is validated through ChromeManagedSession integration");
+        Assert.True(GoogleLoginCdpBrowser.IsManualChallenge(
+            new Uri("https://accounts.google.com/signin/challenge/verify"),
+            hasChallengeElement: true));
+        Assert.False(GoogleLoginCdpBrowser.IsManualChallenge(
+            new Uri("https://accounts.google.com/signin/v2/identifier"),
+            hasChallengeElement: false));
+        Assert.Throws<ArgumentNullException>(() => GoogleLoginCdpBrowser.IsManualChallenge(null!, false));
     }
 
     [Fact]
-    public async Task Wrong_origin_navigation_is_detected()
+    public async Task FillAsync_rejects_blank_value_before_calling_cdp()
     {
-        var browser = new FakeGoogleLoginBrowser();
-        browser.SetPageState(new GoogleLoginPageState(
-            new Uri("https://evil.com/phishing"),
-            true,  // HasEmailField
-            false, // HasPasswordField
-            false, // HasTotpField
-            false, // HasTotpError
-            false, // Has2FAMethodPicker
-            false, // HasCompletionSignal
-            false  // HasManualChallenge
-        ));
+        var cdp = new FakeChromeCdpClient();
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
 
-        browser.SimulateNavigationToWrongOrigin();
+        await Assert.ThrowsAsync<ArgumentException>(() => browser.FillAsync(GoogleLoginField.Email, " ", CancellationToken.None));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await browser.ReadStateAsync(CancellationToken.None));
-
-        Assert.Contains("accounts.google.com", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(cdp.Calls);
     }
 
     [Fact]
-    public async Task CDP_errors_are_redacted_in_exceptions()
+    public async Task FillAsync_uses_fake_cdp_and_does_not_retain_secret_value()
     {
-        var browser = new FakeGoogleLoginBrowser();
-        browser.SetError("CDP failed: password123 was rejected");
+        const string syntheticSecret = "synthetic-password-value";
+        var cdp = new FakeChromeCdpClient();
+        cdp.Enqueue("Target.getTargets", Targets("https://accounts.google.com/signin"));
+        cdp.Enqueue("Runtime.evaluate", FocusedField(), "session-1");
+        cdp.Enqueue("Input.dispatchKeyEvent", EmptyResult(), "session-1");
+        cdp.Enqueue("Input.dispatchKeyEvent", EmptyResult(), "session-1");
+        cdp.Enqueue("Runtime.evaluate", EmptyValue(), "session-1");
+        cdp.Enqueue("Input.insertText", EmptyResult(), "session-1");
+        cdp.Enqueue("Runtime.evaluate", TriggeredValue(syntheticSecret.Length), "session-1");
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await browser.ReadStateAsync(CancellationToken.None));
+        await browser.FillAsync(GoogleLoginField.Password, syntheticSecret, CancellationToken.None);
 
-        Assert.DoesNotContain("password123", ex.Message);
-        Assert.Contains("failed", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(cdp.Calls, call => call.Method == "Input.insertText");
+        Assert.DoesNotContain(cdp.Calls, call => call.ParametersText.Contains(syntheticSecret, StringComparison.Ordinal));
+        cdp.AssertComplete();
     }
 
-    private sealed class FakeGoogleLoginBrowser : IGoogleLoginBrowser
+    [Fact]
+    public async Task TrySelectAuthenticatorMethodAsync_returns_false_when_cancelled()
     {
-        private GoogleLoginPageState? _pageState;
-        private readonly List<(GoogleLoginField field, string? value)> _fills = new();
-        private readonly List<GoogleLoginField> _submits = new();
-        private string? _errorMessage;
-        private bool _wrongOrigin;
+        var cdp = new FakeChromeCdpClient();
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
 
-        public void SetPageState(GoogleLoginPageState state)
+        var selected = await browser.TrySelectAuthenticatorMethodAsync(cancellation.Token);
+
+        Assert.False(selected);
+        Assert.Empty(cdp.Calls);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_is_idempotent_and_blocks_future_operations()
+    {
+        var cdp = new FakeChromeCdpClient();
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
+
+        await browser.DisposeAsync();
+        await browser.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => browser.ReadStateAsync(CancellationToken.None));
+    }
+
+    private static JsonElement Targets(string url)
+        => Json($"{{\"targetInfos\":[{{\"targetId\":\"target-1\",\"url\":\"{url}\"}}]}}");
+
+    private static JsonElement PageState(string url, bool hasEmailField)
+        => Json($"{{\"result\":{{\"value\":{{\"pageUrl\":\"{url}\",\"hasEmailField\":{hasEmailField.ToString().ToLowerInvariant()},\"hasPasswordField\":false,\"hasTotpField\":false,\"hasTotpError\":false,\"has2FAMethodPicker\":false,\"hasCompletionSignal\":false,\"hasManualChallenge\":false}}}}}}");
+
+    private static JsonElement FocusedField()
+        => Json("{\"result\":{\"value\":{\"tagName\":\"INPUT\",\"type\":\"password\",\"name\":\"\",\"id\":\"password\",\"placeholder\":\"Password\"}}}");
+
+    private static JsonElement EmptyResult()
+        => Json("{\"result\":{}}");
+
+    private static JsonElement EmptyValue()
+        => Json("{\"result\":{\"value\":{\"value\":\"\",\"valueLength\":0}}}");
+
+    private static JsonElement TriggeredValue(int length)
+        => Json($"{{\"result\":{{\"value\":{{\"triggered\":true,\"finalValueLength\":{length}}}}}}}");
+
+    private static JsonElement Json(string json)
+        => JsonDocument.Parse(json).RootElement.Clone();
+
+    private sealed class FakeChromeCdpClient : IChromeCdpClient
+    {
+        private readonly Queue<ExpectedCall> _expectedCalls = new();
+
+        public List<(string Method, string ParametersText)> Calls { get; } = new();
+
+        public void Enqueue(string method, JsonElement response, string? sessionId = null)
+            => _expectedCalls.Enqueue(new ExpectedCall(method, sessionId, response));
+
+        public Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken, string? sessionId = null)
         {
-            _pageState = state;
-        }
-
-        public void SetError(string message)
-        {
-            _errorMessage = message;
-        }
-
-        public void SimulateNavigationToWrongOrigin()
-        {
-            _wrongOrigin = true;
-        }
-
-        public List<(GoogleLoginField field, string? value)> GetFills() => _fills;
-        public List<GoogleLoginField> GetSubmits() => _submits;
-
-        public Task<GoogleLoginPageState> ReadStateAsync(CancellationToken cancellationToken)
-        {
-            if (_errorMessage != null)
+            if (_expectedCalls.Count == 0)
             {
-                throw new InvalidOperationException("Operation failed.");
+                throw new InvalidOperationException($"Unexpected CDP call: {method}.");
             }
 
-            if (_wrongOrigin)
+            var expected = _expectedCalls.Dequeue();
+            if (expected.Method != method || expected.SessionId != sessionId)
             {
-                throw new InvalidOperationException("Target navigated away from accounts.google.com");
+                throw new InvalidOperationException(
+                    $"Expected CDP call {expected.Method}/{expected.SessionId ?? "<none>"}, got {method}/{sessionId ?? "<none>"}.");
             }
 
-            if (_pageState == null)
-            {
-                throw new InvalidOperationException("No page state configured");
-            }
-
-            return Task.FromResult(_pageState);
+            var parametersText = method == "Input.insertText"
+                ? "<redacted>"
+                : parameters is null ? string.Empty : JsonSerializer.Serialize(parameters);
+            Calls.Add((method, parametersText));
+            return Task.FromResult(expected.Response);
         }
 
-        public Task FillAsync(GoogleLoginField field, string value, CancellationToken cancellationToken)
-        {
-            if (_errorMessage != null)
-            {
-                throw new InvalidOperationException("Operation failed.");
-            }
+        public void AssertComplete()
+            => Assert.Empty(_expectedCalls);
 
-            // Do not record secret values
-            _fills.Add((field, null));
-            return Task.CompletedTask;
-        }
-
-        public Task SubmitAsync(GoogleLoginField field, CancellationToken cancellationToken)
-        {
-            if (_errorMessage != null)
-            {
-                throw new InvalidOperationException("Operation failed.");
-            }
-
-            _submits.Add(field);
-            return Task.CompletedTask;
-        }
-
-        public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
-        {
-            return Task.FromResult(false);
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
+        private sealed record ExpectedCall(string Method, string? SessionId, JsonElement Response);
     }
 }

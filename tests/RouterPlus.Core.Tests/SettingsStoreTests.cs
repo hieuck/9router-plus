@@ -32,6 +32,91 @@ public sealed class SettingsStoreTests
     }
 
     [Fact]
+    public async Task Corrupt_settings_default_to_default_values_async()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(filePath, "{ not valid json");
+
+            var settings = await new SettingsStore(filePath).LoadAsync();
+
+            Assert.Equal("http://localhost:20128", settings.DashboardBaseUrl);
+            Assert.True(settings.UseLightTheme);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Corrupt_settings_default_to_default_values_sync()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(filePath, "{ not valid json");
+
+            var settings = new SettingsStore(filePath).Load();
+
+            Assert.Equal("http://localhost:20128", settings.DashboardBaseUrl);
+            Assert.True(settings.UseLightTheme);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Null_settings_json_defaults_to_default_values()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(filePath, "null");
+
+            var settings = await new SettingsStore(filePath).LoadAsync();
+
+            Assert.Equal("http://localhost:20128", settings.DashboardBaseUrl);
+            Assert.True(settings.UseLightTheme);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task SaveAsync_null_settings_throws_argument_null_exception()
+    {
+        var store = new SettingsStore(Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"), "settings.json"));
+
+        var exception = await Assert.ThrowsAsync<ArgumentNullException>(() => store.SaveAsync(null!));
+
+        Assert.Equal("settings", exception.ParamName);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_preserves_window_placement()
     {
         var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
@@ -53,6 +138,27 @@ public sealed class SettingsStoreTests
             Assert.Equal(settings.WindowTop, loaded.WindowTop);
             Assert.Equal(settings.WindowWidth, loaded.WindowWidth);
             Assert.Equal(settings.WindowHeight, loaded.WindowHeight);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Synchronous_load_missing_settings_defaults_to_light_theme()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var filePath = Path.Combine(directory, "settings.json");
+
+        try
+        {
+            var settings = new SettingsStore(filePath).Load();
+
+            Assert.True(settings.UseLightTheme);
         }
         finally
         {

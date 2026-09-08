@@ -18,10 +18,12 @@ public sealed class ObservabilityPaths
     /// </summary>
     public string SessionsDirectory { get; }
 
-    public ObservabilityPaths()
+    public ObservabilityPaths(string? rootDirectory = null)
     {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        RootDirectory = Path.Combine(localAppData, "RouterPlus", "Observability");
+        RootDirectory = rootDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RouterPlus",
+            "Observability");
         SessionsDirectory = Path.Combine(RootDirectory, "sessions");
     }
 

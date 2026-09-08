@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.IO;
 using System.Text.Json;
 using RouterPlus.App.ViewModels;
@@ -50,21 +51,40 @@ public static class TestingHooks
                 }
             };
 
-            // Subscribe to profile row changes
+            // Subscribe to profile row changes, including rows created during initialization.
             foreach (var row in _mainViewModel.ProfileRows)
             {
-                row.PropertyChanged += (s, e) =>
-                {
-                    if (e.PropertyName == nameof(ProfileRowViewModel.HealthStatus) ||
-                        e.PropertyName == nameof(ProfileRowViewModel.IsCheckingHealth))
-                    {
-                        UpdateStateFile();
-                    }
-                };
+                SubscribeToProfileRow(row);
             }
 
+            _mainViewModel.ProfileRows.CollectionChanged += ProfileRows_CollectionChanged;
             UpdateStateFile();
         }
+    }
+
+    private static void ProfileRows_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is not null)
+        {
+            foreach (ProfileRowViewModel row in e.NewItems)
+            {
+                SubscribeToProfileRow(row);
+            }
+        }
+
+        UpdateStateFile();
+    }
+
+    private static void SubscribeToProfileRow(ProfileRowViewModel row)
+    {
+        row.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ProfileRowViewModel.HealthStatus) ||
+                e.PropertyName == nameof(ProfileRowViewModel.IsCheckingHealth))
+            {
+                UpdateStateFile();
+            }
+        };
     }
 
     private static void UpdateStateFile()

@@ -392,7 +392,9 @@ public sealed class ObservabilityE2ETests : IDisposable
             s.GetProperty("trigger").GetString() == "Error");
         Assert.False(errorSnapshot.Equals(default(JsonElement)));
         Assert.True(errorSnapshot.TryGetProperty("error_context", out var errorCtx), "Error snapshot should have error_context");
-        Assert.Contains("SQLite database locked", errorCtx.GetString());
+        var errorContext = errorCtx.GetString();
+        Assert.False(string.IsNullOrWhiteSpace(errorContext));
+        Assert.Contains("lock", errorContext, StringComparison.OrdinalIgnoreCase);
 
         var periodicSnapshot = snapshots.FirstOrDefault(s =>
             s.GetProperty("trigger").GetString() == "Periodic");

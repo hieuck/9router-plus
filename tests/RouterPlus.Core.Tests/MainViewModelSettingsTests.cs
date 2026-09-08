@@ -114,4 +114,114 @@ public sealed class MainViewModelSettingsTests
         Assert.Equal("Có thay đổi chưa lưu", viewModel.SettingsStatusText);
         Assert.True(viewModel.SaveSettingsCommand.CanExecute(null));
     }
+
+    [Fact]
+    public void Font_scale_is_clamped_and_reports_percentage_label()
+    {
+        // Arrange
+        var viewModel = new MainViewModel();
+
+        // Act
+        viewModel.FontScale = 2d;
+
+        // Assert
+        Assert.Equal(1.4d, viewModel.FontScale);
+        Assert.Equal("140%", viewModel.FontScaleLabel);
+        Assert.True(viewModel.HasUnsavedSettings);
+
+        // Act
+        viewModel.FontScale = 0.5d;
+
+        // Assert
+        Assert.Equal(0.9d, viewModel.FontScale);
+        Assert.Equal("90%", viewModel.FontScaleLabel);
+    }
+
+    [Fact]
+    public void Theme_and_section_commands_update_their_view_state()
+    {
+        // Arrange
+        var viewModel = new MainViewModel();
+
+        // Act
+        viewModel.UseLightTheme = false;
+        viewModel.IsAppearanceSectionExpanded = false;
+        viewModel.IsDashboardSectionExpanded = false;
+        viewModel.IsChromeSectionExpanded = false;
+        viewModel.IsSettingsExpanded = true;
+        viewModel.IsProfileSidebarCollapsed = true;
+
+        // Assert
+        Assert.False(viewModel.UseLightTheme);
+        Assert.True(viewModel.HasUnsavedSettings);
+        Assert.False(viewModel.IsAppearanceSectionExpanded);
+        Assert.False(viewModel.IsDashboardSectionExpanded);
+        Assert.False(viewModel.IsChromeSectionExpanded);
+        Assert.True(viewModel.IsSettingsExpanded);
+        Assert.True(viewModel.IsProfileSidebarCollapsed);
+
+        // Act
+        viewModel.ToggleAppearanceSectionCommand.Execute(null);
+        viewModel.ToggleDashboardSectionCommand.Execute(null);
+        viewModel.ToggleChromeSectionCommand.Execute(null);
+
+        // Assert
+        Assert.True(viewModel.IsAppearanceSectionExpanded);
+        Assert.True(viewModel.IsDashboardSectionExpanded);
+        Assert.True(viewModel.IsChromeSectionExpanded);
+    }
+
+    [Fact]
+    public void Valid_paths_and_dashboard_url_pass_settings_validation()
+    {
+        // Arrange
+        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
+        var executable = Path.Combine(directory, "chrome.exe");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(executable, string.Empty);
+
+        try
+        {
+            var viewModel = new MainViewModel
+            {
+                DashboardBaseUrl = "https://dashboard.example.test/base",
+                ChromeExecutablePath = executable,
+                ChromeUserDataDirectory = directory
+            };
+
+            // Assert
+            Assert.True(viewModel.IsDashboardUrlValid);
+            Assert.True(viewModel.IsChromeExecutableValid);
+            Assert.True(viewModel.IsChromeUserDataValid);
+            Assert.False(viewModel.HasSettingsValidationError);
+            Assert.True(viewModel.SaveSettingsCommand.CanExecute(null));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Clear_setting_commands_restore_default_values()
+    {
+        // Arrange
+        var viewModel = new MainViewModel
+        {
+            DashboardBaseUrl = "https://dashboard.example.test",
+            ChromeExecutablePath = "chrome.exe",
+            ChromeUserDataDirectory = "C:\\\\Chrome"
+        };
+
+        // Act
+        viewModel.ClearDashboardUrlCommand.Execute(null);
+        viewModel.ClearChromeExecutableCommand.Execute(null);
+        viewModel.ClearChromeUserDataCommand.Execute(null);
+        await Task.Delay(50);
+
+        // Assert
+        Assert.Equal("http://localhost:20128", viewModel.DashboardBaseUrl);
+        Assert.Equal(string.Empty, viewModel.ChromeExecutablePath);
+        Assert.Equal(string.Empty, viewModel.ChromeUserDataDirectory);
+    }
 }

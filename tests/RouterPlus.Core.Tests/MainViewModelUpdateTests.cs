@@ -133,6 +133,65 @@ public sealed class MainViewModelUpdateTests
         Assert.False(service.LaunchCalled);
     }
 
+    [Fact]
+    public async Task Check_for_updates_reports_cancellation_and_clears_checking_state()
+    {
+        var service = new FakeUpdateService { Error = new OperationCanceledException() };
+        var viewModel = new MainViewModel(updateService: service);
+
+        await viewModel.CheckForUpdatesAsync();
+
+        Assert.Equal(UpdateState.Failed, viewModel.UpdateState);
+        Assert.Equal("Đã hủy kiểm tra bản cập nhật.", viewModel.UpdateStatusText);
+        Assert.False(viewModel.IsUpdateChecking);
+    }
+
+    [Fact]
+    public async Task Installation_reports_failure_when_updater_launch_is_refused()
+    {
+        var service = new FakeUpdateService
+        {
+            CheckResult = CreateAvailableResult(),
+            DownloadResult = new VerifiedUpdatePackage(
+                ReleaseVersion.Parse("1.1.0"),
+                "update.zip",
+                "staging"),
+            LaunchResult = false
+        };
+        var viewModel = new MainViewModel(updateService: service);
+        await viewModel.CheckForUpdatesAsync();
+
+        var installed = await viewModel.InstallUpdateAsync(confirmedByUser: true);
+
+        Assert.False(installed);
+        Assert.True(service.DownloadCalled);
+        Assert.True(service.LaunchCalled);
+        Assert.Equal(UpdateState.Failed, viewModel.UpdateState);
+        Assert.Equal("Không thể khởi động trình cập nhật. Bản đang chạy không bị thay đổi.", viewModel.UpdateStatusText);
+        Assert.True(viewModel.InstallUpdateCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Installation_reports_failure_when_package_staging_throws()
+    {
+        var service = new FakeUpdateService
+        {
+            CheckResult = CreateAvailableResult(),
+            DownloadError = new InvalidOperationException("staging failed")
+        };
+        var viewModel = new MainViewModel(updateService: service);
+        await viewModel.CheckForUpdatesAsync();
+
+        var installed = await viewModel.InstallUpdateAsync(confirmedByUser: true);
+
+        Assert.False(installed);
+        Assert.True(service.DownloadCalled);
+        Assert.False(service.LaunchCalled);
+        Assert.Equal(UpdateState.Failed, viewModel.UpdateState);
+        Assert.Equal("Không thể xác minh hoặc cài đặt bản cập nhật. Bản đang chạy không bị thay đổi.", viewModel.UpdateStatusText);
+        Assert.True(viewModel.InstallUpdateCommand.CanExecute(null));
+    }
+
     private static ReleaseCheckResult CreateAvailableResult() => new(
         ReleaseVersion.Parse("1.0.0"),
         ReleaseVersion.Parse("1.1.0"),
@@ -145,6 +204,9 @@ public sealed class MainViewModelUpdateTests
         public bool IsInstallSupported { get; init; } = true;
         public ReleaseCheckResult? CheckResult { get; init; }
         public Exception? Error { get; init; }
+        public Exception? DownloadError { get; init; }
+        public VerifiedUpdatePackage? DownloadResult { get; init; }
+        public bool LaunchResult { get; init; } = true;
         public bool DownloadCalled { get; private set; }
         public bool LaunchCalled { get; private set; }
 
@@ -157,13 +219,14 @@ public sealed class MainViewModelUpdateTests
         public Task<VerifiedUpdatePackage> DownloadAndStageAsync(ReleaseCheckResult release, CancellationToken cancellationToken = default)
         {
             DownloadCalled = true;
-            throw new InvalidOperationException("test service should not be called without confirmation");
+            if (DownloadError is not null) throw DownloadError;
+            return Task.FromResult(DownloadResult ?? new VerifiedUpdatePackage(release.AvailableVersion!, "update.zip", "staging"));
         }
 
         public Task<bool> LaunchUpdaterAsync(VerifiedUpdatePackage package, CancellationToken cancellationToken = default)
         {
             LaunchCalled = true;
-            return Task.FromResult(true);
+            return Task.FromResult(LaunchResult);
         }
     }
 

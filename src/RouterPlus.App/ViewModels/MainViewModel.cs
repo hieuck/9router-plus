@@ -35,7 +35,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ChromeProfileDeleter _profileDeleter;
     private readonly ChromeLauncher _chromeLauncher = new();
     private readonly SettingsStore _settingsStore;
-    private readonly ISecretVault _secretVault = new DpapiSecretVault();
+    private readonly ISecretVault _secretVault;
     private readonly IGoogleAccountVaultStore _googleLoginVaultStore;
     private readonly GoogleAccountVaultPaths _googleLoginVaultPaths;
     private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
@@ -57,6 +57,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly HttpClient _httpClient;
     private readonly IUpdateService _updateService;
     private readonly IExternalLinkLauncher _linkLauncher;
+    private readonly Func<ChromeProfile, string, Task> _launchUrl;
+    private readonly Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>> _launchManagedChrome;
     private readonly bool _runStartupUpdateCheck;
     private readonly IReadOnlyList<ChromeProfile>? _harnessProfiles;
     private readonly bool _harnessMode;
@@ -133,15 +135,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IUpdateService? updateService = null,
         IExternalLinkLauncher? linkLauncher = null,
         bool runStartupUpdateCheck = false,
+        ISecretVault? secretVault = null,
         IGoogleAccountVaultStore? googleLoginVaultStore = null,
         GoogleAccountVaultPaths? googleLoginVaultPaths = null,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? googleLoginAutomation = null,
         IReadOnlyList<ChromeProfile>? harnessProfiles = null,
         IGoogleAuthenticationService? googleAuthenticationService = null,
-        ProfileHealthService? profileHealthService = null)
+        ProfileHealthService? profileHealthService = null,
+        Func<ChromeProfile, string, Task>? launchUrl = null,
+        Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>>? launchManagedChrome = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
+        _secretVault = secretVault ?? new DpapiSecretVault();
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
+        _launchUrl = launchUrl ?? ((profile, url) =>
+        {
+            _installation ??= _chromeLocator.Find(ChromeExecutablePath, ChromeUserDataDirectory)
+                ?? throw new InvalidOperationException("Không tìm thấy Chrome. Hãy thêm đường dẫn chrome.exe và User Data Directory.");
+            _chromeLauncher.Launch(_installation, profile, url);
+            return Task.CompletedTask;
+        });
+        _launchManagedChrome = launchManagedChrome ?? ((installation, profile, uri, cancellationToken) =>
+            _chromeLauncher.LaunchManagedAsync(
+                installation,
+                profile,
+                uri,
+                cancellationToken,
+                useOriginalProfile: true));
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
@@ -1699,9 +1719,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     ObservabilityHub.Instance.IncrementCounter("profile.health_check.no_credentials",
                         tags: new Dictionary<string, string> { ["profile_id"] = row.Profile.Id });
 
-                    StatusText = $"⚠ {row.Name}: No credentials configured";
-                    ShowToast(StatusText, ToastType.Warning);
-
                     var status = ProfileHealthStatus.FromIssues(new[]
                     {
                         HealthIssue.Warning(HealthCategory.Credentials,
@@ -1709,6 +1726,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                             "Add credentials in Credentials Manager")
                     });
                     row.HealthStatus = status;
+                    StatusText = $"⚠ {row.Name}: No credentials configured";
+                    ShowToast(StatusText, ToastType.Warning);
                     return;
                 }
 
@@ -1738,17 +1757,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 "HealthCheckFailed",
                 ex,
                 new { profile_name = row.Name });
-            StatusText = $"❌ {row.Name}: Health check failed - {ex.Message}";
-            ShowToast(StatusText, ToastType.Error);
-
-            ObservabilityHub.Instance.IncrementCounter("profile.health_check.exception",
-                tags: new Dictionary<string, string> { ["error_type"] = ex.GetType().Name });
-
             var status = ProfileHealthStatus.FromIssues(new[]
             {
                 HealthIssue.Error(HealthCategory.Credentials, ex.Message, null)
             });
             row.HealthStatus = status;
+            StatusText = $"❌ {row.Name}: Health check failed - {ex.Message}";
+            ShowToast(StatusText, ToastType.Error);
+
+            ObservabilityHub.Instance.IncrementCounter("profile.health_check.exception",
+                tags: new Dictionary<string, string> { ["error_type"] = ex.GetType().Name });
         }
         finally
         {
@@ -3136,6 +3154,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    internal Task OpenProviderForTestAsync(ProviderKind provider) => OpenProviderAsync(provider);
+
     private async Task OpenProviderAsync(ProviderKind provider)
     {
         // Prevent race condition from double-click
@@ -3441,12 +3461,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 "Device code automation start",
                 new { profile_name = SelectedProfile.Name });
 
-            chromeSession = await _chromeLauncher.LaunchManagedAsync(
+            chromeSession = await _launchManagedChrome(
                 _installation,
                 SelectedProfile,
                 new Uri(verificationUri),
-                cancellationToken,
-                useOriginalProfile: true);
+                cancellationToken);
 
             StatusText = $"Đã mở Chrome với profile {SelectedProfile.Name}. Đang tự động xác nhận…";
 
@@ -4775,14 +4794,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             throw new InvalidOperationException("Select a Chrome profile first.");
         }
 
-        _installation ??= _chromeLocator.Find(ChromeExecutablePath, ChromeUserDataDirectory);
-        if (_installation is null)
-        {
-            throw new InvalidOperationException("Không tìm thấy Chrome. Hãy thêm đường dẫn chrome.exe và User Data Directory.");
-        }
-
-        _chromeLauncher.Launch(_installation, SelectedProfile, url);
-        return Task.CompletedTask;
+        return _launchUrl(SelectedProfile, url);
     }
 
     /// <summary>

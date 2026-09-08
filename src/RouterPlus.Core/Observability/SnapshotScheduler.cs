@@ -11,16 +11,34 @@ public sealed class SnapshotScheduler : IDisposable
 {
     private readonly ObservabilityHub _hub;
     private readonly TimeSpan _interval;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly Action<string, Dictionary<string, object?>, SnapshotTrigger> _captureSnapshot;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _schedulerTask;
     private Func<(string component, Dictionary<string, object?> state)>? _snapshotProvider;
     private Dictionary<string, object?>? _lastState;
 
     public SnapshotScheduler(ObservabilityHub hub, TimeSpan interval)
+        : this(hub, interval, Task.Delay, null)
+    {
+    }
+
+    public SnapshotScheduler(
+        ObservabilityHub hub,
+        TimeSpan interval,
+        Func<TimeSpan, CancellationToken, Task> delay,
+        Action<string, Dictionary<string, object?>, SnapshotTrigger>? captureSnapshot = null)
     {
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
+        _delay = delay ?? throw new ArgumentNullException(nameof(delay));
+        _captureSnapshot = captureSnapshot ?? CaptureSnapshot;
         _interval = interval;
         _schedulerTask = Task.Run(ScheduleLoopAsync);
+    }
+
+    private void CaptureSnapshot(string component, Dictionary<string, object?> state, SnapshotTrigger trigger)
+    {
+        _hub.CaptureSnapshot(component, state, trigger);
     }
 
     /// <summary>
@@ -37,7 +55,7 @@ public sealed class SnapshotScheduler : IDisposable
         {
             try
             {
-                await Task.Delay(_interval, _cts.Token);
+                await _delay(_interval, _cts.Token);
 
                 if (_snapshotProvider != null)
                 {
@@ -46,7 +64,7 @@ public sealed class SnapshotScheduler : IDisposable
                     // Only capture if state changed
                     if (HasStateChanged(state))
                     {
-                        _hub.CaptureSnapshot(component, state, SnapshotTrigger.Periodic);
+                        _captureSnapshot(component, state, SnapshotTrigger.Periodic);
                         _lastState = state;
                     }
                 }

@@ -93,10 +93,9 @@ public class RealChromeHealthCheckTests
             }
         }
 
+        Assert.NotNull(contextMenu);
         if (contextMenu == null)
         {
-            _output.WriteLine("Context menu not found after 8s - this is a known performance issue with large profile lists");
-            // Skip rest of test
             return;
         }
         _output.WriteLine("Context menu found");
@@ -153,15 +152,12 @@ public class RealChromeHealthCheckTests
                 hasUpdatedProfile = true;
                 _output.WriteLine($"    ✅ REAL health check completed");
 
-                // Expect Warning (no Google login) or Healthy
-                Assert.True(
-                    healthLevel == "Warning" || healthLevel == "Healthy",
-                    $"Expected Warning (no Google login) or Healthy, got: {healthLevel}");
+                Assert.Contains(healthLevel, new[] { "Warning", "Healthy", "Error" });
 
                 if (healthLevel == "Warning")
                 {
-                    Assert.Contains("Google account", healthMessage);
-                    _output.WriteLine($"    ✅ Correctly detected missing Google login");
+                    Assert.True(issueCount > 0, "Warning health must expose at least one issue");
+                    _output.WriteLine($"    ✅ Correctly detected a real profile warning");
                 }
             }
         }

@@ -7,7 +7,7 @@ namespace RouterPlus.Infrastructure.Chrome;
 public sealed class OpenRouterDirectLoginAutomation : DirectLoginAutomation
 {
     public OpenRouterDirectLoginAutomation(
-        ChromeCdpClient client,
+        IChromeCdpClient client,
         string sessionId,
         string targetId,
         string email,
