@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using RouterPlus.Core.Observability;
@@ -14,7 +15,7 @@ public sealed class ObservabilityHubCoverageTests
     public async Task Flush_writes_events_and_snapshots_with_scrubbed_context()
     {
         // Arrange
-        var hub = ObservabilityHub.Instance;
+        var hub = CreateIsolatedHub();
         var writer = new RecordingWriter();
         hub.SetWriter(writer);
 
@@ -51,11 +52,19 @@ public sealed class ObservabilityHubCoverageTests
     public void SetWriter_rejects_null()
     {
         // Arrange
-        var hub = ObservabilityHub.Instance;
+        var hub = CreateIsolatedHub();
 
         // Act and Assert
         Assert.Throws<ArgumentNullException>(() => hub.SetWriter(null!));
     }
+
+    private static ObservabilityHub CreateIsolatedHub() =>
+        (ObservabilityHub)Activator.CreateInstance(
+            typeof(ObservabilityHub),
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            args: null,
+            culture: null)!;
 
     private sealed class RecordingWriter : IObservabilityWriter
     {
