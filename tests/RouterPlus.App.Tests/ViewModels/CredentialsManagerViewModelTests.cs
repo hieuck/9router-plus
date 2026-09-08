@@ -300,6 +300,21 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task Provider_login_commands_report_the_provider_specific_unintegrated_flow()
     {
+        foreach (var provider in new[] { ProviderKind.Kiro, ProviderKind.GitHub, ProviderKind.OpenRouter })
+        {
+            await _providerVaultStore.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = _profile.Name,
+                Provider = provider,
+                PreferredMethod = AuthMethod.Direct,
+                DirectCredential = new ProviderCredential
+                {
+                    Email = $"{provider}@example.test",
+                    Password = "synthetic-provider-password"
+                }
+            });
+        }
+
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.KiroConnections.Count == 1);
 
