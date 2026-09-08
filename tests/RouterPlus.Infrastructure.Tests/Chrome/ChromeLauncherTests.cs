@@ -31,7 +31,7 @@ public sealed class ChromeLauncherTests : IDisposable
                 capturedStartInfo = startInfo;
                 return fakeProcess;
             },
-            null);
+            (Func<int>)(() => 0));
 
         // Act
         var actualProcess = launcher.Launch(installation, profile, "https://example.test/login?state=abc");
@@ -58,7 +58,7 @@ public sealed class ChromeLauncherTests : IDisposable
         // Arrange
         var installation = CreateInstallation();
         var profile = CreateProfile();
-        var launcher = new ChromeLauncher(null, _ => null, null);
+        var launcher = new ChromeLauncher(null, _ => null, (Func<int>)(() => 0));
 
         // Act
         var exception = Assert.Throws<InvalidOperationException>(() =>
@@ -127,7 +127,8 @@ public sealed class ChromeLauncherTests : IDisposable
                     .Substring("--user-data-dir=".Length);
                 return StartHarmlessCompletedProcess();
             },
-            (_, _, _, _, _, _) => throw new InvalidOperationException("session creation failed"));
+            (Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>>)(
+                (_, _, _, _, _, _) => throw new InvalidOperationException("session creation failed")));
 
         // Act
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -171,7 +172,8 @@ public sealed class ChromeLauncherTests : IDisposable
                     File.ReadAllText(Path.Combine(userDataDirectory, profile.DirectoryName, "Network", "Cookies")));
                 return null;
             },
-            null);
+            (Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>>)(
+                (_, _, _, _, _, _) => throw new InvalidOperationException("session creation failed")));
 
         // Act
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
