@@ -232,6 +232,238 @@ public sealed class DiagnosticsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void EventsViewFilter_RejectsNonEventsAndMismatchedCategoryAndLevel()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var testEvent = CreateEvent(category: "Chrome", level: 3);
+        _viewModel.Events.Add(testEvent);
+        var filter = _viewModel.EventsView.Filter!;
+
+        // Act & Assert
+        Assert.False(filter(new object()));
+
+        _viewModel.SelectedCategory = "Firefox";
+        Assert.False(filter(testEvent));
+
+        _viewModel.SelectedCategory = "All";
+        _viewModel.SelectedLevel = "Info";
+        Assert.False(filter(testEvent));
+
+        _viewModel.SelectedLevel = "error";
+        Assert.True(filter(testEvent));
+    }
+
+    [Fact]
+    public void EventsViewFilter_SearchesMessageOperationCategoryAndContext()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var testEvent = CreateEvent(
+            category: "Chrome",
+            operation: "ConnectProfile",
+            message: "Network request failed",
+            contextValue: "trace-token");
+        _viewModel.Events.Add(testEvent);
+        var filter = _viewModel.EventsView.Filter!;
+
+        // Act & Assert
+        _viewModel.SearchText = "request";
+        Assert.True(filter(testEvent));
+
+        _viewModel.SearchText = "profile";
+        Assert.True(filter(testEvent));
+
+        _viewModel.SearchText = "chrome";
+        Assert.True(filter(testEvent));
+
+        _viewModel.SearchText = "trace-token";
+        Assert.True(filter(testEvent));
+
+        _viewModel.SearchText = "not-present";
+        Assert.False(filter(testEvent));
+    }
+
+    [Fact]
+    public void EventsViewFilter_AllowsWhitespaceSearch()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        var testEvent = CreateEvent(category: "Chrome");
+        _viewModel.Events.Add(testEvent);
+
+        // Act
+        _viewModel.SearchText = "   ";
+
+        // Assert
+        Assert.True(_viewModel.EventsView.Filter!(testEvent));
+    }
+
+    [Fact]
+    public void SelectedCategory_SameValue_DoesNotRaisePropertyChangedOrRecalculateMetrics()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(CreateEvent(category: "Chrome"));
+        _viewModel.SelectedCategory = "Chrome";
+        var metricsBefore = _viewModel.Metrics;
+        var propertyChangedCount = 0;
+        _viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(DiagnosticsViewModel.SelectedCategory))
+                propertyChangedCount++;
+        };
+
+        // Act
+        _viewModel.SelectedCategory = "Chrome";
+
+        // Assert
+        Assert.Equal(0, propertyChangedCount);
+        Assert.Same(metricsBefore, _viewModel.Metrics);
+    }
+
+    [Fact]
+    public void SelectedLevel_SameValue_DoesNotRaisePropertyChangedOrRecalculateMetrics()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(CreateEvent(level: 1));
+        _viewModel.SelectedLevel = "Info";
+        var metricsBefore = _viewModel.Metrics;
+        var propertyChangedCount = 0;
+        _viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(DiagnosticsViewModel.SelectedLevel))
+                propertyChangedCount++;
+        };
+
+        // Act
+        _viewModel.SelectedLevel = "Info";
+
+        // Assert
+        Assert.Equal(0, propertyChangedCount);
+        Assert.Same(metricsBefore, _viewModel.Metrics);
+    }
+
+    [Fact]
+    public void SearchText_SameValue_DoesNotRaisePropertyChangedOrRecalculateMetrics()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(CreateEvent(message: "network request"));
+        _viewModel.SearchText = "network";
+        var metricsBefore = _viewModel.Metrics;
+        var propertyChangedCount = 0;
+        _viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(DiagnosticsViewModel.SearchText))
+                propertyChangedCount++;
+        };
+
+        // Act
+        _viewModel.SearchText = "network";
+
+        // Assert
+        Assert.Equal(0, propertyChangedCount);
+        Assert.Same(metricsBefore, _viewModel.Metrics);
+    }
+
+    [Fact]
+    public void Metrics_UpdateWhenCategoryFilterChanges()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(CreateEvent(category: "Chrome"));
+        _viewModel.Events.Add(CreateEvent(category: "Chrome", level: 3));
+        _viewModel.Events.Add(CreateEvent(category: "Firefox"));
+
+        // Act
+        _viewModel.SelectedCategory = "Chrome";
+
+        // Assert
+        Assert.NotNull(_viewModel.Metrics);
+        Assert.Equal(2, _viewModel.Metrics!.TotalEvents);
+        Assert.Equal(1, _viewModel.Metrics.ErrorCount);
+
+        // Act
+        _viewModel.SelectedCategory = "All";
+
+        // Assert
+        Assert.Equal(3, _viewModel.Metrics.TotalEvents);
+    }
+
+    [Fact]
+    public void Metrics_UpdateWhenLevelFilterChanges()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(CreateEvent(level: 1));
+        _viewModel.Events.Add(CreateEvent(level: 3));
+        _viewModel.Events.Add(CreateEvent(level: 2));
+
+        // Act
+        _viewModel.SelectedLevel = "Error";
+
+        // Assert
+        Assert.NotNull(_viewModel.Metrics);
+        Assert.Equal(1, _viewModel.Metrics!.TotalEvents);
+        Assert.Equal(1, _viewModel.Metrics.ErrorCount);
+
+        // Act
+        _viewModel.SelectedLevel = "All";
+
+        // Assert
+        Assert.Equal(3, _viewModel.Metrics.TotalEvents);
+    }
+
+    [Fact]
+    public void Metrics_UpdateWhenSearchTextChanges()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+        _viewModel.Events.Add(CreateEvent(operation: "ConnectProfile", message: "Connected"));
+        _viewModel.Events.Add(CreateEvent(operation: "DisconnectProfile", message: "Disconnected"));
+        _viewModel.Events.Add(CreateEvent(operation: "Refresh", message: "Updated"));
+
+        // Act
+        _viewModel.SearchText = "profile";
+
+        // Assert
+        Assert.NotNull(_viewModel.Metrics);
+        Assert.Equal(2, _viewModel.Metrics!.TotalEvents);
+        Assert.Equal(2, _viewModel.Metrics.InfoCount);
+
+        // Act
+        _viewModel.SearchText = string.Empty;
+
+        // Assert
+        Assert.Equal(3, _viewModel.Metrics.TotalEvents);
+    }
+
+    private static ObservabilityEvent CreateEvent(
+        string category = "Test",
+        int level = 1,
+        string operation = "TestOperation",
+        string message = "Test message",
+        string? contextValue = null)
+    {
+        return new ObservabilityEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            LevelInt = level,
+            Category = category,
+            Operation = operation,
+            Message = message,
+            Context = contextValue is null
+                ? null
+                : new Dictionary<string, JsonElement>
+                {
+                    ["token"] = JsonSerializer.SerializeToElement(contextValue)
+                }
+        };
+    }
+
+    [Fact]
     public void IsLoading_InitiallyFalse()
     {
         // Arrange & Act
