@@ -4,6 +4,18 @@ namespace RouterPlus.Infrastructure.Chrome;
 
 public sealed class ChromeLocator
 {
+    private readonly IChromeLocatorEnvironment _environment;
+
+    public ChromeLocator()
+        : this(new SystemChromeLocatorEnvironment())
+    {
+    }
+
+    internal ChromeLocator(IChromeLocatorEnvironment environment)
+    {
+        _environment = environment;
+    }
+
     public ChromeInstallation? Find(string? executableOverride = null, string? userDataOverride = null)
     {
         var executable = FindExecutable(executableOverride);
@@ -25,14 +37,14 @@ public sealed class ChromeLocator
 
     public string? FindExecutable(string? executableOverride = null)
     {
-        if (!string.IsNullOrWhiteSpace(executableOverride) && File.Exists(executableOverride))
+        if (!string.IsNullOrWhiteSpace(executableOverride) && _environment.FileExists(executableOverride))
         {
             return Path.GetFullPath(executableOverride);
         }
 
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var localAppData = _environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var programFiles = _environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = _environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         var candidates = new[]
         {
             Path.Combine(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
@@ -42,14 +54,14 @@ public sealed class ChromeLocator
             ReadRegistryExecutable(RegistryHive.LocalMachine)
         };
 
-        return candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path));
+        return candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && _environment.FileExists(path));
     }
 
     public IReadOnlyList<ChromeInstallation> FindAll()
     {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var localAppData = _environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var programFiles = _environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = _environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
 
         var executableCandidates = new[]
         {
@@ -85,7 +97,7 @@ public sealed class ChromeLocator
 
         var allCandidates = executableCandidates.Concat(additionalSearchPaths);
         var foundExecutables = allCandidates
-            .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
+            .Where(path => !string.IsNullOrWhiteSpace(path) && _environment.FileExists(path))
             .Select(path => Path.GetFullPath(path!))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -114,7 +126,7 @@ public sealed class ChromeLocator
         if (!string.IsNullOrWhiteSpace(parentDir))
         {
             var candidate = Path.Combine(parentDir, "User Data");
-            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "Local State")))
+            if (_environment.DirectoryExists(candidate) && _environment.FileExists(Path.Combine(candidate, "Local State")))
             {
                 return candidate;
             }
@@ -123,7 +135,7 @@ public sealed class ChromeLocator
         // Strategy 2: Check executable's own directory (for flat installs)
         // e.g. G:\Program Files\CentBrowser\chrome.exe -> look for G:\Program Files\CentBrowser\User Data
         var sameDirCandidate = Path.Combine(executableDir, "User Data");
-        if (Directory.Exists(sameDirCandidate) && File.Exists(Path.Combine(sameDirCandidate, "Local State")))
+        if (_environment.DirectoryExists(sameDirCandidate) && _environment.FileExists(Path.Combine(sameDirCandidate, "Local State")))
         {
             return sameDirCandidate;
         }
@@ -131,9 +143,9 @@ public sealed class ChromeLocator
         // Strategy 3: For Google Chrome, try standard LocalAppData location
         if (executablePath.Contains("Google", StringComparison.OrdinalIgnoreCase))
         {
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var localAppData = _environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var googleUserData = Path.Combine(localAppData, "Google", "Chrome", "User Data");
-            if (Directory.Exists(googleUserData) && File.Exists(Path.Combine(googleUserData, "Local State")))
+            if (_environment.DirectoryExists(googleUserData) && _environment.FileExists(Path.Combine(googleUserData, "Local State")))
             {
                 return googleUserData;
             }
@@ -144,12 +156,53 @@ public sealed class ChromeLocator
 
     public string? FindUserDataDirectory()
     {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var localAppData = _environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var candidate = Path.Combine(localAppData, "Google", "Chrome", "User Data");
-        return Directory.Exists(candidate) ? candidate : null;
+        return _environment.DirectoryExists(candidate) ? candidate : null;
     }
 
-    private static string? ReadRegistryExecutable(RegistryHive hive)
+    private string? ReadRegistryExecutable(RegistryHive hive)
+    {
+        try
+        {
+            return _environment.ReadRegistryExecutable(hive);
+        }
+        catch (Exception) when (hive == RegistryHive.LocalMachine)
+        {
+            return null;
+        }
+    }
+}
+
+internal interface IChromeLocatorEnvironment
+{
+    string GetFolderPath(Environment.SpecialFolder folder);
+
+    bool FileExists(string path);
+
+    bool DirectoryExists(string path);
+
+    string? ReadRegistryExecutable(RegistryHive hive);
+}
+
+internal sealed class SystemChromeLocatorEnvironment : IChromeLocatorEnvironment
+{
+    public string GetFolderPath(Environment.SpecialFolder folder)
+    {
+        return Environment.GetFolderPath(folder);
+    }
+
+    public bool FileExists(string path)
+    {
+        return File.Exists(path);
+    }
+
+    public bool DirectoryExists(string path)
+    {
+        return Directory.Exists(path);
+    }
+
+    public string? ReadRegistryExecutable(RegistryHive hive)
     {
         try
         {
