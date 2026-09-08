@@ -19,6 +19,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     private readonly ChromeProfile _profile;
     private readonly MainViewModel _mainViewModel;
     private readonly List<CredentialsManagerViewModel> _viewModels = new();
+    private readonly List<ProviderConnectionVaultStore> _syntheticProviderStores = new();
+    private readonly List<GoogleAccountVaultSession> _syntheticSessions = new();
 
     public CredentialsManagerViewModelTests()
     {
@@ -50,6 +52,16 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         foreach (var viewModel in _viewModels)
         {
             await viewModel.DisposeAsync();
+        }
+
+        foreach (var session in _syntheticSessions)
+        {
+            await session.DisposeAsync();
+        }
+
+        foreach (var store in _syntheticProviderStores)
+        {
+            store.Dispose();
         }
 
         _providerVaultStore.Dispose();
@@ -865,6 +877,101 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CheckHealthRowCommand_maps_success_and_passes_row_credentials_to_runner()
+    {
+        GoogleLoginCredential? receivedCredential = null;
+        var viewModel = CreateSyntheticViewModel(new GoogleLoginCredential(
+            _profile.Id,
+            "health@example.test",
+            "synthetic-health-password",
+            "synthetic-totp"),
+            healthCheck: (_, credential, _) =>
+            {
+                receivedCredential = credential;
+                return Task.FromResult(GoogleLoginResult.Success());
+            });
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+
+        viewModel.CheckHealthRowCommand.Execute(row);
+        await WaitForAsync(() => row.HealthStatus?.Status == CredentialHealthStatus.Healthy);
+
+        Assert.Equal(CredentialHealthStatus.Healthy, row.HealthStatus!.Status);
+        Assert.NotNull(receivedCredential);
+        Assert.Equal("health@example.test", receivedCredential!.Email);
+        Assert.Equal("synthetic-health-password", receivedCredential.Password);
+        Assert.Equal("synthetic-totp", receivedCredential.TotpSecret);
+    }
+
+    [Fact]
+    public async Task CheckHealthRowCommand_maps_manual_intervention_to_requires_action()
+    {
+        var viewModel = CreateSyntheticViewModel(new GoogleLoginCredential(
+            _profile.Id,
+            "health@example.test",
+            "synthetic-health-password",
+            "NONE"),
+            healthCheck: (_, _, _) => Task.FromResult(
+                GoogleLoginResult.ManualInterventionRequired("synthetic challenge")));
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+
+        viewModel.CheckHealthRowCommand.Execute(row);
+        await WaitForAsync(() => row.HealthStatus?.Status == CredentialHealthStatus.RequiresAction);
+
+        Assert.Equal(CredentialHealthStatus.RequiresAction, row.HealthStatus!.Status);
+        Assert.Equal("synthetic challenge", row.HealthStatus.Message);
+        Assert.Contains("synthetic challenge", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CheckHealthRowCommand_maps_timeout_to_error_without_exposing_credentials()
+    {
+        var viewModel = CreateSyntheticViewModel(new GoogleLoginCredential(
+            _profile.Id,
+            "health@example.test",
+            "synthetic-health-password",
+            "NONE"),
+            healthCheck: (_, _, _) => Task.FromResult(GoogleLoginResult.Timeout()));
+
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+
+        viewModel.CheckHealthRowCommand.Execute(row);
+        await WaitForAsync(() => row.HealthStatus?.Status == CredentialHealthStatus.Error);
+
+        Assert.Equal(CredentialHealthStatus.Error, row.HealthStatus!.Status);
+        Assert.Equal("Health check timed out", row.HealthStatus.Message);
+        Assert.DoesNotContain("synthetic-health-password", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SaveCodexRowCommand_rejects_direct_login_without_email()
+    {
+        var viewModel = CreateSyntheticViewModel(new GoogleLoginCredential(
+            _profile.Id,
+            "synthetic@example.test",
+            "synthetic-password",
+            "NONE"));
+
+        await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+        var row = Assert.Single(viewModel.CodexConnections);
+        row.AuthMethod = AuthMethod.Direct;
+        row.Password = "synthetic-codex-password";
+
+        viewModel.SaveCodexRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains(
+            "Email is required for Direct login", StringComparison.Ordinal));
+
+        Assert.False(row.HasCredentials);
+    }
+
+    [Fact]
     public async Task RemoveGoogleAccountAsync_after_manual_unlock_keeps_vault_unlocked()
     {
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
@@ -1391,6 +1498,30 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         return viewModel;
     }
 
+    private CredentialsManagerViewModel CreateSyntheticViewModel(
+        GoogleLoginCredential? credential = null,
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? healthCheck = null)
+    {
+        var providerStore = new ProviderConnectionVaultStore(
+            Path.Combine(_rootDirectory, $"provider-{Guid.NewGuid():N}.vault"));
+        var session = new SyntheticVaultSession(
+            credential is null
+                ? new GoogleAccountVault()
+                : new GoogleAccountVault(new[] { credential }));
+        var viewModel = new CredentialsManagerViewModel(
+            _mainViewModel,
+            new SyntheticGoogleVaultStore(session),
+            providerStore,
+            _vaultPaths,
+            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
+            healthCheck ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
+            (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
+        _syntheticProviderStores.Add(providerStore);
+        _syntheticSessions.Add(session);
+        _viewModels.Add(viewModel);
+        return viewModel;
+    }
+
     private async Task CreateVaultAsync(string password, GoogleLoginCredential? credential = null)
     {
         await using var session = await _googleVaultStore.CreateAsync(
@@ -1436,5 +1567,37 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         }
 
         Assert.True(predicate(), "The expected asynchronous state was not reached within five seconds.");
+    }
+
+    private sealed class SyntheticGoogleVaultStore(GoogleAccountVaultSession session) : IGoogleAccountVaultStore
+    {
+        public Task<GoogleAccountVaultSession> CreateAsync(string path, string vaultPassword, CancellationToken cancellationToken = default) =>
+            Task.FromResult(session);
+
+        public Task<GoogleAccountVaultSession> OpenAsync(string path, string vaultPassword, CancellationToken cancellationToken = default) =>
+            Task.FromResult(session);
+
+        public Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default) =>
+            Task.FromResult<GoogleAccountVaultSession?>(session);
+
+        public Task SaveAsync(GoogleAccountVaultSession session, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task ExportAsync(GoogleAccountVaultSession session, string destinationPath, string exportPassword, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task ImportAsync(string currentPath, string sourcePath, string sourcePassword, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class SyntheticVaultSession(GoogleAccountVault vault) : GoogleAccountVaultSession
+    {
+        public string VaultId => "synthetic-vault";
+        public GoogleAccountVault Vault { get; private set; } = vault;
+
+        public void Replace(GoogleAccountVault vault) => Vault = vault;
+        public Task RememberAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RemoveRememberedAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }
