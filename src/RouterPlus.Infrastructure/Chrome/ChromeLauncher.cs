@@ -250,7 +250,9 @@ public sealed class ChromeLauncher
                 "ClosingChromeProcesses",
                 "Closing Chrome processes using profile",
                 new { profile_name = profile.DirectoryName });
-            var killed = CloseProcessesUsingProfile(installation.ExecutablePath, profile.DirectoryName);
+            var killed = CloseProcessesUsingProfile(
+                installation.UserDataDirectory,
+                profile.DirectoryName);
 
             if (!killed)
             {
@@ -447,18 +449,16 @@ public sealed class ChromeLauncher
         }
     }
 
-    private static bool CloseProcessesUsingProfile(string chromeExecutablePath, string profileDirectoryName)
+    private static bool CloseProcessesUsingProfile(
+        string userDataDirectory,
+        string profileDirectoryName)
     {
         try
         {
-            // Close visible browser windows gracefully so Chromium can persist session tabs
-            // before any remaining helper processes are force-terminated.
+            var normalizedUserDataDirectory = Path.GetFullPath(userDataDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var processes = Process.GetProcessesByName("chrome");
             CloseVisibleBrowserWindows(processes);
-
-            // Kill ALL chrome.exe processes (CentBrowser, Brave, Chrome share process name).
-            // This is required for auto-login because Chrome variants use single-instance with profile locking.
-            // Trying to launch a managed Chrome while another Chrome variant holds the user-data-dir lock will fail.
             processes = Process.GetProcessesByName("chrome");
 
             var killedCount = 0;
@@ -468,46 +468,42 @@ public sealed class ChromeLauncher
             {
                 try
                 {
-                    // Skip helper processes that don't hold profile locks (crashpad, network service with no --type)
-                    // Kill all main, utility, renderer, gpu processes that reference user-data-dir
-                    if (OperatingSystem.IsWindows())
+                    if (!OperatingSystem.IsWindows())
                     {
-                        using var searcher = new System.Management.ManagementObjectSearcher(
-                            $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {process.Id}");
+                        continue;
+                    }
 
-                        foreach (System.Management.ManagementObject obj in searcher.Get())
+                    using var searcher = new System.Management.ManagementObjectSearcher(
+                        $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {process.Id}");
+                    foreach (System.Management.ManagementObject obj in searcher.Get())
+                    {
+                        var commandLine = obj["CommandLine"]?.ToString() ?? string.Empty;
+                        if (commandLine.Contains("--type=crashpad-handler", StringComparison.OrdinalIgnoreCase))
                         {
-                            var commandLine = obj["CommandLine"]?.ToString() ?? string.Empty;
-
-                            // Skip crashpad-handler (doesn't hold profile locks)
-                            if (commandLine.Contains("--type=crashpad-handler"))
-                            {
-                                skippedCount++;
-                                break;
-                            }
-
-                            // Skip pure network/storage services without profile lock (they may be from another instance)
-                            // But for safety, kill them anyway since they share user-data-dir
-                            ObservabilityHub.Instance.LogEvent(
-                                LogLevel.Info,
-                                "ChromeLauncher",
-                                "KillingProcess",
-                                "Killing process to release user-data-dir locks",
-                                new { process_id = process.Id });
-                            process.Kill();
-                            killedCount++;
+                            skippedCount++;
                             break;
                         }
-                    }
-                    else
-                    {
+
+                        if (!CommandLineUsesUserDataDirectory(commandLine, normalizedUserDataDirectory))
+                        {
+                            skippedCount++;
+                            break;
+                        }
+
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "ChromeLauncher",
+                            "KillingProcess",
+                            "Killing process to release user-data-dir locks",
+                            new { process_id = process.Id, profile_name = profileDirectoryName });
                         process.Kill();
                         killedCount++;
+                        break;
                     }
                 }
                 catch
                 {
-                    // Process might have exited or access denied - continue
+                    // Process might have exited or access denied - continue.
                 }
                 finally
                 {
@@ -524,7 +520,6 @@ public sealed class ChromeLauncher
 
             if (killedCount > 0)
             {
-                // Wait briefly for processes to fully exit and release locks
                 System.Threading.Thread.Sleep(1500);
                 return true;
             }
@@ -537,11 +532,40 @@ public sealed class ChromeLauncher
                 LogLevel.Error,
                 "ChromeLauncher",
                 "CloseProcessesFailed",
-                "Failed to close Chrome processes",
+                "Failed to close browser processes",
                 new { error = ex.Message });
-            // Non-fatal - proceed with launch attempt
             return false;
         }
+    }
+
+    private static bool CommandLineUsesUserDataDirectory(string commandLine, string normalizedUserDataDirectory)
+    {
+        const string prefix = "--user-data-dir=";
+        var start = commandLine.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        while (start >= 0)
+        {
+            start += prefix.Length;
+            var end = commandLine.IndexOf(' ', start);
+            var value = end < 0 ? commandLine[start..] : commandLine[start..end];
+            value = value.Trim('"');
+            try
+            {
+                var normalized = Path.GetFullPath(value)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (string.Equals(normalized, normalizedUserDataDirectory, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Ignore malformed command-line values.
+            }
+
+            start = commandLine.IndexOf(prefix, start, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 
     [DllImport("user32.dll", SetLastError = true)]
