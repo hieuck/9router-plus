@@ -6,6 +6,19 @@ namespace RouterPlus.Core.Tests.Chrome;
 public class ProfileHealthChecker_CredentialsTests
 {
     [Fact]
+    public void CheckCredentialsHealth_NullProfile_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var checker = new ProfileHealthChecker();
+
+        // Act
+        var exception = Assert.Throws<ArgumentNullException>(() => checker.CheckCredentialsHealth(null!, vault: null));
+
+        // Assert
+        Assert.Equal("profile", exception.ParamName);
+    }
+
+    [Fact]
     public void CheckCredentialsHealth_NoVault_ReturnsInfo()
     {
         var profile = new ChromeProfile("profile-123", "Test", "Profile 1", @"C:\UserData", false);
