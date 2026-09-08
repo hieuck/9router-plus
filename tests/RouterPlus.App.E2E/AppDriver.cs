@@ -68,18 +68,29 @@ public sealed class AppDriver
 
     public void EnableMultiSelectMode()
     {
-        var button = _app.MainWindow.FindFirstDescendant(cf => cf.ByAutomationId("ToggleMultiSelectButton"))
-            ?? throw new InvalidOperationException("Multi-select button not found");
         _app.Instrumentation.Record("CLICK_MULTI_SELECT");
-        button.Click();
+        FlaUI.Core.Input.Keyboard.TypeSimultaneously(new[]
+        {
+            FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL,
+            FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_A
+        });
     }
 
     public void ClickSelectAll()
     {
-        var button = _app.MainWindow.FindFirstDescendant(cf => cf.ByAutomationId("SelectAllButton"))
-            ?? throw new InvalidOperationException("Select-all button not found");
-        _app.Instrumentation.Record("CLICK_SELECT_ALL");
-        button.Click();
+        var checkboxes = FindProfileList()
+            .FindAllDescendants(cf => cf.ByControlType(ControlType.CheckBox));
+        var states = checkboxes.Select(_app.Instrumentation.ReadToggleState).ToArray();
+        var targetState = !states.All(state => state);
+
+        _app.Instrumentation.Record("CLICK_SELECT_ALL", $"target={targetState}");
+        foreach (var (checkbox, state) in checkboxes.Zip(states))
+        {
+            if (state != targetState)
+            {
+                checkbox.Click();
+            }
+        }
     }
 
     public IReadOnlyList<bool> ReadProfileCheckboxStates()

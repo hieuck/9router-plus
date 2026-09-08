@@ -55,10 +55,10 @@ public sealed class MetricsTests
 
         await hub.FlushAsync();
 
-        var writtenEvent = Assert.Single(writer.Events);
-        Assert.Equal("FlushEvent", writtenEvent.Event);
-        var snapshot = Assert.Single(writer.Snapshots);
-        Assert.Equal("Tests", snapshot.Component);
+        var writtenEvent = Assert.Single(writer.Events, item => item.Event == "FlushEvent");
+        Assert.Equal("Tests", writtenEvent.Category);
+        var snapshot = Assert.Single(writer.Snapshots, item => item.Component == "Tests");
+        Assert.Equal(SnapshotTrigger.OnDemand, snapshot.Trigger);
     }
 
     [Fact]

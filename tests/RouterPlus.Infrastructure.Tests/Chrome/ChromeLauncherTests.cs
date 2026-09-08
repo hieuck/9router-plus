@@ -1,4 +1,11 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
+using System.Threading;
+using Xunit;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Chrome;
 
@@ -103,22 +110,44 @@ public sealed class ChromeLauncherTests : IDisposable
     }
 
     [Fact]
-    public async Task LaunchManagedAsync_deletes_isolated_profile_when_session_creation_fails()
+    public async Task LaunchManagedAsync_uses_default_isolated_profile_and_copies_authentication_data()
     {
         var installation = CreateInstallation();
         var profile = CreateProfile();
-        string? temporaryUserDataDirectory = null;
+        // Write dummy auth data to source directories.
+        File.WriteAllText(Path.Combine(installation.UserDataDirectory, "Local State"), "local-state");
+        foreach (var (name, content) in new[]
+        {
+            ("Preferences", "preferences"),
+            ("Secure Preferences", "secure-preferences"),
+            ("Cookies", "cookies"),
+            ("Login Data", "login-data"),
+            ("Web Data", "web-data")
+        })
+        {
+            File.WriteAllText(Path.Combine(profile.ProfilePath, name), content);
+        }
+        Directory.CreateDirectory(Path.Combine(profile.ProfilePath, "Network"));
+        File.WriteAllText(Path.Combine(profile.ProfilePath, "Network", "Cookies"), "network-cookies");
+
+        ProcessStartInfo? capturedStartInfo = null;
         var launcher = new ChromeLauncher(
             null,
             startInfo =>
             {
-                temporaryUserDataDirectory = startInfo.ArgumentList
-                    .Single(argument => argument.StartsWith("--user-data-dir=", StringComparison.Ordinal))
-                    .Substring("--user-data-dir=".Length);
-                return StartHarmlessCompletedProcess();
+                capturedStartInfo = startInfo;
+                var tempDir = startInfo.ArgumentList.Single(arg => arg.StartsWith("--user-data-dir=")).Substring("--user-data-dir=".Length);
+                // Verify that auth data were copied.
+                Assert.Equal("local-state", File.ReadAllText(Path.Combine(tempDir, "Local State")));
+                Assert.Equal("preferences", File.ReadAllText(Path.Combine(tempDir, profile.DirectoryName, "Preferences")));
+                Assert.Equal("secure-preferences", File.ReadAllText(Path.Combine(tempDir, profile.DirectoryName, "Secure Preferences")));
+                Assert.Equal("cookies", File.ReadAllText(Path.Combine(tempDir, profile.DirectoryName, "Cookies")));
+                Assert.Equal("login-data", File.ReadAllText(Path.Combine(tempDir, profile.DirectoryName, "Login Data")));
+                Assert.Equal("web-data", File.ReadAllText(Path.Combine(tempDir, profile.DirectoryName, "Web Data")));
+                Assert.Equal("network-cookies", File.ReadAllText(Path.Combine(tempDir, profile.DirectoryName, "Network", "Cookies")));
+                return null; // Simulate process start failure.
             },
-            (Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>>)(
-                (_, _, _, _, _, _) => throw new InvalidOperationException("session creation failed")));
+            (process, port, marker, _, _, _) => Task.FromResult(new ChromeManagedSession(process, new Uri($"http://127.0.0.1:{port}"), marker)));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             launcher.LaunchManagedAsync(
@@ -127,9 +156,10 @@ public sealed class ChromeLauncherTests : IDisposable
                 new Uri("https://example.test"),
                 CancellationToken.None));
 
-        Assert.Equal("session creation failed", exception.Message);
-        Assert.NotNull(temporaryUserDataDirectory);
-        Assert.False(Directory.Exists(temporaryUserDataDirectory));
+        Assert.Equal("Chrome did not start.", exception.Message);
+        Assert.NotNull(capturedStartInfo);
+        var tempDirPath = capturedStartInfo!.ArgumentList.Single(arg => arg.StartsWith("--user-data-dir=")).Substring("--user-data-dir=".Length);
+        Assert.False(Directory.Exists(tempDirPath));
     }
 
     [Fact]
@@ -189,7 +219,40 @@ public sealed class ChromeLauncherTests : IDisposable
         Assert.False(Directory.Exists(temporaryUserDataDirectory));
     }
 
-    private static Process StartHarmlessCompletedProcess()
+    [Fact]
+    public async Task LaunchManagedAsync_uses_original_profile_and_does_not_create_temp_directory()
+    {
+        var installation = CreateInstallation();
+        var profile = CreateProfile();
+        ProcessStartInfo? capturedStartInfo = null;
+        var launcher = new ChromeLauncher(
+            null,
+            startInfo =>
+            {
+                capturedStartInfo = startInfo;
+                return StartHarmlessCompletedProcess();
+            },
+            (process, port, marker, _, _, _) => Task.FromResult(new ChromeManagedSession(process, new Uri($"http://127.0.0.1:{port}"), marker)));
+
+        await using (var session = await launcher.LaunchManagedAsync(
+            installation,
+            profile,
+            new Uri("https://example.test"),
+            CancellationToken.None,
+            useOriginalProfile: true))
+        {
+            // Verify that the user-data-dir argument points to the original user data directory.
+            Assert.NotNull(capturedStartInfo);
+            var userDataArg = capturedStartInfo!.ArgumentList.Single(arg => arg.StartsWith("--user-data-dir="));
+            var dir = userDataArg.Substring("--user-data-dir=".Length);
+            Assert.Equal(installation.UserDataDirectory, dir);
+        }
+        // No temporary directory should have been created.
+        var tempArgExists = capturedStartInfo!.ArgumentList.Any(arg => arg.StartsWith("--user-data-dir=") && arg.Contains("routerplus_chrome_"));
+        Assert.False(tempArgExists);
+    }
+
+    private Process StartHarmlessCompletedProcess()
     {
         var process = Process.Start(new ProcessStartInfo
         {

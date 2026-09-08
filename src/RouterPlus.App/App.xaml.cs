@@ -69,8 +69,14 @@ public partial class App : System.Windows.Application
         // Keep the application alive while the setup wizard is the only open window.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-        // Show wizard if first-time user (no Chrome paths configured)
+        // Show wizard if first-time user (no Chrome paths configured).
+        // E2E tests bypass it so they can attach to the main window directly.
+        var skipSetupWizard = string.Equals(
+            Environment.GetEnvironmentVariable("ROUTERPLUS_SKIP_SETUP_WIZARD"),
+            "1",
+            StringComparison.Ordinal);
         if (!HarnessEnvironment.IsEnabled &&
+            !skipSetupWizard &&
             (string.IsNullOrWhiteSpace(settings.ChromeExecutablePath) ||
              string.IsNullOrWhiteSpace(settings.ChromeUserDataDirectory)))
         {
