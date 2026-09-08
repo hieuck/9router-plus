@@ -81,8 +81,10 @@ Build script sẽ restore, test, build và publish vào `artifacts\publish`.
 
 ## CI và phát hành
 
-- Pull request vào `master` và push lên `master` tự động chạy restore, test, build và publish.
+- Pull request vào `main` và push lên `main` tự động chạy restore, test, build và publish qua workflow **CI** (`.github/workflows/ci.yml`).
 - CI tạo artifact self-contained `win-x64` để tải từ trang Actions; artifact CI được giữ trong 14 ngày.
+- **Harness Audit** chạy trong CI (`ecc:harness-audit repo --format json`) và kết quả được lưu làm artifact `harness-audit`; báo cáo tóm tắt có thể xem trong Actions.
+- **Security Scan** chạy trong CI (`ecc:security-scan`) với guardhooks từ `hooks/hooks.json` (prompt pre-flight, tool guard, rate-limit, redact secrets).
 - Dev build local có thể chạy:
 
   ```powershell

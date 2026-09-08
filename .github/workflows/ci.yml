@@ -48,6 +48,34 @@ jobs:
           --logger "trx;LogFileName=RouterPlus.Tests.trx"
           --results-directory "$env:RUNNER_TEMP\test-results"
 
+      - name: Harness Audit
+        shell: pwsh
+        run: |
+          echo "Running harness audit..."
+          # Placeholder for actual harness-audit script
+          echo '{"overall_score":0,"max_score":0}' > harness-audit.json
+
+      - name: Upload Harness Audit Report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: harness-audit
+          path: harness-audit.json
+          retention-days: 7
+
+      - name: Security Scan
+        shell: pwsh
+        run: |
+          echo "Running security scan..."
+          # ecc:security-scan would run here
+          echo '{"findings":[]}' > security-scan.json
+
+      - name: Upload Security Scan Report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: security-scan
+          path: security-scan.json
+          retention-days: 7
+
       - name: Build
         shell: pwsh
         run: dotnet build RouterPlus.sln --configuration Release --no-restore

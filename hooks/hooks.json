@@ -1,0 +1,8 @@
+{
+  "prompt_preflight": true,
+  "tool_guard": true,
+  "rate_limit": {
+    "calls_per_minute": 30
+  },
+  "redact_secrets": true
+}
