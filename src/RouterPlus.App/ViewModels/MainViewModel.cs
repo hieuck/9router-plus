@@ -147,14 +147,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
-        _launchUrl = launchUrl ?? ((profile, url) =>
-        {
-            _installation ??= _chromeLocator.Find(ChromeExecutablePath, ChromeUserDataDirectory)
-                ?? throw new InvalidOperationException("Không tìm thấy Chrome. Hãy thêm đường dẫn chrome.exe và User Data Directory.");
-            _chromeLauncher.Launch(_installation, profile, url);
-            return Task.CompletedTask;
-        });
-
         _profileProvisioner = profileProvisioner ?? new ChromeProfileProvisioner();
         _launchUrl = launchUrl ?? ((profile, url) =>
         {
