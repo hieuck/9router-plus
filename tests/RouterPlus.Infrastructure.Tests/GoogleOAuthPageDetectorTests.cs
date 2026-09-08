@@ -14,13 +14,7 @@ public sealed class GoogleOAuthPageDetectorTests
     [InlineData("accounts.google.com.")]
     public void IsGoogleOAuthHost_accepts_accounts_google_hosts(string host)
     {
-        // Arrange
-
-        // Act
-        var result = GoogleOAuthPageDetector.IsGoogleOAuthHost(host);
-
-        // Assert
-        Assert.True(result);
+        Assert.True(GoogleOAuthPageDetector.IsGoogleOAuthHost(host));
     }
 
     [Theory]
@@ -29,290 +23,286 @@ public sealed class GoogleOAuthPageDetectorTests
     [InlineData("")]
     public void IsGoogleOAuthHost_rejects_non_accounts_google_hosts(string host)
     {
-        // Arrange
-
-        // Act
-        var result = GoogleOAuthPageDetector.IsGoogleOAuthHost(host);
-
-        // Assert
-        Assert.False(result);
+        Assert.False(GoogleOAuthPageDetector.IsGoogleOAuthHost(host));
     }
 
     [Fact]
-    public async Task TryDetectAsync_returns_null_when_page_is_not_google_oauth()
+    public async Task TryDetectAsync_returns_null_for_non_google_page()
     {
-        // Arrange
         await using var server = await FakeCdpServer.StartAsync(
-            "{\"isGoogleOAuthPage\":false}");
-        await using var client = await server.ConnectClientAsync();
+            "{\"result\":{\"value\":{\"isGoogleOAuthPage\":false}}}");
+        await using var client = await CreateConnectedClientAsync(server);
 
-        // Act
-        var result = await GoogleOAuthPageDetector.TryDetectAsync(
-            client,
-            "synthetic-session",
-            CancellationToken.None);
+        var state = await GoogleOAuthPageDetector.TryDetectAsync(
+            client, "session-1", CancellationToken.None);
 
-        // Assert
-        Assert.Null(result);
+        Assert.Null(state);
     }
 
     [Fact]
-    public async Task TryDetectAsync_returns_detected_google_page_state()
+    public async Task TryDetectAsync_maps_google_page_state()
     {
-        // Arrange
         await using var server = await FakeCdpServer.StartAsync(
-            "{\"isGoogleOAuthPage\":true,\"currentUrl\":\"https://accounts.google.com/signin\",\"hasAccountPicker\":true,\"hasGoogleTotpInput\":true,\"hasGoogleConsentButton\":false}");
-        await using var client = await server.ConnectClientAsync();
+            "{\"result\":{\"value\":{\"isGoogleOAuthPage\":true,\"currentUrl\":\"https://accounts.google.com/choose-an-account\",\"hasAccountPicker\":true,\"hasGoogleTotpInput\":true,\"hasGoogleConsentButton\":false}}}");
+        await using var client = await CreateConnectedClientAsync(server);
 
-        // Act
-        var result = await GoogleOAuthPageDetector.TryDetectAsync(
-            client,
-            "synthetic-session",
-            CancellationToken.None);
+        var state = await GoogleOAuthPageDetector.TryDetectAsync(
+            client, "session-2", CancellationToken.None);
 
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal("https://accounts.google.com/signin", result.CurrentUrl);
-        Assert.True(result.HasAccountPicker);
-        Assert.True(result.HasGoogleTotpInput);
-        Assert.False(result.HasGoogleConsentButton);
+        Assert.NotNull(state);
+        Assert.Equal("https://accounts.google.com/choose-an-account", state.CurrentUrl);
+        Assert.True(state.HasAccountPicker);
+        Assert.True(state.HasGoogleTotpInput);
+        Assert.False(state.HasGoogleConsentButton);
     }
 
     [Fact]
-    public async Task TryDetectAsync_returns_null_when_cdp_response_is_malformed()
+    public async Task TryDetectAsync_returns_null_when_cdp_reports_an_error()
     {
-        // Arrange
-        await using var server = await FakeCdpServer.StartAsync("{\"isGoogleOAuthPage\":true}");
-        await using var client = await server.ConnectClientAsync();
+        await using var server = await FakeCdpServer.StartAsync(
+            "{\"error\":{\"code\":-32000,\"message\":\"synthetic failure\"}}");
+        await using var client = await CreateConnectedClientAsync(server);
 
-        // Act
-        var result = await GoogleOAuthPageDetector.TryDetectAsync(
-            client,
-            "synthetic-session",
-            CancellationToken.None);
+        var state = await GoogleOAuthPageDetector.TryDetectAsync(
+            client, "session-error", CancellationToken.None);
 
-        // Assert
-        Assert.Null(result);
+        Assert.Null(state);
     }
 
     [Fact]
-    public async Task TryClickAccountAsync_returns_true_when_cdp_reports_click()
+    public async Task TryDetectAsync_returns_null_when_cdp_state_is_malformed()
     {
-        // Arrange
-        await using var server = await FakeCdpServer.StartAsync("{\"clicked\":true,\"found\":true}");
-        await using var client = await server.ConnectClientAsync();
+        await using var server = await FakeCdpServer.StartAsync(
+            "{\"result\":{\"value\":{\"isGoogleOAuthPage\":true}}}");
+        await using var client = await CreateConnectedClientAsync(server);
 
-        // Act
-        var result = await GoogleOAuthPageDetector.TryClickAccountAsync(
-            client,
-            "synthetic-session",
-            "user@example.com",
-            CancellationToken.None);
+        var state = await GoogleOAuthPageDetector.TryDetectAsync(
+            client, "session-3", CancellationToken.None);
 
-        // Assert
-        Assert.True(result);
+        Assert.Null(state);
     }
 
     [Fact]
-    public async Task TryClickAccountAsync_returns_false_when_cdp_reports_no_click()
+    public async Task TryClickAccountAsync_returns_true_and_serializes_special_email()
     {
-        // Arrange
-        await using var server = await FakeCdpServer.StartAsync("{\"clicked\":false,\"found\":false}");
-        await using var client = await server.ConnectClientAsync();
+        const string profileEmail = "qa+google\\account@example.test\"";
+        await using var server = await FakeCdpServer.StartAsync(
+            "{\"result\":{\"value\":{\"clicked\":true}}}");
+        await using var client = await CreateConnectedClientAsync(server);
 
-        // Act
-        var result = await GoogleOAuthPageDetector.TryClickAccountAsync(
-            client,
-            "synthetic-session",
-            "user@example.com",
-            CancellationToken.None);
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", profileEmail, CancellationToken.None);
 
-        // Assert
-        Assert.False(result);
+        Assert.True(clicked);
+        var request = await server.GetRequestAsync();
+        Assert.Contains(JsonSerializer.Serialize(profileEmail), request.GetProperty("params").GetProperty("expression").GetString());
+        Assert.Equal("session-account", request.GetProperty("sessionId").GetString());
     }
 
     [Fact]
-    public async Task TryFillTotpAsync_returns_true_when_cdp_reports_filled()
+    public async Task TryClickAccountAsync_returns_false_when_account_is_not_clicked()
     {
-        // Arrange
-        await using var server = await FakeCdpServer.StartAsync("true");
-        await using var client = await server.ConnectClientAsync();
+        await using var server = await FakeCdpServer.StartAsync(
+            "{\"result\":{\"value\":{\"clicked\":false}}}");
+        await using var client = await CreateConnectedClientAsync(server);
 
-        // Act
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "account@example.test", CancellationToken.None);
+
+        Assert.False(clicked);
+    }
+
+    [Fact]
+    public async Task TryClickAccountAsync_returns_false_when_cdp_value_is_missing()
+    {
+        await using var server = await FakeCdpServer.StartAsync("{\"result\":{}}");
+        await using var client = await CreateConnectedClientAsync(server);
+
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "account@example.test", CancellationToken.None);
+
+        Assert.False(clicked);
+    }
+
+    [Fact]
+    public async Task TryClickAccountAsync_returns_false_for_cdp_error()
+    {
+        await using var server = await FakeCdpServer.StartAsync(
+            "{\"error\":{\"code\":-32000,\"message\":\"synthetic failure\"}}");
+        await using var client = await CreateConnectedClientAsync(server);
+
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "account@example.test", CancellationToken.None);
+
+        Assert.False(clicked);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TryFillTotpAsync_returns_cdp_boolean(bool filled)
+    {
+        await using var server = await FakeCdpServer.StartAsync(
+            $"{{\"result\":{{\"value\":{filled.ToString().ToLowerInvariant()}}}}}");
+        await using var client = await CreateConnectedClientAsync(server);
+
         var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
-            client,
-            "synthetic-session",
-            "123456",
-            CancellationToken.None);
+            client, "session-totp", "123456", CancellationToken.None);
 
-        // Assert
-        Assert.True(result);
+        Assert.Equal(filled, result);
     }
 
     [Fact]
-    public async Task TryFillTotpAsync_returns_false_when_cdp_reports_not_filled()
+    public async Task TryFillTotpAsync_returns_false_when_cdp_value_is_missing()
     {
-        // Arrange
-        await using var server = await FakeCdpServer.StartAsync("false");
-        await using var client = await server.ConnectClientAsync();
+        await using var server = await FakeCdpServer.StartAsync("{\"result\":{}}");
+        await using var client = await CreateConnectedClientAsync(server);
 
-        // Act
         var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
-            client,
-            "synthetic-session",
-            "123456",
-            CancellationToken.None);
+            client, "session-totp", "123456", CancellationToken.None);
 
-        // Assert
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TryClickGoogleConsentButtonAsync_returns_cdp_boolean(bool clicked)
+    {
+        await using var server = await FakeCdpServer.StartAsync(
+            $"{{\"result\":{{\"value\":{clicked.ToString().ToLowerInvariant()}}}}}");
+        await using var client = await CreateConnectedClientAsync(server);
+
+        var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
+            client, "session-consent", CancellationToken.None);
+
+        Assert.Equal(clicked, result);
+    }
+
+    [Fact]
+    public async Task TryClickGoogleConsentButtonAsync_returns_false_when_cdp_value_is_missing()
+    {
+        await using var server = await FakeCdpServer.StartAsync("{\"result\":{}}");
+        await using var client = await CreateConnectedClientAsync(server);
+
+        var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
+            client, "session-consent", CancellationToken.None);
+
         Assert.False(result);
     }
 
     [Fact]
-    public async Task TryClickGoogleConsentButtonAsync_returns_true_when_cdp_reports_click()
+    public async Task TryClickGoogleConsentButtonAsync_returns_false_for_cdp_error()
     {
-        // Arrange
-        await using var server = await FakeCdpServer.StartAsync("true");
-        await using var client = await server.ConnectClientAsync();
+        await using var server = await FakeCdpServer.StartAsync(
+            "{\"error\":{\"code\":-32000,\"message\":\"synthetic failure\"}}");
+        await using var client = await CreateConnectedClientAsync(server);
 
-        // Act
         var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
-            client,
-            "synthetic-session",
-            CancellationToken.None);
+            client, "session-consent", CancellationToken.None);
 
-        // Assert
-        Assert.True(result);
+        Assert.False(result);
     }
 
-    [Fact]
-    public async Task TryClickGoogleConsentButtonAsync_returns_false_when_cdp_reports_no_click()
+    private static async Task<ChromeCdpClient> CreateConnectedClientAsync(FakeCdpServer server)
     {
-        // Arrange
-        await using var server = await FakeCdpServer.StartAsync("false");
-        await using var client = await server.ConnectClientAsync();
-
-        // Act
-        var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
-            client,
-            "synthetic-session",
-            CancellationToken.None);
-
-        // Assert
-        Assert.False(result);
+        var client = new ChromeCdpClient(server.HttpUri);
+        await client.ConnectAsync(CancellationToken.None);
+        return client;
     }
 
     private sealed class FakeCdpServer : IAsyncDisposable
     {
         private readonly HttpListener _listener;
-        private readonly CancellationTokenSource _stop = new();
-        private readonly int _port;
-        private readonly string _value;
-        private Task? _serverTask;
+        private readonly string _responseJson;
+        private readonly TaskCompletionSource<JsonElement> _request = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly CancellationTokenSource _shutdown = new();
+        private readonly Task _serverTask;
 
-        private FakeCdpServer(int port, string value)
+        private FakeCdpServer(int port, string responseJson)
         {
-            _port = port;
-            _value = value;
+            HttpUri = new Uri($"http://127.0.0.1:{port}/");
+            _responseJson = responseJson;
             _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            _listener.Prefixes.Add(HttpUri.ToString());
+            _listener.Start();
+            _serverTask = Task.Run(ServeAsync);
         }
 
-        public static async Task<FakeCdpServer> StartAsync(string value)
+        public Uri HttpUri { get; }
+
+        public static Task<FakeCdpServer> StartAsync(string responseJson)
         {
-            var server = new FakeCdpServer(ChromeManagedSession.GetAvailableLoopbackPort(), value);
-            server._listener.Start();
-            server._serverTask = Task.Run(server.RunAsync);
-            await Task.Yield();
-            return server;
+            var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            probe.Start();
+            var port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+            probe.Stop();
+            return Task.FromResult(new FakeCdpServer(port, responseJson));
         }
 
-        public async Task<ChromeCdpClient> ConnectClientAsync()
+        public async Task<JsonElement> GetRequestAsync()
         {
-            var client = new ChromeCdpClient(new Uri($"http://127.0.0.1:{_port}"));
-            await client.ConnectAsync(CancellationToken.None);
-            return client;
+            return await _request.Task.WaitAsync(TimeSpan.FromSeconds(5));
         }
 
-        private async Task RunAsync()
+        private async Task ServeAsync()
         {
             try
             {
-                while (!_stop.IsCancellationRequested)
+                while (!_shutdown.IsCancellationRequested)
                 {
                     var context = await _listener.GetContextAsync();
                     if (context.Request.Url?.AbsolutePath == "/json/version")
                     {
-                        var response = Encoding.UTF8.GetBytes(
-                            $"{{\"webSocketDebuggerUrl\":\"ws://127.0.0.1:{_port}/devtools/browser/test\"}}");
+                        var body = Encoding.UTF8.GetBytes(
+                            $"{{\"webSocketDebuggerUrl\":\"ws://127.0.0.1:{HttpUri.Port}/devtools/page/synthetic\"}}");
                         context.Response.ContentType = "application/json";
-                        context.Response.ContentLength64 = response.Length;
-                        await context.Response.OutputStream.WriteAsync(response);
+                        context.Response.ContentLength64 = body.Length;
+                        await context.Response.OutputStream.WriteAsync(body);
                         context.Response.Close();
                         continue;
                     }
 
-                    if (context.Request.IsWebSocketRequest)
+                    if (!context.Request.IsWebSocketRequest)
                     {
-                        var socket = (await context.AcceptWebSocketAsync(null)).WebSocket;
-                        await RunWebSocketAsync(socket);
+                        context.Response.StatusCode = 404;
+                        context.Response.Close();
                         continue;
                     }
 
-                    context.Response.StatusCode = 404;
-                    context.Response.Close();
-                }
-            }
-            catch (HttpListenerException) when (_stop.IsCancellationRequested)
-            {
-            }
-            catch (ObjectDisposedException) when (_stop.IsCancellationRequested)
-            {
-            }
-        }
-
-        private async Task RunWebSocketAsync(WebSocket socket)
-        {
-            var buffer = new byte[4096];
-            try
-            {
-                while (socket.State == WebSocketState.Open && !_stop.IsCancellationRequested)
-                {
-                    var received = await socket.ReceiveAsync(buffer, _stop.Token);
-                    if (received.MessageType == WebSocketMessageType.Close)
-                    {
-                        break;
-                    }
-
-                    using var request = JsonDocument.Parse(buffer.AsMemory(0, received.Count));
-                    var id = request.RootElement.GetProperty("id").GetInt32();
+                    var socket = (await context.AcceptWebSocketAsync(null)).WebSocket;
+                    var buffer = new byte[8192];
+                    var received = await socket.ReceiveAsync(buffer, CancellationToken.None);
+                    var request = JsonDocument.Parse(Encoding.UTF8.GetString(buffer, 0, received.Count)).RootElement.Clone();
+                    _request.TrySetResult(request);
+                    var id = request.GetProperty("id").GetInt32();
                     var response = Encoding.UTF8.GetBytes(
-                        $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{_value}}}}}}}");
-                    await socket.SendAsync(response, WebSocketMessageType.Text, true, _stop.Token);
+                        $"{{\"id\":{id},\"result\":{_responseJson}}}");
+                    await socket.SendAsync(response, WebSocketMessageType.Text, true, CancellationToken.None);
+                    await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "synthetic", CancellationToken.None);
+                    socket.Dispose();
+                    return;
                 }
             }
-            catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+            catch (HttpListenerException) when (_shutdown.IsCancellationRequested)
             {
             }
-            catch (WebSocketException)
+            catch (ObjectDisposedException) when (_shutdown.IsCancellationRequested)
             {
-            }
-            finally
-            {
-                socket.Dispose();
             }
         }
 
         public async ValueTask DisposeAsync()
         {
-            _stop.Cancel();
+            _shutdown.Cancel();
             _listener.Stop();
-            _listener.Close();
-            if (_serverTask is not null)
+            try
             {
                 await _serverTask;
             }
-
-            _stop.Dispose();
+            catch (HttpListenerException)
+            {
+            }
         }
     }
 }
