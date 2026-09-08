@@ -19,6 +19,25 @@ public sealed class OAuthOwnershipTests
     }
 
     [Fact]
+    public void Google_page_state_with_expression_copies_detected_state()
+    {
+        var original = new GoogleOAuthPageState
+        {
+            CurrentUrl = "https://accounts.google.com/signin",
+            HasAccountPicker = true,
+            HasGoogleTotpInput = false,
+            HasGoogleConsentButton = true
+        };
+
+        var copy = original with { HasGoogleTotpInput = true };
+
+        Assert.Equal(original.CurrentUrl, copy.CurrentUrl);
+        Assert.Equal(original.HasAccountPicker, copy.HasAccountPicker);
+        Assert.True(copy.HasGoogleTotpInput);
+        Assert.Equal(original.HasGoogleConsentButton, copy.HasGoogleConsentButton);
+    }
+
+    [Fact]
     public void Provider_actions_are_disabled_when_shared_google_state_is_present()
     {
         var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
