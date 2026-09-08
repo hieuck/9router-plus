@@ -334,6 +334,47 @@ public sealed class AutoLoginOrchestratorTests
     }
 
     [Fact]
+    public async Task LoginAsync_GoogleVaultCancellation_PropagatesCancellation()
+    {
+        var tempDir = CreateTempDirectory();
+        try
+        {
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = "TestProfile",
+                Provider = ProviderKind.Codex,
+                PreferredMethod = AuthMethod.GoogleOAuth,
+                LinkedGoogleAccount = "google@example.test"
+            });
+
+            using var cancellation = new CancellationTokenSource();
+            var expected = new OperationCanceledException(cancellation.Token);
+            var googleVault = new FakeGoogleAccountVaultStore(
+                new GoogleAccountVault(),
+                exception: expected);
+            var orchestrator = new AutoLoginOrchestrator(
+                googleVault,
+                providerVault,
+                new Mock<IChromeLauncher>().Object);
+
+            var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                orchestrator.LoginAsync(
+                    "TestProfile",
+                    ProviderKind.Codex,
+                    new Uri("https://fallback.test"),
+                    TimeSpan.FromMinutes(1),
+                    cancellation.Token));
+
+            Assert.Same(expected, exception);
+        }
+        finally
+        {
+            DeleteTempDirectory(tempDir);
+        }
+    }
+
+    [Fact]
     public async Task LoginAsync_DirectPrimaryWithoutFallback_DoesNotRetry()
     {
         // Arrange
@@ -402,19 +443,27 @@ public sealed class AutoLoginOrchestratorTests
         private readonly GoogleAccountVaultSession? _rememberedSession;
         private readonly GoogleAccountVault _vault;
         private readonly bool _returnRememberedSession;
+        private readonly Exception? _exception;
 
         public FakeGoogleAccountVaultStore(
             GoogleAccountVault vault,
             GoogleAccountVaultSession? rememberedSession = null,
-            bool returnRememberedSession = true)
+            bool returnRememberedSession = true,
+            Exception? exception = null)
         {
             _vault = vault;
             _rememberedSession = rememberedSession;
             _returnRememberedSession = returnRememberedSession;
+            _exception = exception;
         }
 
         public Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default)
         {
+            if (_exception is not null)
+            {
+                return Task.FromException<GoogleAccountVaultSession?>(_exception);
+            }
+
             return Task.FromResult(_returnRememberedSession ? _rememberedSession ?? new FakeSession(_vault) : null);
         }
 

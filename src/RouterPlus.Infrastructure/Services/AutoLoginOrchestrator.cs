@@ -185,16 +185,9 @@ public sealed class AutoLoginOrchestrator
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "9RouterPlus", "google-accounts.vault");
 
-        // Try to open with remembered key first
-        GoogleAccountVaultSession? session = null;
-        try
-        {
-            session = await _googleAccountVault.TryOpenRememberedAsync(vaultPath, cancellationToken);
-        }
-        catch
-        {
-            // Remembered key not available, will try password below
-        }
+        // Try to open with remembered key first. A null session means no remembered key;
+        // cancellation and vault errors must remain observable to the caller.
+        var session = await _googleAccountVault.TryOpenRememberedAsync(vaultPath, cancellationToken);
 
         if (session == null)
         {
