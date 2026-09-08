@@ -19,7 +19,7 @@ public static class GoogleOAuthPageDetector
     /// Returns null if not on a Google OAuth page.
     /// </summary>
     public static async Task<GoogleOAuthPageState?> TryDetectAsync(
-        ChromeCdpClient client,
+        IChromeCdpClient client,
         string sessionId,
         CancellationToken cancellationToken)
     {
@@ -121,7 +121,7 @@ public static class GoogleOAuthPageDetector
     /// Clicks the Google account matching the profile email.
     /// </summary>
     public static async Task<bool> TryClickAccountAsync(
-        ChromeCdpClient client,
+        IChromeCdpClient client,
         string sessionId,
         string profileEmail,
         CancellationToken cancellationToken)
@@ -232,7 +232,7 @@ public static class GoogleOAuthPageDetector
     /// Fills TOTP code into Google 2FA input.
     /// </summary>
     public static async Task<bool> TryFillTotpAsync(
-        ChromeCdpClient client,
+        IChromeCdpClient client,
         string sessionId,
         string totpCode,
         CancellationToken cancellationToken)
@@ -307,7 +307,7 @@ public static class GoogleOAuthPageDetector
     /// Clicks Google consent button (Continue/Allow).
     /// </summary>
     public static async Task<bool> TryClickGoogleConsentButtonAsync(
-        ChromeCdpClient client,
+        IChromeCdpClient client,
         string sessionId,
         CancellationToken cancellationToken)
     {

@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace RouterPlus.Infrastructure.Chrome;
 
 /// <summary>
-/// CDP call seam used by browser automation.
+/// CDP call seam used by browser automation and OAuth page detectors.
 /// </summary>
 public interface IChromeCdpClient
 {
