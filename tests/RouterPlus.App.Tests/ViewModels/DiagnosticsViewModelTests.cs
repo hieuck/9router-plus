@@ -1,4 +1,6 @@
+using System.Reflection;
 using System.Text.Json;
+using RouterPlus.App;
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Observability;
 using RouterPlus.Infrastructure.Observability;
@@ -65,13 +67,27 @@ public sealed class DiagnosticsViewModelTests : IDisposable
     public void SessionId_WhenApplicationSessionIsUnavailable_ReturnsUnknown()
     {
         // Arrange
-        _viewModel = new DiagnosticsViewModel();
+        var sessionIdProperty = typeof(App).GetProperty(
+            nameof(App.CurrentSessionId),
+            BindingFlags.Public | BindingFlags.Static);
+        Assert.NotNull(sessionIdProperty);
+        var originalSessionId = App.CurrentSessionId;
 
-        // Act
-        var sessionId = _viewModel.SessionId;
+        try
+        {
+            sessionIdProperty!.SetValue(null, null);
+            _viewModel = new DiagnosticsViewModel();
 
-        // Assert
-        Assert.Equal("unknown", sessionId);
+            // Act
+            var sessionId = _viewModel.SessionId;
+
+            // Assert
+            Assert.Equal("unknown", sessionId);
+        }
+        finally
+        {
+            sessionIdProperty!.SetValue(null, originalSessionId);
+        }
     }
 
     [Fact]
