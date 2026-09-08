@@ -1,4 +1,3 @@
-using System.Text.Json;
 using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Security;
@@ -20,19 +19,22 @@ public sealed class AutoLoginOrchestrator
     private readonly IChromeLauncher _chromeLauncher;
     private readonly IProviderOAuthAdapterRegistry _oauthAdapterRegistry;
     private readonly IGoogleAuthenticationService _googleAuthenticationService;
+    private readonly IDirectLoginAutomationFactory _directLoginFactory;
 
     public AutoLoginOrchestrator(
         IGoogleAccountVaultStore googleAccountVault,
         ProviderConnectionVaultStore connectionVault,
         IChromeLauncher chromeLauncher,
         IProviderOAuthAdapterRegistry? oauthAdapterRegistry = null,
-        IGoogleAuthenticationService? googleAuthenticationService = null)
+        IGoogleAuthenticationService? googleAuthenticationService = null,
+        IDirectLoginAutomationFactory? directLoginFactory = null)
     {
         _googleAccountVault = googleAccountVault ?? throw new ArgumentNullException(nameof(googleAccountVault));
         _connectionVault = connectionVault ?? throw new ArgumentNullException(nameof(connectionVault));
         _chromeLauncher = chromeLauncher ?? throw new ArgumentNullException(nameof(chromeLauncher));
         _oauthAdapterRegistry = oauthAdapterRegistry ?? new ProviderOAuthAdapterRegistry();
         _googleAuthenticationService = googleAuthenticationService ?? new GoogleAuthenticationService();
+        _directLoginFactory = directLoginFactory ?? new DefaultDirectLoginAutomationFactory();
     }
 
     /// <summary>
@@ -294,20 +296,7 @@ public sealed class AutoLoginOrchestrator
 
         try
         {
-            // Create provider-specific direct login automation
-            DirectLoginAutomation automation = provider switch
-            {
-                ProviderKind.GitHub => new GitHubDirectLoginAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator),
-                ProviderKind.OpenRouter => new OpenRouterDirectLoginAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator),
-                ProviderKind.Codex => new CodexDirectLoginAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator),
-                ProviderKind.Kiro => new KiroDirectLoginAutomation(
-                    cdp.Client, cdp.SessionId, cdp.TargetId, creds.Email, creds.Password, totpGenerator),
-                _ => throw new NotSupportedException($"Direct login not supported for provider {provider}")
-            };
-
+            var automation = _directLoginFactory.Create(provider, cdp, creds, totpGenerator);
             var result = await automation.RunAsync(timeout, cancellationToken);
             return new AutoLoginResult(
                 Success: result.Success,
