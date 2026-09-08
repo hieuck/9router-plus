@@ -10,12 +10,12 @@ namespace RouterPlus.Infrastructure.Chrome;
 /// </summary>
 internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
 {
-    private readonly ChromeCdpClient _client;
+    private readonly IChromeCdpClient _client;
     private readonly string _sessionId;
     private readonly string _targetId;
     private bool _disposed;
 
-    public GoogleLoginCdpBrowser(ChromeCdpClient client, string sessionId, string targetId)
+    public GoogleLoginCdpBrowser(IChromeCdpClient client, string sessionId, string targetId)
     {
         _client = client;
         _sessionId = sessionId;
