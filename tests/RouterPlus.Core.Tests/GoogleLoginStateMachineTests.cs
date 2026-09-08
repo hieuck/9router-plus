@@ -398,6 +398,119 @@ public class GoogleLoginStateMachineTests
     }
 
     [Fact]
+    public async Task RunAsync_selects_authenticator_from_two_factor_picker_then_completes_totp()
+    {
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        var browser = new FakeBrowser()
+            .SelectAuthenticatorMethod(true)
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin"),
+                HasEmailField: true,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/password"),
+                HasEmailField: false,
+                HasPasswordField: true,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/challenge/selection"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: true,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/challenge/totp"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: true,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://myaccount.google.com/"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: true,
+                HasManualChallenge: false));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
+        Assert.Equal(new[] { "Email", "Password", "Totp" }, browser.FilledFields);
+        Assert.Equal(new[] { "Email", "Password", "Totp" }, browser.SubmittedFields);
+        Assert.Equal(1, browser.AuthenticatorMethodSelectionAttempts);
+    }
+
+    [Fact]
+    public async Task RunAsync_rejects_two_factor_picker_when_authenticator_selection_fails()
+    {
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        var browser = new FakeBrowser()
+            .SelectAuthenticatorMethod(false)
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin"),
+                HasEmailField: true,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/password"),
+                HasEmailField: false,
+                HasPasswordField: true,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/challenge/selection"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: true,
+                HasCompletionSignal: false,
+                HasManualChallenge: false));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.UnsupportedPage, result.Category);
+        Assert.Contains("Could not select Authenticator method", result.Message);
+        Assert.Equal(1, browser.AuthenticatorMethodSelectionAttempts);
+        Assert.Equal(new[] { "Email", "Password" }, browser.FilledFields);
+        Assert.Equal(new[] { "Email", "Password" }, browser.SubmittedFields);
+    }
+
+    [Fact]
     public async Task RunAsync_rejects_wrong_entry_origin()
     {
         var credential = new GoogleLoginCredential(
@@ -1160,6 +1273,7 @@ public class GoogleLoginStateMachineTests
         public IReadOnlyList<string> FilledFields => _filledFields;
         public IReadOnlyList<string> SubmittedFields => _submittedFields;
         public int AuthenticatorMethodSelections { get; private set; }
+        public int AuthenticatorMethodSelectionAttempts { get; private set; }
 
         public FakeBrowser ReturnState(GoogleLoginPageState state)
         {
@@ -1237,6 +1351,7 @@ public class GoogleLoginStateMachineTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             AuthenticatorMethodSelections++;
+            AuthenticatorMethodSelectionAttempts++;
             return Task.FromResult(_selectAuthenticatorMethodResult);
         }
 
