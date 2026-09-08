@@ -19,7 +19,6 @@ public sealed class ChromeLauncherTests : IDisposable
     [Fact]
     public void Launch_builds_expected_process_start_info()
     {
-        // Arrange
         var installation = CreateInstallation();
         var profile = CreateProfile();
         ProcessStartInfo? capturedStartInfo = null;
@@ -33,10 +32,8 @@ public sealed class ChromeLauncherTests : IDisposable
             },
             (Func<int>)(() => 0));
 
-        // Act
         var actualProcess = launcher.Launch(installation, profile, "https://example.test/login?state=abc");
 
-        // Assert
         Assert.Same(fakeProcess, actualProcess);
         Assert.NotNull(capturedStartInfo);
         Assert.Equal(installation.ExecutablePath, capturedStartInfo!.FileName);
@@ -55,23 +52,19 @@ public sealed class ChromeLauncherTests : IDisposable
     [Fact]
     public void Launch_throws_when_process_launcher_returns_null()
     {
-        // Arrange
         var installation = CreateInstallation();
         var profile = CreateProfile();
         var launcher = new ChromeLauncher(null, _ => null, (Func<int>)(() => 0));
 
-        // Act
         var exception = Assert.Throws<InvalidOperationException>(() =>
             launcher.Launch(installation, profile, "https://example.test"));
 
-        // Assert
         Assert.Equal("Chrome did not start.", exception.Message);
     }
 
     [Fact]
     public async Task LaunchManagedAsync_isolated_profile_returns_session_and_preserves_uri_fragment()
     {
-        // Arrange
         var installation = CreateInstallation();
         var profile = CreateProfile();
         ProcessStartInfo? capturedStartInfo = null;
@@ -88,7 +81,6 @@ public sealed class ChromeLauncherTests : IDisposable
                     new Uri($"http://127.0.0.1:{port}"),
                     sessionMarker)));
 
-        // Act
         string temporaryUserDataDirectory;
         await using (var session = await launcher.LaunchManagedAsync(
             installation,
@@ -96,7 +88,6 @@ public sealed class ChromeLauncherTests : IDisposable
             new Uri("https://example.test/login?state=abc#device-user-code"),
             CancellationToken.None))
         {
-            // Assert
             Assert.NotNull(capturedStartInfo);
             var markedUri = new Uri(capturedStartInfo!.ArgumentList[^1]);
             Assert.Equal("abc", markedUri.Query.TrimStart('?').Split('=')[1].Split('&')[0]);
@@ -114,7 +105,6 @@ public sealed class ChromeLauncherTests : IDisposable
     [Fact]
     public async Task LaunchManagedAsync_deletes_isolated_profile_when_session_creation_fails()
     {
-        // Arrange
         var installation = CreateInstallation();
         var profile = CreateProfile();
         string? temporaryUserDataDirectory = null;
@@ -130,7 +120,6 @@ public sealed class ChromeLauncherTests : IDisposable
             (Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>>)(
                 (_, _, _, _, _, _) => throw new InvalidOperationException("session creation failed")));
 
-        // Act
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             launcher.LaunchManagedAsync(
                 installation,
@@ -138,7 +127,6 @@ public sealed class ChromeLauncherTests : IDisposable
                 new Uri("https://example.test"),
                 CancellationToken.None));
 
-        // Assert
         Assert.Equal("session creation failed", exception.Message);
         Assert.NotNull(temporaryUserDataDirectory);
         Assert.False(Directory.Exists(temporaryUserDataDirectory));
@@ -147,11 +135,20 @@ public sealed class ChromeLauncherTests : IDisposable
     [Fact]
     public async Task LaunchManagedAsync_isolated_profile_copies_authentication_data_and_cleans_up_when_process_does_not_start()
     {
-        // Arrange
         var installation = CreateInstallation();
         var profile = CreateProfile();
         File.WriteAllText(Path.Combine(installation.UserDataDirectory, "Local State"), "local-state");
-        File.WriteAllText(Path.Combine(profile.ProfilePath, "Cookies"), "cookies");
+        foreach (var (name, content) in new[]
+        {
+            ("Preferences", "preferences"),
+            ("Secure Preferences", "secure-preferences"),
+            ("Cookies", "cookies"),
+            ("Login Data", "login-data"),
+            ("Web Data", "web-data")
+        })
+        {
+            File.WriteAllText(Path.Combine(profile.ProfilePath, name), content);
+        }
         Directory.CreateDirectory(Path.Combine(profile.ProfilePath, "Network"));
         File.WriteAllText(Path.Combine(profile.ProfilePath, "Network", "Cookies"), "network-cookies");
         ProcessStartInfo? capturedStartInfo = null;
@@ -166,16 +163,17 @@ public sealed class ChromeLauncherTests : IDisposable
 
                 Assert.NotEqual(installation.UserDataDirectory, userDataDirectory);
                 Assert.Equal("local-state", File.ReadAllText(Path.Combine(userDataDirectory, "Local State")));
+                Assert.Equal("preferences", File.ReadAllText(Path.Combine(userDataDirectory, profile.DirectoryName, "Preferences")));
+                Assert.Equal("secure-preferences", File.ReadAllText(Path.Combine(userDataDirectory, profile.DirectoryName, "Secure Preferences")));
                 Assert.Equal("cookies", File.ReadAllText(Path.Combine(userDataDirectory, profile.DirectoryName, "Cookies")));
-                Assert.Equal(
-                    "network-cookies",
-                    File.ReadAllText(Path.Combine(userDataDirectory, profile.DirectoryName, "Network", "Cookies")));
+                Assert.Equal("login-data", File.ReadAllText(Path.Combine(userDataDirectory, profile.DirectoryName, "Login Data")));
+                Assert.Equal("web-data", File.ReadAllText(Path.Combine(userDataDirectory, profile.DirectoryName, "Web Data")));
+                Assert.Equal("network-cookies", File.ReadAllText(Path.Combine(userDataDirectory, profile.DirectoryName, "Network", "Cookies")));
                 return null;
             },
             (Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>>)(
                 (_, _, _, _, _, _) => throw new InvalidOperationException("session creation failed")));
 
-        // Act
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             launcher.LaunchManagedAsync(
                 installation,
@@ -183,7 +181,6 @@ public sealed class ChromeLauncherTests : IDisposable
                 new Uri("https://example.test/login#device-user-code"),
                 CancellationToken.None));
 
-        // Assert
         Assert.Equal("Chrome did not start.", exception.Message);
         Assert.NotNull(capturedStartInfo);
         var temporaryUserDataDirectory = capturedStartInfo!.ArgumentList

@@ -10,24 +10,63 @@ namespace RouterPlus.Infrastructure.Chrome;
 public sealed class ChromeLauncher
 {
     private readonly Func<string, CancellationToken, Task<string>>? _httpGetAsync;
-    private readonly Func<ProcessStartInfo, Process?> _startProcess;
+    private readonly Func<string, bool> _fileExists;
+    private readonly Func<string, bool> _directoryExists;
+    private readonly Action<string> _createDirectory;
+    private readonly Action<string, string, bool> _copyFile;
+    private readonly Action<string, bool> _deleteDirectory;
+    private readonly Func<ProcessStartInfo, Process?> _processStart;
+    private readonly Func<
+        Process,
+        int,
+        string,
+        TimeSpan,
+        Func<string, CancellationToken, Task<string>>,
+        CancellationToken,
+        Task<ChromeManagedSession>> _sessionFactory;
     private readonly Func<int> _getAvailableLoopbackPort;
-    private readonly Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>> _createManagedSession;
 
     public ChromeLauncher()
-        : this(null, Process.Start, ChromeManagedSession.CreateAsync, ChromeManagedSession.GetAvailableLoopbackPort)
+        : this(
+            null,
+            File.Exists,
+            Directory.Exists,
+            path => Directory.CreateDirectory(path),
+            File.Copy,
+            Directory.Delete,
+            Process.Start,
+            ChromeManagedSession.CreateAsync,
+            ChromeManagedSession.GetAvailableLoopbackPort)
     {
     }
 
     internal ChromeLauncher(Func<string, CancellationToken, Task<string>> httpGetAsync)
-        : this(httpGetAsync, Process.Start, ChromeManagedSession.CreateAsync, ChromeManagedSession.GetAvailableLoopbackPort)
+        : this(
+            httpGetAsync,
+            File.Exists,
+            Directory.Exists,
+            path => Directory.CreateDirectory(path),
+            File.Copy,
+            Directory.Delete,
+            Process.Start,
+            ChromeManagedSession.CreateAsync,
+            ChromeManagedSession.GetAvailableLoopbackPort)
     {
     }
 
     internal ChromeLauncher(
         Func<string, CancellationToken, Task<string>>? httpGetAsync,
         Func<ProcessStartInfo, Process?> startProcess)
-        : this(httpGetAsync, startProcess, ChromeManagedSession.CreateAsync, ChromeManagedSession.GetAvailableLoopbackPort)
+        : this(
+            httpGetAsync,
+            File.Exists,
+            Directory.Exists,
+            path => Directory.CreateDirectory(path),
+            File.Copy,
+            Directory.Delete,
+            startProcess,
+            ChromeManagedSession.CreateAsync,
+            ChromeManagedSession.GetAvailableLoopbackPort)
     {
     }
 
@@ -35,7 +74,16 @@ public sealed class ChromeLauncher
         Func<string, CancellationToken, Task<string>>? httpGetAsync,
         Func<ProcessStartInfo, Process?> startProcess,
         Func<int> getAvailableLoopbackPort)
-        : this(httpGetAsync, startProcess, ChromeManagedSession.CreateAsync, getAvailableLoopbackPort)
+        : this(
+            httpGetAsync,
+            File.Exists,
+            Directory.Exists,
+            path => Directory.CreateDirectory(path),
+            File.Copy,
+            Directory.Delete,
+            startProcess,
+            ChromeManagedSession.CreateAsync,
+            getAvailableLoopbackPort)
     {
     }
 
@@ -43,7 +91,16 @@ public sealed class ChromeLauncher
         Func<string, CancellationToken, Task<string>>? httpGetAsync,
         Func<ProcessStartInfo, Process?> startProcess,
         Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>> createManagedSession)
-        : this(httpGetAsync, startProcess, createManagedSession, ChromeManagedSession.GetAvailableLoopbackPort)
+        : this(
+            httpGetAsync,
+            File.Exists,
+            Directory.Exists,
+            path => Directory.CreateDirectory(path),
+            File.Copy,
+            Directory.Delete,
+            startProcess,
+            createManagedSession,
+            ChromeManagedSession.GetAvailableLoopbackPort)
     {
     }
 
@@ -52,12 +109,77 @@ public sealed class ChromeLauncher
         Func<ProcessStartInfo, Process?>? processStart,
         Func<Process, int, string, TimeSpan, Func<string, CancellationToken, Task<string>>, CancellationToken, Task<ChromeManagedSession>>? createManagedSession,
         Func<int>? getAvailableLoopbackPort)
+        : this(
+            httpGetAsync,
+            File.Exists,
+            Directory.Exists,
+            path => Directory.CreateDirectory(path),
+            File.Copy,
+            Directory.Delete,
+            processStart ?? Process.Start,
+            createManagedSession ?? ChromeManagedSession.CreateAsync,
+            getAvailableLoopbackPort ?? ChromeManagedSession.GetAvailableLoopbackPort)
+    {
+    }
+
+    internal ChromeLauncher(
+        Func<string, CancellationToken, Task<string>>? httpGetAsync,
+        Func<string, bool> fileExists,
+        Func<string, bool> directoryExists,
+        Action<string> createDirectory,
+        Action<string, string, bool> copyFile,
+        Action<string, bool> deleteDirectory,
+        Func<ProcessStartInfo, Process?> processStart,
+        Func<
+            Process,
+            int,
+            string,
+            TimeSpan,
+            Func<string, CancellationToken, Task<string>>,
+            CancellationToken,
+            Task<ChromeManagedSession>> sessionFactory)
+        : this(
+            httpGetAsync,
+            fileExists,
+            directoryExists,
+            createDirectory,
+            copyFile,
+            deleteDirectory,
+            processStart,
+            sessionFactory,
+            ChromeManagedSession.GetAvailableLoopbackPort)
+    {
+    }
+
+    private ChromeLauncher(
+        Func<string, CancellationToken, Task<string>>? httpGetAsync,
+        Func<string, bool> fileExists,
+        Func<string, bool> directoryExists,
+        Action<string> createDirectory,
+        Action<string, string, bool> copyFile,
+        Action<string, bool> deleteDirectory,
+        Func<ProcessStartInfo, Process?> processStart,
+        Func<
+            Process,
+            int,
+            string,
+            TimeSpan,
+            Func<string, CancellationToken, Task<string>>,
+            CancellationToken,
+            Task<ChromeManagedSession>> sessionFactory,
+        Func<int> getAvailableLoopbackPort)
     {
         _httpGetAsync = httpGetAsync;
-        _startProcess = processStart ?? Process.Start;
-        _createManagedSession = createManagedSession ?? ChromeManagedSession.CreateAsync;
-        _getAvailableLoopbackPort = getAvailableLoopbackPort ?? ChromeManagedSession.GetAvailableLoopbackPort;
+        _fileExists = fileExists ?? throw new ArgumentNullException(nameof(fileExists));
+        _directoryExists = directoryExists ?? throw new ArgumentNullException(nameof(directoryExists));
+        _createDirectory = createDirectory ?? throw new ArgumentNullException(nameof(createDirectory));
+        _copyFile = copyFile ?? throw new ArgumentNullException(nameof(copyFile));
+        _deleteDirectory = deleteDirectory ?? throw new ArgumentNullException(nameof(deleteDirectory));
+        _processStart = processStart ?? throw new ArgumentNullException(nameof(processStart));
+        _sessionFactory = sessionFactory ?? throw new ArgumentNullException(nameof(sessionFactory));
+        _getAvailableLoopbackPort = getAvailableLoopbackPort ?? throw new ArgumentNullException(nameof(getAvailableLoopbackPort));
     }
+
 
     public Process Launch(
         ChromeInstallation installation,
@@ -68,12 +190,12 @@ public sealed class ChromeLauncher
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentException.ThrowIfNullOrWhiteSpace(startUrl);
 
-        if (!File.Exists(installation.ExecutablePath))
+        if (!_fileExists(installation.ExecutablePath))
         {
             throw new FileNotFoundException("Chrome executable was not found.", installation.ExecutablePath);
         }
 
-        if (!Directory.Exists(profile.ProfilePath))
+        if (!_directoryExists(profile.ProfilePath))
         {
             throw new DirectoryNotFoundException($"Chrome profile directory was not found: {profile.DirectoryName}");
         }
@@ -88,7 +210,7 @@ public sealed class ChromeLauncher
         startInfo.ArgumentList.Add($"--profile-directory={profile.DirectoryName}");
         startInfo.ArgumentList.Add(startUrl);
 
-        return _startProcess(startInfo) ?? throw new InvalidOperationException("Chrome did not start.");
+        return _processStart(startInfo) ?? throw new InvalidOperationException("Chrome did not start.");
     }
 
     public async Task<ChromeManagedSession> LaunchManagedAsync(
@@ -103,12 +225,12 @@ public sealed class ChromeLauncher
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(startUri);
 
-        if (!File.Exists(installation.ExecutablePath))
+        if (!_fileExists(installation.ExecutablePath))
         {
             throw new FileNotFoundException("Chrome executable was not found.", installation.ExecutablePath);
         }
 
-        if (!Directory.Exists(profile.ProfilePath))
+        if (!_directoryExists(profile.ProfilePath))
         {
             throw new DirectoryNotFoundException($"Chrome profile directory was not found: {profile.DirectoryName}");
         }
@@ -148,7 +270,7 @@ public sealed class ChromeLauncher
                 $"routerplus_chrome_{Guid.NewGuid():N}");
             var tempProfileDirectory = Path.Combine(tempUserDataDirectory, profile.DirectoryName);
 
-            Directory.CreateDirectory(tempProfileDirectory);
+            _createDirectory(tempProfileDirectory);
             CopyAuthenticationData(
                 installation.UserDataDirectory,
                 profile.ProfilePath,
@@ -181,13 +303,13 @@ public sealed class ChromeLauncher
             startInfo.ArgumentList.Add("--new-window");
             startInfo.ArgumentList.Add(markedUri.ToString());
 
-            var process = _startProcess(startInfo)
+            var process = _processStart(startInfo)
                 ?? throw new InvalidOperationException("Chrome did not start.");
 
             try
             {
                 var httpGet = _httpGetAsync ?? DefaultHttpGetAsync;
-                var session = await _createManagedSession(
+                var session = await _sessionFactory(
                     process,
                     port,
                     sessionMarker,
@@ -205,17 +327,17 @@ public sealed class ChromeLauncher
             }
             catch
             {
-                if (!process.HasExited)
+                try
                 {
-                    try
+                    if (!process.HasExited)
                     {
                         process.Kill();
                         await process.WaitForExitAsync(cancellationToken);
                     }
-                    catch
-                    {
-                        // Best effort cleanup.
-                    }
+                }
+                catch
+                {
+                    // Best effort cleanup.
                 }
 
                 process.Dispose();
@@ -250,7 +372,7 @@ public sealed class ChromeLauncher
         return uriBuilder.Uri;
     }
 
-    private static void CopyAuthenticationData(
+    private void CopyAuthenticationData(
         string sourceUserDataDirectory,
         string sourceProfileDirectory,
         string destinationUserDataDirectory,
@@ -279,7 +401,7 @@ public sealed class ChromeLauncher
 
         var sourceNetworkDirectory = Path.Combine(sourceProfileDirectory, "Network");
         var destinationNetworkDirectory = Path.Combine(destinationProfileDirectory, "Network");
-        Directory.CreateDirectory(destinationNetworkDirectory);
+        _createDirectory(destinationNetworkDirectory);
         foreach (var fileName in new[] { "Cookies", "Cookies-journal" })
         {
             CopyFileIfPresent(
@@ -288,16 +410,16 @@ public sealed class ChromeLauncher
         }
     }
 
-    private static void CopyFileIfPresent(string sourcePath, string destinationPath)
+    private void CopyFileIfPresent(string sourcePath, string destinationPath)
     {
-        if (!File.Exists(sourcePath))
+        if (!_fileExists(sourcePath))
         {
             return;
         }
 
         try
         {
-            File.Copy(sourcePath, destinationPath, overwrite: true);
+            _copyFile(sourcePath, destinationPath, true);
         }
         catch (IOException)
         {
@@ -310,13 +432,13 @@ public sealed class ChromeLauncher
         }
     }
 
-    private static void TryDeleteDirectory(string path)
+    private void TryDeleteDirectory(string path)
     {
         try
         {
-            if (Directory.Exists(path))
+            if (_directoryExists(path))
             {
-                Directory.Delete(path, recursive: true);
+                _deleteDirectory(path, true);
             }
         }
         catch
