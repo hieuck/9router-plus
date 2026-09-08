@@ -87,6 +87,37 @@ public class CredentialHealthCheckTests
     }
 
     [Fact]
+    public void Remaining_factory_methods_create_results_with_expected_defaults()
+    {
+        var expired = CredentialHealthCheckResult.Expired();
+        var unknown = CredentialHealthCheckResult.Unknown();
+        var checking = CredentialHealthCheckResult.Checking();
+        var notConfigured = CredentialHealthCheckResult.NotConfigured();
+
+        Assert.Equal(CredentialHealthStatus.Expired, expired.Status);
+        Assert.Equal("Credentials expired", expired.Message);
+        Assert.Equal(CredentialHealthStatus.Unknown, unknown.Status);
+        Assert.Equal("Health status unknown", unknown.Message);
+        Assert.Equal(CredentialHealthStatus.Checking, checking.Status);
+        Assert.Equal("Checking credentials...", checking.Message);
+        Assert.Equal(CredentialHealthStatus.NotConfigured, notConfigured.Status);
+        Assert.Equal("No credentials configured", notConfigured.Message);
+        Assert.Null(expired.Exception);
+        Assert.Null(unknown.Exception);
+        Assert.Null(checking.Exception);
+        Assert.Null(notConfigured.Exception);
+    }
+
+    [Fact]
+    public void Status_extensions_use_enum_name_and_question_mark_for_unknown_values()
+    {
+        const CredentialHealthStatus undefinedStatus = (CredentialHealthStatus)999;
+
+        Assert.Equal("999", undefinedStatus.ToDisplayText());
+        Assert.Equal("?", undefinedStatus.ToEmoji());
+    }
+
+    [Fact]
     public void LastChecked_IsSetToCurrentTime()
     {
         // Arrange
