@@ -62,6 +62,19 @@ public sealed class DiagnosticsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void SessionId_WhenApplicationSessionIsUnavailable_ReturnsUnknown()
+    {
+        // Arrange
+        _viewModel = new DiagnosticsViewModel();
+
+        // Act
+        var sessionId = _viewModel.SessionId;
+
+        // Assert
+        Assert.Equal("unknown", sessionId);
+    }
+
+    [Fact]
     public void SelectedCategory_WhenChanged_FiltersEvents()
     {
         // Arrange
