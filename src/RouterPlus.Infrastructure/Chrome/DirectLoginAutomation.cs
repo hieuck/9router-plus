@@ -292,7 +292,7 @@ public abstract class DirectLoginAutomation
         return false;
     }
 
-    protected async Task<bool> IsElementVisibleAsync(string selector, CancellationToken cancellationToken)
+    protected virtual async Task<bool> IsElementVisibleAsync(string selector, CancellationToken cancellationToken)
     {
         var selectorJson = JsonSerializer.Serialize(selector);
         var script = $@"
@@ -326,7 +326,7 @@ public abstract class DirectLoginAutomation
         }
     }
 
-    protected async Task FillInputAsync(string selector, string value, CancellationToken cancellationToken)
+    protected virtual async Task FillInputAsync(string selector, string value, CancellationToken cancellationToken)
     {
         var selectorJson = JsonSerializer.Serialize(selector);
         var valueJson = JsonSerializer.Serialize(value);
@@ -358,7 +358,7 @@ public abstract class DirectLoginAutomation
         }
     }
 
-    protected async Task ClickAsync(string selector, CancellationToken cancellationToken)
+    protected virtual async Task ClickAsync(string selector, CancellationToken cancellationToken)
     {
         var selectorJson = JsonSerializer.Serialize(selector);
         var script = $@"
@@ -386,7 +386,7 @@ public abstract class DirectLoginAutomation
         }
     }
 
-    protected async Task<string> GetCurrentUrlAsync(CancellationToken cancellationToken)
+    protected virtual async Task<string> GetCurrentUrlAsync(CancellationToken cancellationToken)
     {
         try
         {
