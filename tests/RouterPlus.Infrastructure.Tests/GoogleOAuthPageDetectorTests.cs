@@ -290,6 +290,10 @@ public sealed class GoogleOAuthPageDetectorTests
             catch (ObjectDisposedException) when (_shutdown.IsCancellationRequested)
             {
             }
+            catch (WebSocketException)
+            {
+                // The client may close immediately after receiving the synthetic response.
+            }
         }
 
         public async ValueTask DisposeAsync()
