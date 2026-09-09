@@ -16,10 +16,12 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
         new(profileId: "p1", email: "user@example.com", password: "pw", totpSecret: "JBSWY3DPEHPK3PXP");
 
     [Fact]
-    public async Task RunAsync_when_key_visible_on_keys_page_returns_it_without_login()
+    public async Task RunAsync_when_already_on_keys_page_deletes_old_keys_then_creates_without_google()
     {
-        var browser = new FakeKeyFlowBrowser();
-        browser.OnboardingState = OnKeysPage(apiKey: "sk-or-v1-existing");
+        var browser = new FakeKeyFlowBrowser
+        {
+            OnboardingState = OnKeysPage(hasNewKeyButton: true, existingKeyCount: 2)
+        };
         var google = new FakeGoogleLoginBrowser();
 
         var result = await OpenRouterKeyFlowOrchestrator.RunAsync(
@@ -30,9 +32,11 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
             CancellationToken.None);
 
         Assert.True(result.Success);
-        Assert.Equal("sk-or-v1-existing", result.ApiKey);
+        Assert.Equal("sk-or-v1-created", result.ApiKey);
         Assert.False(browser.ClickedSignInWithGoogle);
         Assert.Equal(0, google.GoogleLoginRuns);
+        Assert.True(browser.DeletedExistingKeys);
+        Assert.True(browser.OnboardingStarted);
     }
 
     [Fact]
@@ -40,7 +44,7 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
     {
         var events = new List<string>();
         var browser = new FakeKeyFlowBrowser { Events = events };
-        browser.OnboardingState = OnKeysPage(); // no key yet -> start sign-in flow
+        browser.OnboardingState = OnSignInPage();
         var google = new FakeGoogleLoginBrowser(); // completes successfully
         var authentication = new RecordingGoogleAuthenticationService { Events = events };
 
@@ -64,8 +68,7 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
     [Fact]
     public async Task RunAsync_returns_error_when_google_login_fails()
     {
-        var browser = new FakeKeyFlowBrowser();
-        browser.OnboardingState = OnKeysPage();
+        var browser = new FakeKeyFlowBrowser { OnboardingState = OnSignInPage() };
         var google = new FakeGoogleLoginBrowser { Fail = true };
         var authentication = new RecordingGoogleAuthenticationService
         {
@@ -89,9 +92,11 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
     [Fact]
     public async Task RunAsync_returns_error_when_onboarding_fails()
     {
-        var browser = new FakeKeyFlowBrowser();
-        browser.OnboardingState = OnKeysPage();
-        browser.FailOnboarding = true;
+        var browser = new FakeKeyFlowBrowser
+        {
+            OnboardingState = OnKeysPage(hasNewKeyButton: true),
+            FailOnboarding = true
+        };
         var google = new FakeGoogleLoginBrowser();
 
         var result = await OpenRouterKeyFlowOrchestrator.RunAsync(
@@ -125,11 +130,29 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
         }
     }
 
+    private static OpenRouterOnboardingPageState OnSignInPage() =>
+        new(
+            new Uri("https://openrouter.ai/sign-in"),
+            IsOnKeysPage: false,
+            HasWelcomeWizard: false,
+            HasWelcomeNext: false,
+            HasKeyCopyPanel: false,
+            HasWelcomeContinue: false,
+            HasDoLaterOption: false,
+            HasNotSureOption: false,
+            HasNewKeyButton: false,
+            HasNewKeyNameInput: false,
+            HasCreatedKeyPanel: false,
+            ApiKey: string.Empty,
+            HasGoogleSignIn: true,
+            ExistingKeyCount: 0);
+
     private static OpenRouterOnboardingPageState OnKeysPage(
         bool hasNewKeyButton = false,
         bool hasNewKeyNameInput = false,
         bool hasCreatedKeyPanel = false,
-        string apiKey = "")
+        string apiKey = "",
+        int existingKeyCount = 0)
     {
         return new OpenRouterOnboardingPageState(
             KeysPageUri,
@@ -143,7 +166,9 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
             HasNewKeyButton: hasNewKeyButton,
             HasNewKeyNameInput: hasNewKeyNameInput,
             HasCreatedKeyPanel: hasCreatedKeyPanel,
-            ApiKey: apiKey);
+            ApiKey: apiKey,
+            HasGoogleSignIn: false,
+            ExistingKeyCount: existingKeyCount);
     }
 
     private sealed class FakeKeyFlowBrowser : IOpenRouterOnboardingBrowser
@@ -151,6 +176,7 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
         public OpenRouterOnboardingPageState OnboardingState { get; set; } = null!;
         public bool FailOnboarding { get; set; }
         public bool ClickedSignInWithGoogle { get; private set; }
+        public bool DeletedExistingKeys { get; private set; }
         public bool OnboardingStarted { get; private set; }
         public List<string>? Events { get; init; }
 
@@ -181,7 +207,26 @@ public sealed class OpenRouterKeyFlowOrchestratorTests
 
         public Task<bool> TryClickSignInWithGoogleAsync(CancellationToken ct)
         {
+            if (!OnboardingState.HasGoogleSignIn)
+            {
+                return Task.FromResult(false);
+            }
+
             ClickedSignInWithGoogle = true;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> TryDeleteOneExistingKeyAsync(CancellationToken ct)
+        {
+            if (OnboardingState.ExistingKeyCount <= 0)
+            {
+                return Task.FromResult(false);
+            }
+
+            DeletedExistingKeys = true;
+            OnboardingState = OnKeysPage(
+                hasNewKeyButton: true,
+                existingKeyCount: OnboardingState.ExistingKeyCount - 1);
             return Task.FromResult(true);
         }
 

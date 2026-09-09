@@ -198,6 +198,12 @@ public sealed class OpenRouterOnboardingAutomationTests
             return Task.FromResult(!FailCreateKey);
         }
 
+        public Task<bool> TryDeleteOneExistingKeyAsync(CancellationToken cancellationToken)
+        {
+            _clickedActions.Add("DeleteKey");
+            return Task.FromResult(true);
+        }
+
         public Task<bool> TryClickSignInWithGoogleAsync(CancellationToken cancellationToken)
         {
             _clickedActions.Add("SignInWithGoogle");

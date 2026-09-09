@@ -7,25 +7,15 @@ namespace RouterPlus.Infrastructure.Chrome;
 
 /// <summary>
 /// Orchestrates the full OpenRouter API-key flow:
-/// click Clerk "Sign in with Google" -> Google autologin via Vault -> OpenRouter onboarding.
+/// Google sign-in when needed, delete existing keys, then create and copy a new key.
 /// </summary>
 public static class OpenRouterKeyFlowOrchestrator
 {
-    /// <summary>
-    /// Result of the full OpenRouter key-acquisition flow.
-    /// </summary>
     public sealed record OpenRouterKeyFlowResult(
         bool Success,
         string? ApiKey,
         string? ErrorMessage);
 
-    /// <summary>
-    /// Runs the flow.
-    /// </summary>
-    /// <param name="onboarding">Adapter for the OpenRouter page (Clerk sign-in + onboarding).</param>
-    /// <param name="startUri">Keys-page URI. Null when the onboarding adapter already navigated.</param>
-    /// <param name="credential">Google credential from the Vault used for autologin.</param>
-    /// <param name="googleLogin">Adapter for Google sign-in automation.</param>
     public static async Task<OpenRouterKeyFlowResult> RunAsync(
         IOpenRouterOnboardingBrowser onboarding,
         Uri? startUri,
@@ -37,28 +27,57 @@ public static class OpenRouterKeyFlowOrchestrator
         ArgumentNullException.ThrowIfNull(onboarding);
         ArgumentNullException.ThrowIfNull(googleLogin);
         ArgumentNullException.ThrowIfNull(credential);
+        _ = startUri;
 
-        // Phase 1: if the keys page already exposes a key, return it directly.
-        var state = await onboarding.ReadStateAsync(cancellationToken);
-        if (!string.IsNullOrEmpty(state.ApiKey))
+        var signedIn = await EnsureSignedInAsync(
+            onboarding,
+            googleLogin,
+            credential,
+            cancellationToken,
+            googleAuthenticationService);
+        if (signedIn is not null)
         {
-            return new OpenRouterKeyFlowResult(true, state.ApiKey, null);
+            return signedIn;
         }
 
-        // Phase 2: click the Clerk "Sign in with Google" button on the keys page to start Google OAuth.
+        await DeleteExistingKeysAsync(onboarding, cancellationToken);
+
+        var onboardingResult = await OpenRouterOnboardingAutomation.RunAsync(
+            onboarding,
+            credential.ProfileId,
+            cancellationToken);
+        if (!onboardingResult.Success)
+        {
+            return new OpenRouterKeyFlowResult(false, null, onboardingResult.ErrorMessage);
+        }
+
+        return new OpenRouterKeyFlowResult(true, onboardingResult.ApiKey, null);
+    }
+
+    private static async Task<OpenRouterKeyFlowResult?> EnsureSignedInAsync(
+        IOpenRouterOnboardingBrowser onboarding,
+        IGoogleLoginBrowser googleLogin,
+        GoogleLoginCredential credential,
+        CancellationToken cancellationToken,
+        IGoogleAuthenticationService? googleAuthenticationService)
+    {
+        var state = await onboarding.ReadStateAsync(cancellationToken);
+        if (state.IsOnKeysPage && !state.HasGoogleSignIn)
+        {
+            return null;
+        }
+
         var clicked = await onboarding.TryClickSignInWithGoogleAsync(cancellationToken);
         if (!clicked)
         {
             return new OpenRouterKeyFlowResult(false, null, "No 'Sign in with Google' button was found.");
         }
 
-        // Wait for the redirect to reach accounts.google.com.
         if (!await onboarding.WaitForGoogleSignInAsync(cancellationToken))
         {
             return new OpenRouterKeyFlowResult(false, null, "Timed out waiting for Google sign-in page.");
         }
 
-        // Phase 3: Google autologin using the vault credential.
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Info,
             "OpenRouterKeyFlow",
@@ -80,19 +99,30 @@ public static class OpenRouterKeyFlowOrchestrator
             return new OpenRouterKeyFlowResult(false, null, $"Google sign-in failed: {loginResult.Message}");
         }
 
-        // Phase 4: wait for the OAuth callback to return to the OpenRouter keys page.
         if (!await onboarding.WaitForOpenRouterKeysAsync(cancellationToken))
         {
             return new OpenRouterKeyFlowResult(false, null, "Timed out waiting to return to OpenRouter.");
         }
 
-        // Phase 5: run the OpenRouter onboarding (wizard / New Key) and capture the key.
-        var onboardingResult = await OpenRouterOnboardingAutomation.RunAsync(onboarding, credential.ProfileId, cancellationToken);
-        if (!onboardingResult.Success)
-        {
-            return new OpenRouterKeyFlowResult(false, null, onboardingResult.ErrorMessage);
-        }
+        return null;
+    }
 
-        return new OpenRouterKeyFlowResult(true, onboardingResult.ApiKey, null);
+    private static async Task DeleteExistingKeysAsync(
+        IOpenRouterOnboardingBrowser onboarding,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var state = await onboarding.ReadStateAsync(cancellationToken);
+            if (state.ExistingKeyCount <= 0)
+            {
+                return;
+            }
+
+            if (!await onboarding.TryDeleteOneExistingKeyAsync(cancellationToken))
+            {
+                return;
+            }
+        }
     }
 }

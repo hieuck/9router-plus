@@ -123,7 +123,9 @@ public sealed class OpenRouterOnboardingCdpBrowser : IOpenRouterOnboardingBrowse
                 HasNewKeyButton: v.GetProperty("hasNewKeyButton").GetBoolean(),
                 HasNewKeyNameInput: v.GetProperty("hasNewKeyNameInput").GetBoolean(),
                 HasCreatedKeyPanel: v.GetProperty("hasCreatedKeyPanel").GetBoolean(),
-                ApiKey: v.GetProperty("apiKey").GetString() ?? string.Empty);
+                ApiKey: v.GetProperty("apiKey").GetString() ?? string.Empty,
+                HasGoogleSignIn: v.TryGetProperty("hasGoogleLoginButton", out var google) && google.GetBoolean(),
+                ExistingKeyCount: v.TryGetProperty("existingKeyCount", out var count) ? count.GetInt32() : 0);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or UriFormatException)
         {
@@ -295,6 +297,43 @@ public sealed class OpenRouterOnboardingCdpBrowser : IOpenRouterOnboardingBrowse
             returnByValue = true,
             awaitPromise = false
         }, ct, _sessionId);
+
+        return result.TryGetProperty("result", out var r) && r.TryGetProperty("value", out var val)
+            && val.ValueKind == JsonValueKind.True;
+    }
+
+    public async Task<bool> TryDeleteOneExistingKeyAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        const string script = @"
+(function() {
+    const isVisible = el => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+    };
+    const textOf = el => ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')).toLowerCase();
+    const matches = (el, keys) => keys.some(k => textOf(el).includes(k));
+    const candidates = Array.from(document.querySelectorAll('button, [role=""button""], a')).filter(isVisible);
+    const confirm = candidates.find(el => matches(el, ['confirm', 'delete key', 'revoke', 'yes, delete', 'xác nhận']));
+    if (confirm && !textOf(confirm).includes('new key')) {
+        confirm.click();
+        return true;
+    }
+    const del = candidates.find(el => matches(el, ['delete', 'revoke', 'remove', 'xóa']) && !textOf(el).includes('new key'));
+    if (del) {
+        del.click();
+        return true;
+    }
+    return false;
+})()
+";
+        var result = await _client.CallAsync("Runtime.evaluate", new
+        {
+            expression = script,
+            returnByValue = true,
+            awaitPromise = false
+        }, cancellationToken, _sessionId);
 
         return result.TryGetProperty("result", out var r) && r.TryGetProperty("value", out var val)
             && val.ValueKind == JsonValueKind.True;

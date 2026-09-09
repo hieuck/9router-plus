@@ -15,6 +15,18 @@ tests/RouterPlus.App.E2E/TestResults/
 .worktrees/
 
 # ============================================================
+# Test results (all test projects)
+# ============================================================
+TestResults/
+**/TestResults/
+*.trx
+*.coverage
+*.coverlet
+
+# Local test configuration
+.runsettings
+
+# ============================================================
 # Build outputs
 # ============================================================
 work/

@@ -15,7 +15,9 @@ public sealed record OpenRouterOnboardingPageState(
     bool HasNewKeyButton,
     bool HasNewKeyNameInput,
     bool HasCreatedKeyPanel,
-    string ApiKey);
+    string ApiKey,
+    bool HasGoogleSignIn = false,
+    int ExistingKeyCount = 0);
 
 /// <summary>
 /// Testable browser interface for the OpenRouter onboarding wizard + New Key fallback.
@@ -46,6 +48,12 @@ public interface IOpenRouterOnboardingBrowser : IAsyncDisposable
     /// Fills the New Key popup name field and clicks Create. Returns false if the popup was not present.
     /// </summary>
     Task<bool> TryCreateKeyAsync(string name, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes one existing API key on the keys page (including any confirm dialog).
+    /// Returns false when no deletable key is present.
+    /// </summary>
+    Task<bool> TryDeleteOneExistingKeyAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Clicks the Clerk "Sign in with Google" button (icon-only, no innerText) on the
