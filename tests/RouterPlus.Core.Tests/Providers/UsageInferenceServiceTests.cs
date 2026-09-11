@@ -290,6 +290,45 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
+    public void InferUsageFromError_OpenRouter_CreditDetailsMessage_KeepsUsageBelowLimit()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.Zero);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.OpenRouter,
+            "402",
+            "[402]: You requested 5.50 credits but only have 2.30 remaining",
+            errorTime);
+
+        // Assert - the requested amount is parsed as the limit, so usage stays below it
+        Assert.NotNull(result);
+        Assert.True(result.UsageCount > 0);
+        Assert.True(result.LimitCount > result.UsageCount);
+    }
+
+    [Fact]
+    public void InferUsageFromError_Kimchi_JsonCreditsExhaustedMessage_ReturnsMonthlyLimit()
+    {
+        // Arrange
+        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.Zero);
+
+        // Act
+        var result = UsageInferenceService.InferUsageFromError(
+            ProviderKind.Kimchi,
+            "402",
+            "[402]: {\"error\": \"the provider for model kimi-k2.7 has exhausted its credits and cannot process requests\"}",
+            errorTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(100, result.UsageCount);
+        Assert.Equal(100, result.LimitCount);
+        Assert.True(result.IsEstimate);
+    }
+
+    [Fact]
     public void InferUsageFromError_UnsupportedProvider_ReturnsNullForLimitError()
     {
         // Arrange
