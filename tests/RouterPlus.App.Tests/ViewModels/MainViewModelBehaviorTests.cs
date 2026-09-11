@@ -219,7 +219,7 @@ public sealed class MainViewModelBehaviorTests
             return Task.FromResult(new OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult(true, "synthetic-key", null));
         };
 
-        var added = await viewModel.AutoGetKeyAsync();
+        var added = await viewModel.AutoGetKeyAsync(RouterPlus.Core.Providers.ProviderKind.OpenRouter);
 
         Assert.False(added);
         Assert.False(flowCalled);
