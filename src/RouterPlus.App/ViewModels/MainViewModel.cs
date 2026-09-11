@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
@@ -77,8 +77,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly List<RecentProfile> _recentProfiles = new();
     private ChromeProfile? _selectedProfile;
     // Auto-Get-Key seam (mirrors _googleLoginAutomation): runs the Chrome-based
-    // OpenRouter key flow for a profile + vault credential. Testable standalone.
+    // key flow for a profile + vault credential. Testable standalone.
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult>> _openRouterKeyFlow = null!;
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OllamaKeyFlowOrchestrator.OllamaKeyFlowResult>> _ollamaKeyFlow = null!;
     private Func<ChromeProfile, CancellationToken, Task<GoogleLoginCredential?>> _autoGetKeyCredentials = null!;
     private Func<CancellationToken, Task<OpenRouterPkceResult>> _openRouterPkceFlow = null!;
     private string _quickLaunchFilterText = string.Empty;
@@ -183,6 +184,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _googleLoginHealthCheckAutomation = CreateDefaultGoogleLoginAutomation(minimized: true);
         _codexLoginAutomation = CreateDefaultCodexLoginAutomation();
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
+        _ollamaKeyFlow = CreateDefaultOllamaKeyFlow();
         _autoGetKeyCredentials = CreateDefaultAutoGetKeyCredentials();
         _openRouterPkceFlow = CreateDefaultOpenRouterPkceFlow();
         _quotaPollingService = new QuotaPollingService(
@@ -229,7 +231,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         TestConnectionCommand = new AsyncRelayCommand<ProviderKind>(TestConnectionAsync, _ => SelectedProfile is not null);
         DeleteConnectionCommand = new AsyncRelayCommand<ProviderKind>(DeleteConnectionAsync, _ => SelectedProfile is not null);
         OpenQuickLinkCommand = new AsyncRelayCommand<ProviderKind>(OpenQuickLinkAsync);
-        AutoGetKeyCommand = new AsyncRelayCommand(() => AutoGetKeyAsync(), () => SelectedProfile is not null);
+        AutoGetKeyCommand = new AsyncRelayCommand<ProviderKind>(
+            provider => AutoGetKeyAsync(provider),
+            _ => SelectedProfile is not null);
         ConnectOpenRouterOAuthCommand = new AsyncRelayCommand(
             () => ConnectOpenRouterOAuthAsync(),
             () => SelectedProfile is not null && !_workflowInProgress);
@@ -1372,7 +1376,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public RelayCommand ClearSelectionCommand { get; }
     public RelayCommand ToggleSelectAllCommand { get; }
     public AsyncRelayCommand SelectProfilesWithVaultCommand { get; }
-    public AsyncRelayCommand AutoGetKeyCommand { get; }
+    public AsyncRelayCommand<ProviderKind> AutoGetKeyCommand { get; }
     public AsyncRelayCommand ConnectOpenRouterOAuthCommand { get; }
     public AsyncRelayCommand StartBatchAutoLoginCommand { get; }
     public RelayCommand StopBatchLoginCommand { get; }
@@ -2932,6 +2936,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Injectable seam for the Chrome-based Ollama key flow, so tests can drive the flow
+    /// without launching a browser.
+    /// </summary>
+    public Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OllamaKeyFlowOrchestrator.OllamaKeyFlowResult>> OllamaKeyFlow
+    {
+        get => _ollamaKeyFlow;
+        set => _ollamaKeyFlow = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
     /// Injectable seam for loading the Google login credential (from the
     /// Google account vault) used by <see cref="AutoGetKeyAsync"/>.
     /// </summary>
@@ -2948,12 +2962,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Auto-get an OpenRouter API key: run the key flow (opening Chrome, Google
-    /// sign-in from the vault, onboarding), then automatically save the returned
-    /// key into 9Router for the selected profile.
+    /// Auto-get an API key for the given provider (OpenRouter or Ollama):
+    /// opens Chrome, signs in with Google from the vault, deletes old keys, creates
+    /// a new one, then saves it into 9Router for the selected profile.
     /// </summary>
-    public async Task<bool> AutoGetKeyAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> AutoGetKeyAsync(ProviderKind provider, CancellationToken cancellationToken = default)
     {
+        SelectedApiKeyProvider = provider;
+
         var profile = SelectedProfile;
         if (profile is null)
         {
@@ -2970,16 +2986,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return false;
         }
 
-        var flowResult = await _openRouterKeyFlow(profile, credential, cancellationToken);
-        if (!flowResult.Success)
+        if (provider == ProviderKind.Ollama)
         {
-            StatusText = $"Không lấy được OpenRouter key: {flowResult.ErrorMessage}";
-            ShowToast(StatusText, ToastType.Error);
-            return false;
-        }
+            var ollamaResult = await _ollamaKeyFlow(profile, credential, cancellationToken);
+            if (!ollamaResult.Success)
+            {
+                StatusText = $"Không lấy được Ollama key: {ollamaResult.ErrorMessage}";
+                ShowToast(StatusText, ToastType.Error);
+                return false;
+            }
 
-        SelectedApiKeyProvider = ProviderKind.OpenRouter;
-        return await AddApiKeyAsync(SelectedApiKeyProvider, flowResult.ApiKey!);
+            return await AddApiKeyAsync(ProviderKind.Ollama, ollamaResult.ApiKey!);
+        }
+        else
+        {
+            var flowResult = await _openRouterKeyFlow(profile, credential, cancellationToken);
+            if (!flowResult.Success)
+            {
+                StatusText = $"Không lấy được OpenRouter key: {flowResult.ErrorMessage}";
+                ShowToast(StatusText, ToastType.Error);
+                return false;
+            }
+
+            return await AddApiKeyAsync(ProviderKind.OpenRouter, flowResult.ApiKey!);
+        }
     }
 
     public async Task<bool> ConnectOpenRouterOAuthAsync(CancellationToken cancellationToken = default)
@@ -4405,6 +4435,49 @@ public sealed class MainViewModel : INotifyPropertyChanged
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
             {
                 return new OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult(false, null, ex.Message);
+            }
+            finally
+            {
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                }
+            }
+        };
+    }
+
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OllamaKeyFlowOrchestrator.OllamaKeyFlowResult>> CreateDefaultOllamaKeyFlow()
+    {
+        return async (profile, credential, cancellationToken) =>
+        {
+            var installation = _installation ?? throw new InvalidOperationException("Chrome installation not configured.");
+
+            ChromeManagedSession? session = null;
+            try
+            {
+                var settings = await _settingsStore.LoadAsync();
+                session = await _chromeLauncher.LaunchManagedAsync(
+                    installation,
+                    profile,
+                    new Uri("https://ollama.com/settings/keys"),
+                    cancellationToken,
+                    settings.UseOriginalProfileForAutoLogin);
+
+                var (ollamaPage, googleLogin) = await session.ConnectOllamaFlowAsync(cancellationToken);
+                return await OllamaKeyFlowOrchestrator.RunAsync(
+                    ollamaPage,
+                    credential,
+                    googleLogin,
+                    cancellationToken,
+                    _googleAuthenticationService);
+            }
+            catch (OperationCanceledException)
+            {
+                return new OllamaKeyFlowOrchestrator.OllamaKeyFlowResult(false, null, "Đã hủy.");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+            {
+                return new OllamaKeyFlowOrchestrator.OllamaKeyFlowResult(false, null, ex.Message);
             }
             finally
             {
