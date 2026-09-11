@@ -107,6 +107,22 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         return (onboarding, googleLogin);
     }
 
+    /// <summary>
+    /// Connects to the managed Ollama keys page and returns a pair of adapters
+    /// sharing the same CDP session: one drives the Ollama page (WorkOS Google sign-in,
+    /// revoke/create key), the other drives Google sign-in once OAuth redirects there.
+    /// Public threads only the interfaces, so no internal CDP type leaks out.
+    /// </summary>
+    public async Task<(OllamaApiKeyCdpBrowser OllamaPage, IGoogleLoginBrowser GoogleLogin)> ConnectOllamaFlowAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var session = await ConnectAnyTargetAsync(cancellationToken);
+        var ollamaPage = new OllamaApiKeyCdpBrowser(session.Client, session.SessionId, session.TargetId);
+        var googleLogin = new GoogleLoginCdpBrowser(session.Client, session.SessionId, session.TargetId);
+        return (ollamaPage, googleLogin);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed)
