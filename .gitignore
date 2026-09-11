@@ -1,1 +1,77 @@
+# Build artifacts
+[Bb]in/
+[Oo]bj/
+[Ll]ib/
+[Ll]ogs/
+
+# Packages
+*.nupkg
+# Symbols
+*.snk
+# Paket files
+paket-files/
+# Dependency directories
+node_modules/
+jspm_packages/
+# Typedoc
+typedoc/
+
+# Visual Studio files
+.vs/
+*.vcproj
+*.vcxproj
+*.aps
+*.csproj
+*.vbproj
+*.vcxitems
+*.vcxitems.filters
+*.vssscc
+*.vspcc
+*.vpvc
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.unsuccessfulbuild
+*._i.c
+*._p.c
+*.sqldevload
+*_Data
+*.Cache
+ClientBin/
+[Ss]tyle[Cc]op.*
+~$*
+*~
+*.dbmdl
+*.dbproj.schemaview
+*.pfx
+*.publishsettings
+ orleans.yml /
+
+# Visual Studio cache
+# directories to ignore automatically
+__pycache__
+*.py[cod]
+*$py.class
+
+# Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS generated files
+.DS_Store
+._.
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.bin
+
+# Rider
+.idea/
+*.sln.iml
+
+# CodeGraph (auto-generated)
 .codegraph/
