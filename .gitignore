@@ -1,8 +1,8 @@
 # Build artifacts
-[Bb]in/
-[Oo]bj/
-[Ll]ib/
-[Ll]ogs/
+bin/
+obj/
+lib/
+logs/
 
 # Packages
 *.nupkg
@@ -40,7 +40,7 @@ typedoc/
 *_Data
 *.Cache
 ClientBin/
-[Ss]tyle[Cc]op.*
+StyleCop.*
 ~$*
 *~
 *.dbmdl
