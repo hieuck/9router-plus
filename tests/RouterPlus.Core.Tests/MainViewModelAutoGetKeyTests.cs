@@ -32,7 +32,7 @@ public sealed class MainViewModelAutoGetKeyTests
 
         try
         {
-            var ok = await vm.AutoGetKeyAsync();
+            var ok = await vm.AutoGetKeyAsync(ProviderKind.OpenRouter);
 
             Assert.True(ok);
             Assert.Contains("POST /api/providers", handler.Requests);
@@ -59,7 +59,7 @@ public sealed class MainViewModelAutoGetKeyTests
         vm.OpenRouterKeyFlow = (localProfile, credential, ct) =>
             Task.FromResult(Failure("No 'Sign in with Google' button was found."));
 
-        var ok = await vm.AutoGetKeyAsync();
+        var ok = await vm.AutoGetKeyAsync(ProviderKind.OpenRouter);
 
         Assert.False(ok);
         Assert.Empty(handler.Requests);
@@ -93,7 +93,7 @@ public sealed class MainViewModelAutoGetKeyTests
 
         try
         {
-            var ok = await vm.AutoGetKeyAsync();
+            var ok = await vm.AutoGetKeyAsync(ProviderKind.OpenRouter);
 
             Assert.True(ok);
             Assert.Equal(1, flowRuns);
@@ -110,7 +110,7 @@ public sealed class MainViewModelAutoGetKeyTests
     {
         using var httpClient = new HttpClient(new SaveKeyHandler());
         var vm = new MainViewModel(httpClient: httpClient);
-        var ok = await vm.AutoGetKeyAsync();
+        var ok = await vm.AutoGetKeyAsync(ProviderKind.OpenRouter);
         Assert.False(ok);
     }
 
@@ -129,7 +129,7 @@ public sealed class MainViewModelAutoGetKeyTests
         vm.SelectedProfile = profile;
         vm.OpenRouterKeyFlow = (localProfile, credential, ct) =>
         { throw new InvalidOperationException("Flow should not run when no credential is available."); };
-        var ok = await vm.AutoGetKeyAsync();
+        var ok = await vm.AutoGetKeyAsync(ProviderKind.OpenRouter);
         Assert.False(ok);
     }
 
