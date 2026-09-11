@@ -1,4 +1,5 @@
 using RouterPlus.Core.Providers;
+using RouterPlus.Core.Tests.TestHelpers;
 
 namespace RouterPlus.Core.Tests.Providers;
 
@@ -10,7 +11,7 @@ public sealed class QuotaAutoDisablePolicyAdditionalTests
     public void CanAutoDisable_uses_over_limit_for_supported_legacy_providers(ProviderKind provider)
     {
         // Arrange
-        var connection = Connection(provider, isOverLimit: true);
+        var connection = TestData.CreateConnection(provider, quotas: null, usageCount: 100, limitCount: 100);
 
         // Act
         var canAutoDisable = QuotaAutoDisablePolicy.CanAutoDisable(connection);
@@ -23,7 +24,7 @@ public sealed class QuotaAutoDisablePolicyAdditionalTests
     public void CanAutoDisable_returns_false_for_unsupported_provider()
     {
         // Arrange
-        var connection = Connection(ProviderKind.OpenRouter, isOverLimit: true);
+        var connection = TestData.CreateConnection(ProviderKind.OpenRouter, quotas: null, usageCount: 100, limitCount: 100);
 
         // Act
         var canAutoDisable = QuotaAutoDisablePolicy.CanAutoDisable(connection);
@@ -36,7 +37,7 @@ public sealed class QuotaAutoDisablePolicyAdditionalTests
     public void HasRecovered_returns_true_for_non_kiro_connection_below_limit()
     {
         // Arrange
-        var connection = Connection(ProviderKind.Codex, isOverLimit: false);
+        var connection = TestData.CreateConnection(ProviderKind.Codex, quotas: null, usageCount: 20, limitCount: 100);
 
         // Act
         var hasRecovered = QuotaAutoDisablePolicy.HasRecovered(connection);
@@ -85,14 +86,4 @@ public sealed class QuotaAutoDisablePolicyAdditionalTests
         // Assert
         Assert.True(hasRecovered);
     }
-
-    private static ProviderConnection Connection(ProviderKind provider, bool isOverLimit) =>
-        new(
-            "synthetic-connection",
-            provider,
-            "Synthetic",
-            1,
-            true,
-            UsageCount: isOverLimit ? 100 : 20,
-            LimitCount: 100);
 }
