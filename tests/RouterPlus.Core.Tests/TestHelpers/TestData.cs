@@ -4,6 +4,10 @@ using RouterPlus.Core.Providers;
 
 namespace RouterPlus.Core.Tests.TestHelpers;
 
+/// <summary>
+/// Shared synthetic provider data for tests, so a shape change to
+/// ProviderConnection only has to be made in one place.
+/// </summary>
 public static class TestData
 {
     public static ProviderConnection CreateConnection(
