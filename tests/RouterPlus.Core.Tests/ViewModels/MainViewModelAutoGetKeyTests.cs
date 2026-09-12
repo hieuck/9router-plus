@@ -140,9 +140,9 @@ public sealed class MainViewModelAutoGetKeyTests
         var vm = new MainViewModel(httpClient: new HttpClient(new SaveKeyHandler()));
         vm.Profiles.Add(profile);
         vm.ProfileRows.Add(new ProfileRowViewModel(profile, vm.Providers));
-        Assert.False(vm.AutoGetKeyCommand.CanExecute(null));
+        Assert.False(vm.AutoGetKeyCommand.CanExecute(ProviderKind.OpenRouter));
         vm.SelectedProfile = profile;
-        Assert.True(vm.AutoGetKeyCommand.CanExecute(null));
+        Assert.True(vm.AutoGetKeyCommand.CanExecute(ProviderKind.OpenRouter));
     }
 
     [Fact]
