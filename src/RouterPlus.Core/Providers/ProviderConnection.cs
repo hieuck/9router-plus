@@ -70,9 +70,7 @@ public sealed record ProviderQuota(
         ? $"{FormatValue(Used.Value)} / {FormatValue(Total.Value)}"
         : "Chưa có dữ liệu";
 
-    public string PercentageText => UsagePercentage.HasValue
-        ? $"{UsagePercentage.Value:0.##}%"
-        : "—";
+    public string PercentageText => UsagePercentage.HasValue ? $"{FormatValue(UsagePercentage.Value)}%" : "—";
 
     public string ResetText => ResetAt.HasValue
         ? ResetAt.Value.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)
@@ -86,5 +84,5 @@ public sealed record ProviderQuota(
 
     private static string FormatValue(decimal value) =>
         // Use invariant culture to ensure '.' as decimal separator regardless of system locale
-        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        value.ToString("0.##", System.Globalization.CultureInfo.CurrentCulture);
 }
