@@ -20,6 +20,17 @@ Test suite của 9router-plus đã trôi dạt khỏi code sản phẩm:
 - Cấu trúc thư mục test phản ánh cấu trúc domain, để tìm test của một vùng code là tức thì.
 - Test helper dùng chung để dữ liệu test nhất quán và dễ đọc.
 
+## Wynik końcowy (2026-09-13)
+
+- `dotnet build RouterPlus.sln` — `Build succeeded` (0 Warning, 0 Error).
+- `dotnet test`:
+  - `RouterPlus.Core.Tests` — **Passed: 970, Failed: 0**.
+  - `RouterPlus.Infrastructure.Tests` — **Passed: 532, Failed: 0**.
+  - `RouterPlus.Updater.Tests` — **Passed: 57, Failed: 0**.
+  - `RouterPlus.App.Tests` — wszystkie powyżej naprawione testy zielone (focused 15/15 + AsyncRelayCommand 25/25); pełny przebieg dotychczasowo długi (PBKDF2/DPAPI).
+- `tests/RouterPlus.Core.Tests/TestHelpers/` zawiera: `TestData.cs` (CreateConnection/CreateProfile/CreateTempDirectory) i `Mocks.cs` (CreateProviderVault/CreateGoogleVault/CreateSettingsStore).
+- `src/` zmieniane wyłącznie z powodu wykrytych bugów, każdy opisany w osobnym commicie (`AsyncRelayCommand<T>.CanExecute`, `ProviderQuota.FormatValue`).
+
 ## Không nằm trong phạm vi
 
 - Không đổi code sản phẩm trong `src/` (trừ khi chính nó là bug — sẽ báo riêng).

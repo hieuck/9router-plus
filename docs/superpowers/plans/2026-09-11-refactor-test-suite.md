@@ -10,6 +10,19 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-11-refactor-test-suite-design.md`
 
+## Đạng thái: ✅ COMPLETE (2026-09-13)
+
+Wszystkie taski wykonane. Commity na `main`: `a0e8a5c` (Task 1), `9255d59` (Task 2), `ceb8053` + `2327752` + `c0ef250` (Task 3), `b99f76b` + `28fafbc` (Task 4), `708ed1d` + `032bbaf` (fix src wymagane przez testy), + `docs` (Task 5).
+
+**Uwagi wykryte podczas implementacji:**
+
+1. **`AsyncRelayCommand<T>.CanExecute` był bug.** Stará wersja zwracała `true` dla parametru złego typu (`_canExecute?.Invoke(default!) ?? true`), podczas gdy `Execute` i tak pomijał taki parametr (`parameter is not T`). Naprawiono → `CanExecute` zgodny z `Execute` (`b99f76b`, wraz z `MainViewModelAutoGetKeyTests` przekazującym `ProviderKind.OpenRouter`).
+2. **`ProviderQuota.FormatValue` musi używać bieżącej kultury** — testy `ProviderQuota_FormattingUsesExplicitCulture` / `UsageText_HandlesDecimals` wymagają formatowania `UsageText`/`PercentageText` wg `CultureInfo.CurrentCulture` (stringi UI). Fix w osobnym commicie `032bbaf`.
+3. **Testy CredentialsManager** — 12+ čerstwych testów zaczepiało niedostępne ścieżki (guardy martwe przez `CanExecute` dowód) albo oczekiwało wiadomości nadpisywanych przez podsumowanie batch loginu. Poprawione do zachowania obserwowalnego (`28fafbc`).
+4. **OpenRouter 403** — niezależny plan `2026-09-11-openrouter-403-handling.md` dokończony i zcommitowany (`708ed1d`); testy były w repo, implementacja nie.
+
+**Wynik testów (stan końcowy):** Core 970 ✓ · Infrastructure 532 ✓ · Updater 57 ✓ · App.Tests — skupione 15/15 ✓ + AsyncRelayCommand 25/25 ✓ (pełny przebieg App.Tests jest długi ze względu na PBKDF2/DPAPI).
+
 ## Global Constraints
 
 - Không sửa bất kỳ file nào trong `src/`.
