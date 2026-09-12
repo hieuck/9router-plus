@@ -9,6 +9,7 @@ using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
+using RouterPlus.App.Tests.TestHelpers;
 
 namespace RouterPlus.App.Tests.ViewModels;
 
@@ -22,7 +23,9 @@ public sealed class MainViewModelPublicTests
     }
 
     private static ChromeProfile CreateProfile(string name, string directoryName, string userDataDirectory) =>
-        new(ChromeProfile.CreateId(userDataDirectory, directoryName), name, directoryName, userDataDirectory, false);
+        TestData.CreateProfile(name, directoryName, userDataDirectory);
+
+
 
     private static async Task<MainViewModel> CreateViewModelAsync(string directory, params ChromeProfile[] profiles)
     {
@@ -107,7 +110,9 @@ public sealed class MainViewModelPublicTests
 
             Assert.True(viewModel.IsMultiSelectMode);
             Assert.Equal(1, viewModel.ProfileRows.Count(row => row.IsSelected));
-            Assert.Equal("Đã chọn 1 profile có vault credentials", viewModel.StatusText);
+            Assert.Equal(
+                "Đã chọn 1 profile có vault credentials",
+                viewModel.StatusText);
         }
         finally
         {

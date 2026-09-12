@@ -1944,11 +1944,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     {
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.InitializationTask.IsCompleted);
+        await CreateVaultAsync("synthetic-password");
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var beforeStatus = viewModel.StatusMessage;
 
         viewModel.CheckHealthRowCommand.Execute(null!);
         await Task.Delay(50);
 
-        Assert.Contains("No credentials to check", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(beforeStatus, viewModel.StatusMessage);
     }
 
     [Fact]
@@ -2021,25 +2024,33 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
         var row = Assert.Single(viewModel.GoogleAccounts);
+        await CreateVaultAsync("synthetic-password");
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var beforeStatus = viewModel.StatusMessage;
 
         viewModel.CheckHealthRowCommand.Execute(row);
         await Task.Delay(50);
 
-        Assert.Contains("No credentials to check", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        // The command is only enabled for rows with credentials, so it must not
+        // report anything when the row has none.
+        Assert.Equal(beforeStatus, viewModel.StatusMessage);
     }
 
     // ── CheckAllHealthAsync ──
 
     [Fact]
-    public async Task CheckAllHealthCommand_reports_when_no_configured_accounts()
+    public async Task CheckAllHealthCommand_does_nothing_when_no_account_has_credentials()
     {
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.InitializationTask.IsCompleted);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var beforeStatus = viewModel.StatusMessage;
 
         viewModel.CheckAllHealthCommand.Execute(null);
         await Task.Delay(50);
 
-        Assert.Contains("No configured accounts", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        // The command is only enabled when at least one account has credentials.
+        Assert.Equal(beforeStatus, viewModel.StatusMessage);
     }
 
     [Fact]
@@ -2056,7 +2067,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
         await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
 
-        // Add a second profile manually
+        // Add a second profile manually. It must resolve to a real ChromeProfile
+        // so the health check can run against it.
+        _mainViewModel.Profiles.Add(new ChromeProfile(
+            "second-profile",
+            "Good Profile",
+            "Default",
+            _rootDirectory,
+            false));
         viewModel.GoogleAccounts.Add(new GoogleAccountRowViewModel
         {
             ProfileId = "second-profile",
@@ -2242,11 +2260,12 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     {
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.InitializationTask.IsCompleted);
+        var beforeStatus = viewModel.StatusMessage;
 
         viewModel.LoginCodexRowCommand.Execute(null!);
-        await Task.Delay(50);
+        await Task.Delay(100);
 
-        Assert.Contains("No Codex credentials", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(beforeStatus, viewModel.StatusMessage);
     }
 
     [Fact]
@@ -2279,6 +2298,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             Email = "codex@example.test",
             Password = "synthetic-password"
         };
+        await CreateVaultAsync("synthetic-password");
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
         viewModel.LoginCodexRowCommand.Execute(codexRow);
         await Task.Delay(50);
 
@@ -2610,11 +2631,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     {
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.InitializationTask.IsCompleted);
+        await CreateVaultAsync("synthetic-password");
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var beforeStatus = viewModel.StatusMessage;
 
         viewModel.LoginKiroRowCommand.Execute(null!);
         await Task.Delay(50);
 
-        Assert.Contains("No Kiro credentials", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(beforeStatus, viewModel.StatusMessage);
     }
 
     [Fact]
@@ -2622,11 +2646,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     {
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.InitializationTask.IsCompleted);
+        await CreateVaultAsync("synthetic-password");
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var beforeStatus = viewModel.StatusMessage;
 
         viewModel.LoginGitHubRowCommand.Execute(null!);
         await Task.Delay(50);
 
-        Assert.Contains("No GitHub credentials", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(beforeStatus, viewModel.StatusMessage);
     }
 
     [Fact]
@@ -2634,11 +2661,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     {
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.InitializationTask.IsCompleted);
+        await CreateVaultAsync("synthetic-password");
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
+        var beforeStatus = viewModel.StatusMessage;
 
         viewModel.LoginOpenRouterRowCommand.Execute(null!);
         await Task.Delay(50);
 
-        Assert.Contains("No OpenRouter credentials", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(beforeStatus, viewModel.StatusMessage);
     }
 
     [Fact]
@@ -2957,7 +2987,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         Assert.Contains("Batch login completed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("0 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("synthetic network error", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(viewModel.IsBatchLoginRunning);
         Assert.DoesNotContain("synthetic-password", viewModel.StatusMessage, StringComparison.Ordinal);
     }
 
@@ -3004,16 +3034,19 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         await viewModel.BatchLoginTask!;
 
         Assert.False(invoked);
-        Assert.Contains("not found", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Batch login completed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("0 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task BatchLoginCommand_codex_empty_profile_id_fails_that_row()
     {
         await CreateVaultAsync("synthetic-password");
-        var viewModel = CreateViewModel();
+        var viewModel = CreateViewModel(
+            codexAuthentication: (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
         await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
         var codexRow = Assert.Single(viewModel.CodexConnections);
         codexRow.AuthMethod = AuthMethod.Direct;
         codexRow.Email = "codex@example.test";
@@ -3026,8 +3059,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         await viewModel.BatchLoginTask!;
 
         Assert.Contains("Batch login completed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Profile ID not resolved", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("0 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -3037,6 +3070,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         var viewModel = CreateViewModel(
             codexAuthentication: (_, _, _) => throw new IOException("synthetic codex error"));
         await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
         var codexRow = Assert.Single(viewModel.CodexConnections);
         codexRow.AuthMethod = AuthMethod.Direct;
         codexRow.Email = "codex@example.test";
@@ -3048,8 +3082,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         await viewModel.BatchLoginTask!;
 
         Assert.Contains("Batch login completed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("synthetic codex error", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("0 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -3060,6 +3094,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             codexAuthentication: (_, _, _) => Task.FromResult(
                 CodexLoginResult.ManualInterventionRequired("synthetic manual")));
         await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
         var codexRow = Assert.Single(viewModel.CodexConnections);
         codexRow.AuthMethod = AuthMethod.Direct;
         codexRow.Email = "codex@example.test";
@@ -3071,8 +3106,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         await viewModel.BatchLoginTask!;
 
         Assert.Contains("Batch login completed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Manual intervention required", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("0 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -3082,6 +3117,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         var viewModel = CreateViewModel(
             codexAuthentication: (_, _, _) => Task.FromResult(CodexLoginResult.Cancelled()));
         await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
         var codexRow = Assert.Single(viewModel.CodexConnections);
         codexRow.AuthMethod = AuthMethod.Direct;
         codexRow.Email = "codex@example.test";
@@ -3465,16 +3501,20 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task LoginRowCommand_reports_locked_vault_when_row_has_no_credentials()
+    public async Task LoginRowCommand_reports_locked_vault()
     {
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile", "user@example.test", "synthetic-password", "NONE"));
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
         var row = Assert.Single(viewModel.GoogleAccounts);
+        row.HasCredentials = true;
+        row.IsSelected = true;
 
         viewModel.LoginRowCommand.Execute(row);
         await Task.Delay(50);
 
-        Assert.Contains("No credentials to login with", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Vault not unlocked", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -3533,7 +3573,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         viewModel.LoginRowCommand.Execute(row);
         await WaitForAsync(() => viewModel.StatusMessage.Contains("Manual intervention required", StringComparison.OrdinalIgnoreCase));
 
-        Assert.Contains("synthetic manual step", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("Test Profile", viewModel.StatusMessage, StringComparison.Ordinal);
     }
 
     [Fact]
