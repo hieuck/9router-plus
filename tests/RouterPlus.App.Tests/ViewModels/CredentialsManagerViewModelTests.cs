@@ -3590,6 +3590,21 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task LoginRowCommand_marks_row_healthy_on_successful_login()
+    {
+        var viewModel = CreateSyntheticViewModel(new GoogleLoginCredential(
+            _profile.Id, "user@example.test", "synthetic-password", "NONE"));
+        await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        var row = Assert.Single(viewModel.GoogleAccounts);
+        row.HasCredentials = true;
+
+        viewModel.LoginRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Login successful", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(CredentialHealthStatus.Healthy, row.HealthStatus?.Status);
+    }
+
+    [Fact]
     public async Task LoginRowCommand_reports_locked_vault()
     {
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(

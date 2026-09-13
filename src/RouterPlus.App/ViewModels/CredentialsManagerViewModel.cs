@@ -832,6 +832,7 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
             if (result.Category == GoogleLoginResultCategory.Success)
             {
+                row.UpdateHealthStatus(CredentialHealthCheckResult.Healthy("Login successful"));
                 SetStatus($"✓ {row.ProfileName}: Login successful");
             }
             else if (result.Category == GoogleLoginResultCategory.ManualInterventionRequired)
