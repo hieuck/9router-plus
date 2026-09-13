@@ -67,8 +67,7 @@ public sealed class AppProcess : IAsyncDisposable
 
     private static async Task<AppProcess> StartAsync(string? harnessRoot, bool useRealChromeData)
     {
-        var exePath = Path.GetFullPath(
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "RouterPlus.App", "bin", "Debug", "net8.0-windows", "RouterPlus.exe"));
+        var exePath = ResolveAppExePath();
 
         if (!File.Exists(exePath))
         {
@@ -156,6 +155,32 @@ public sealed class AppProcess : IAsyncDisposable
             _automation.Dispose();
             _process.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Locates the app exe built with the same configuration as the test
+    /// assembly (falling back to the other configuration), so E2E works for
+    /// both local Debug runs and CI Release runs.
+    /// </summary>
+    private static string ResolveAppExePath()
+    {
+        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name;
+        var candidates = configuration is "Debug" or "Release"
+            ? new[] { configuration, configuration == "Release" ? "Debug" : "Release" }
+            : new[] { "Release", "Debug" };
+
+        string? lastCandidate = null;
+        foreach (var candidate in candidates)
+        {
+            lastCandidate = Path.GetFullPath(
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "RouterPlus.App", "bin", candidate, "net8.0-windows", "RouterPlus.exe"));
+            if (File.Exists(lastCandidate))
+            {
+                return lastCandidate;
+            }
+        }
+
+        return lastCandidate!;
     }
 
     private static async Task WaitForWindowTitleAsync(Window window, string expectedTitle, TimeSpan timeout)
