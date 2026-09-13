@@ -158,14 +158,15 @@ public sealed class UsageInferenceServiceTests
         Assert.True(result.IsEstimate);
         Assert.Equal("Parsed from error message", result.Source);
 
-        // Note: decimal.TryParse without CultureInfo uses current culture
-        // In Vietnamese locale, "2.50" parses as 250 (dot = thousands separator)
-        // requested=250, remaining=125 (as decimals, then * 100)
-        // remainingCents = 12500, requestedCents = 25000
-        // estimatedLimit = 12500 + 25000 + 1000 = 38500
-        // usage = 38500 - 12500 = 26000
-        Assert.Equal(26000, result.UsageCount);
-        Assert.Equal(38500, result.LimitCount);
+        // Note: OpenRouter API messages always use invariant decimal format.
+        // Parsing must use InvariantCulture: under vi-VN, "2.50" would parse
+        // as 250 (dot = thousands separator) and corrupt quota auto-disable.
+        // requested=2.50, remaining=1.25 (as decimals, then * 100)
+        // remainingCents = 125, requestedCents = 250
+        // estimatedLimit = 125 + 250 + 1000 = 1375
+        // usage = 1375 - 125 = 1250
+        Assert.Equal(1250, result.UsageCount);
+        Assert.Equal(1375, result.LimitCount);
     }
 
     [Fact]

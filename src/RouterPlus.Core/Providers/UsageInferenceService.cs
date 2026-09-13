@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace RouterPlus.Core.Providers;
@@ -100,9 +101,9 @@ public static class UsageInferenceService
         var match = Regex.Match(lastError, @"You requested\s+([\d.]+)\s*credits?\s+but\s+.*have\s+([\d.]+)", 
             RegexOptions.IgnoreCase);
 
-        if (match.Success && 
-            decimal.TryParse(match.Groups[1].Value, out var requested) &&
-            decimal.TryParse(match.Groups[2].Value, out var remaining))
+        if (match.Success &&
+            decimal.TryParse(match.Groups[1].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var requested) &&
+            decimal.TryParse(match.Groups[2].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var remaining))
         {
             // Convert dollars to cents for integer handling
             var remainingCents = (long)(remaining * 100);
