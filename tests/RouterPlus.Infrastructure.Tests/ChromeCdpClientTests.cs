@@ -52,20 +52,21 @@ public sealed class ChromeCdpClientTests
         Assert.Equal("WebSocket is not connected.", exception.Message);
     }
 
-    [Fact(Skip = "Loopback rendezvous without timeouts stalls on loaded CI runners; re-enable after LocalCdpServer awaits are bounded.")]
+    [Fact]
     public async Task CallAsync_returns_result_and_sends_parameters_and_session()
     {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var server = await LocalCdpServer.CreateAsync();
         await using var client = new ChromeCdpClient(server.BaseUri);
-        await client.ConnectAsync(CancellationToken.None);
-        var webSocket = await server.WebSocketTask;
+        await client.ConnectAsync(cts.Token);
+        var webSocket = await server.WebSocketTask.WaitAsync(cts.Token);
 
         var callTask = client.CallAsync(
             "Runtime.evaluate",
             new { expression = "1 + 1", returnByValue = true },
-            CancellationToken.None,
+            cts.Token,
             "session-1");
-        var request = await server.ReceiveJsonAsync();
+        var request = await server.ReceiveJsonAsync(cts.Token);
 
         Assert.Equal(1, request.GetProperty("id").GetInt32());
         Assert.Equal("Runtime.evaluate", request.GetProperty("method").GetString());
@@ -73,63 +74,67 @@ public sealed class ChromeCdpClientTests
         Assert.Equal("1 + 1", request.GetProperty("params").GetProperty("expression").GetString());
         Assert.True(request.GetProperty("params").GetProperty("returnByValue").GetBoolean());
 
-        await LocalCdpServer.SendJsonAsync(webSocket, $"{{\"id\":1,\"result\":{{\"value\":2}}}}");
-        var result = await callTask;
+        await LocalCdpServer.SendJsonAsync(webSocket, $"{{\"id\":1,\"result\":{{\"value\":2}}}}", cts.Token);
+        var result = await callTask.WaitAsync(cts.Token);
 
         Assert.Equal(2, result.GetProperty("value").GetInt32());
     }
 
-    [Fact(Skip = "Loopback rendezvous without timeouts stalls on loaded CI runners; re-enable after LocalCdpServer awaits are bounded.")]
+    [Fact]
     public async Task CallAsync_raises_cdp_error_response()
     {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var server = await LocalCdpServer.CreateAsync();
         await using var client = new ChromeCdpClient(server.BaseUri);
-        await client.ConnectAsync(CancellationToken.None);
-        var webSocket = await server.WebSocketTask;
+        await client.ConnectAsync(cts.Token);
+        var webSocket = await server.WebSocketTask.WaitAsync(cts.Token);
 
-        var callTask = client.CallAsync("Page.enable", null, CancellationToken.None);
-        var request = await server.ReceiveJsonAsync();
+        var callTask = client.CallAsync("Page.enable", null, cts.Token);
+        var request = await server.ReceiveJsonAsync(cts.Token);
 
         await LocalCdpServer.SendJsonAsync(webSocket,
-            $"{{\"id\":{request.GetProperty("id").GetInt32()},\"error\":{{\"code\":-32000,\"message\":\"blocked\"}}}}");
+            $"{{\"id\":{request.GetProperty("id").GetInt32()},\"error\":{{\"code\":-32000,\"message\":\"blocked\"}}}}",
+            cts.Token);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => callTask);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => callTask.WaitAsync(cts.Token));
 
         Assert.Equal("CDP method 'Page.enable' failed: blocked (code -32000)", exception.Message);
     }
 
-    [Fact(Skip = "Loopback rendezvous without timeouts stalls on loaded CI runners; re-enable after LocalCdpServer awaits are bounded.")]
+    [Fact]
     public async Task CallAsync_raises_when_response_has_neither_result_nor_error()
     {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var server = await LocalCdpServer.CreateAsync();
         await using var client = new ChromeCdpClient(server.BaseUri);
-        await client.ConnectAsync(CancellationToken.None);
-        var webSocket = await server.WebSocketTask;
+        await client.ConnectAsync(cts.Token);
+        var webSocket = await server.WebSocketTask.WaitAsync(cts.Token);
 
-        var callTask = client.CallAsync("Page.enable", null, CancellationToken.None);
-        var request = await server.ReceiveJsonAsync();
-        await LocalCdpServer.SendJsonAsync(webSocket, $"{{\"id\":{request.GetProperty("id").GetInt32()}}}");
+        var callTask = client.CallAsync("Page.enable", null, cts.Token);
+        var request = await server.ReceiveJsonAsync(cts.Token);
+        await LocalCdpServer.SendJsonAsync(webSocket, $"{{\"id\":{request.GetProperty("id").GetInt32()}}}", cts.Token);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => callTask);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => callTask.WaitAsync(cts.Token));
 
         Assert.Equal("CDP response missing result and error.", exception.Message);
     }
 
-    [Fact(Skip = "Loopback rendezvous without timeouts stalls on loaded CI runners; re-enable after LocalCdpServer awaits are bounded.")]
+    [Fact]
     public async Task ReceiveLoop_ignores_binary_messages_and_accepts_fragmented_text()
     {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var server = await LocalCdpServer.CreateAsync();
         await using var client = new ChromeCdpClient(server.BaseUri);
-        await client.ConnectAsync(CancellationToken.None);
-        var webSocket = await server.WebSocketTask;
+        await client.ConnectAsync(cts.Token);
+        var webSocket = await server.WebSocketTask.WaitAsync(cts.Token);
 
-        var callTask = client.CallAsync("Page.enable", null, CancellationToken.None);
-        var request = await server.ReceiveJsonAsync();
+        var callTask = client.CallAsync("Page.enable", null, cts.Token);
+        var request = await server.ReceiveJsonAsync(cts.Token);
         var id = request.GetProperty("id").GetInt32();
-        await webSocket.SendAsync(new ArraySegment<byte>([1, 2]), WebSocketMessageType.Binary, true, CancellationToken.None);
-        await LocalCdpServer.SendFragmentedJsonAsync(webSocket, $"{{\"id\":{id},\"result\":{{\"ok\":true}}}}");
+        await webSocket.SendAsync(new ArraySegment<byte>([1, 2]), WebSocketMessageType.Binary, true, cts.Token);
+        await LocalCdpServer.SendFragmentedJsonAsync(webSocket, $"{{\"id\":{id},\"result\":{{\"ok\":true}}}}", cts.Token);
 
-        var result = await callTask;
+        var result = await callTask.WaitAsync(cts.Token);
 
         Assert.True(result.GetProperty("ok").GetBoolean());
     }
@@ -200,14 +205,14 @@ public sealed class ChromeCdpClientTests
             }
         }
 
-        public async Task<JsonElement> ReceiveJsonAsync()
+        public async Task<JsonElement> ReceiveJsonAsync(CancellationToken cancellationToken = default)
         {
             var buffer = new byte[4096];
             using var message = new MemoryStream();
             WebSocketReceiveResult result;
             do
             {
-                result = await _webSocket!.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                result = await _webSocket!.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
                 message.Write(buffer, 0, result.Count);
             }
             while (!result.EndOfMessage);
@@ -215,18 +220,18 @@ public sealed class ChromeCdpClientTests
             return JsonDocument.Parse(message.ToArray()).RootElement.Clone();
         }
 
-        public static async Task SendJsonAsync(WebSocket webSocket, string json)
+        public static async Task SendJsonAsync(WebSocket webSocket, string json, CancellationToken cancellationToken = default)
         {
             var bytes = Encoding.UTF8.GetBytes(json);
-            await webSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            await webSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
         }
 
-        public static async Task SendFragmentedJsonAsync(WebSocket webSocket, string json)
+        public static async Task SendFragmentedJsonAsync(WebSocket webSocket, string json, CancellationToken cancellationToken = default)
         {
             var bytes = Encoding.UTF8.GetBytes(json);
             var split = bytes.Length / 2;
-            await webSocket.SendAsync(new ArraySegment<byte>(bytes, 0, split), WebSocketMessageType.Text, false, CancellationToken.None);
-            await webSocket.SendAsync(new ArraySegment<byte>(bytes, split, bytes.Length - split), WebSocketMessageType.Text, true, CancellationToken.None);
+            await webSocket.SendAsync(new ArraySegment<byte>(bytes, 0, split), WebSocketMessageType.Text, false, cancellationToken);
+            await webSocket.SendAsync(new ArraySegment<byte>(bytes, split, bytes.Length - split), WebSocketMessageType.Text, true, cancellationToken);
         }
 
         private async Task<WebSocket> AcceptWebSocketAsync()
@@ -256,7 +261,9 @@ public sealed class ChromeCdpClientTests
 
             try
             {
-                await WebSocketTask;
+                // Bound so an abandoned handshake fails fast instead of
+                // stalling teardown forever.
+                await WebSocketTask.WaitAsync(TimeSpan.FromSeconds(5));
             }
             catch (HttpListenerException)
             {
@@ -273,6 +280,10 @@ public sealed class ChromeCdpClientTests
             catch (InvalidOperationException)
             {
                 // The client may reject an invalid local test endpoint.
+            }
+            catch (TimeoutException)
+            {
+                // The handshake never completed; listener is already stopped.
             }
         }
 
