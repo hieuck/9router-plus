@@ -42,12 +42,31 @@ jobs:
       - name: Test with Coverage
         shell: pwsh
         run: >-
-          dotnet test RouterPlus.sln
+          dotnet test tests/RouterPlus.Core.Tests/RouterPlus.Core.Tests.csproj
           --configuration Release
-          --no-restore
           --collect:"XPlat Code Coverage"
-          --logger "trx;LogFileName=RouterPlus.Tests.trx"
-          --results-directory "$env:RUNNER_TEMP\test-results"
+          --logger "trx;LogFileName=Core.trx"
+          --results-directory "$env:RUNNER_TEMP\test-results";
+          if ($?) { dotnet test tests/RouterPlus.Infrastructure.Tests/RouterPlus.Infrastructure.Tests.csproj
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --logger "trx;LogFileName=Infrastructure.trx"
+          --results-directory "$env:RUNNER_TEMP\test-results" };
+          if ($?) { dotnet test tests/RouterPlus.Updater.Tests/RouterPlus.Updater.Tests.csproj
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --logger "trx;LogFileName=Updater.trx"
+          --results-directory "$env:RUNNER_TEMP\test-results" };
+          if ($?) { dotnet test tests/RouterPlus.App.Tests/RouterPlus.App.Tests.csproj
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --logger "trx;LogFileName=App.trx"
+          --results-directory "$env:RUNNER_TEMP\test-results" };
+          if ($?) { dotnet test tests/RouterPlus.App.E2E/RouterPlus.App.E2E.csproj
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --logger "trx;LogFileName=E2E.trx"
+          --results-directory "$env:RUNNER_TEMP\test-results" }
 
       - name: Harness Audit
         shell: pwsh
