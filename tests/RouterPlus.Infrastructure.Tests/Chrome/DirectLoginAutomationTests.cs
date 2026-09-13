@@ -406,6 +406,121 @@ public sealed class DirectLoginAutomationTests
     }
 
     [Fact]
+    public async Task EnsurePasswordStep_SkipsSubmit_WhenPasswordAlreadyVisible()
+    {
+        // Arrange
+        var client = new FakeCdpClient { Responses = [Result(true)] };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password");
+
+        // Act
+        var result = await automation.EnsurePasswordStepPublicAsync(CancellationToken.None);
+
+        // Assert
+        Assert.True(result);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, call => call.Operation == "Click");
+    }
+
+    [Fact]
+    public async Task EnsurePasswordStep_SubmitsEmailAndWaits_WhenPasswordHidden()
+    {
+        // Arrange
+        var client = new FakeCdpClient { Responses = [Result(false), Result(true)] };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
+        {
+            SelectorResults = [true]
+        };
+
+        // Act
+        var result = await automation.EnsurePasswordStepPublicAsync(CancellationToken.None);
+
+        // Assert
+        Assert.True(result);
+        Assert.Equal(2, client.Calls.Count);
+        Assert.Equal("Click", client.Calls[1].Operation);
+    }
+
+    [Fact]
+    public async Task EnsurePasswordStep_ReturnsFalse_WhenPasswordNeverAppears()
+    {
+        // Arrange
+        var client = new FakeCdpClient { Responses = [Result(false), Result(true)] };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
+        {
+            SelectorResults = [false]
+        };
+
+        // Act
+        var result = await automation.EnsurePasswordStepPublicAsync(CancellationToken.None);
+
+        // Assert
+        Assert.False(result);
+        Assert.Equal(2, client.Calls.Count);
+    }
+
+    [Fact]
+    public async Task RunAsync_TwoStepLogin_SubmitsEmailBeforePassword()
+    {
+        // Arrange: identifier-first page (password appears only after continue).
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(false),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(true),
+                Result(false)
+            ]
+        };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
+        {
+            SelectorResults = [true, true]
+        };
+
+        // Act
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(["FillEmail", "FillPassword"], automation.FilledActions);
+        Assert.Equal(2, automation.Delays.Count(call => call == TimeSpan.FromMilliseconds(500)));
+        Assert.Equal(2, client.Calls.Count(call => call.Operation == "Click"));
+    }
+
+    [Fact]
+    public async Task RunAsync_ReturnsFailedResult_WhenPasswordStepNeverAppears()
+    {
+        // Arrange
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                Result(true),
+                Result(true),
+                Result(false),
+                Result(true)
+            ]
+        };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
+        {
+            SelectorResults = [true, false]
+        };
+
+        // Act
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Contains("Password", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(["FillEmail"], automation.FilledActions);
+    }
+
+    [Fact]
     public async Task RunAsync_SkipsTotpWhenNoGeneratorIsConfigured()
     {
         // Arrange
@@ -497,6 +612,7 @@ public sealed class DirectLoginAutomationTests
         public List<bool> SelectorResults { get; init; } = [];
 
         public Task<bool> IsVisibleAsync(string selector, CancellationToken cancellationToken) => IsElementVisibleAsync(selector, cancellationToken);
+        public Task<bool> EnsurePasswordStepPublicAsync(CancellationToken cancellationToken) => EnsurePasswordStepAsync(cancellationToken);
         public Task<bool> IsTotpRequiredPublicAsync(CancellationToken cancellationToken) => IsTotpRequiredAsync(cancellationToken);
         public Task<bool> WaitForSelectorPublicAsync(string selector, CancellationToken cancellationToken, int timeoutMs) => WaitForSelectorAsync(selector, cancellationToken, timeoutMs);
         public Task FillAsync(string selector, string value, CancellationToken cancellationToken) => FillInputAsync(selector, value, cancellationToken);
