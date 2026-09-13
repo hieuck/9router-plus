@@ -30,7 +30,7 @@ public sealed class DirectLoginAutomationTests
         // Assert
         Assert.True(result.Success);
         Assert.Equal("Login completed", result.Message);
-        Assert.Equal(6, client.Calls.Count);
+        Assert.Equal(7, client.Calls.Count);
         Assert.Equal([TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(2)], automation.Delays);
         Assert.Equal(["FillEmail", "FillPassword"], automation.FilledActions);
     }
@@ -60,7 +60,7 @@ public sealed class DirectLoginAutomationTests
 
         // Assert
         Assert.True(result.Success);
-        Assert.Equal(7, client.Calls.Count);
+        Assert.Equal(8, client.Calls.Count);
         Assert.Equal("TryClickLoginButton", client.Calls[1].Operation);
     }
 
@@ -135,7 +135,7 @@ public sealed class DirectLoginAutomationTests
         Assert.True(result.Success);
         Assert.Equal(1, totpCalls);
         Assert.Equal(["FillEmail", "FillPassword", "FillTotp"], automation.FilledActions);
-        Assert.Equal(8, client.Calls.Count);
+        Assert.Equal(9, client.Calls.Count);
     }
 
     [Fact]
@@ -169,7 +169,7 @@ public sealed class DirectLoginAutomationTests
         // Assert
         Assert.True(result.Success);
         Assert.Equal(["FillEmail", "FillPassword"], automation.FilledActions);
-        Assert.Equal(6, client.Calls.Count);
+        Assert.Equal(7, client.Calls.Count);
     }
 
     [Fact]
@@ -468,9 +468,7 @@ public sealed class DirectLoginAutomationTests
             [
                 Result(true),
                 Result(true),
-                Result(true),
                 Result(false),
-                Result(true),
                 Result(true),
                 Result(true),
                 Result(true),
@@ -545,7 +543,7 @@ public sealed class DirectLoginAutomationTests
         // Assert
         Assert.True(result.Success);
         Assert.Equal(["FillEmail", "FillPassword"], automation.FilledActions);
-        Assert.Equal(6, client.Calls.Count);
+        Assert.Equal(7, client.Calls.Count);
     }
 
     private static JsonElement Result(bool value) => JsonSerializer.SerializeToDocument(new { result = new { value } }).RootElement.Clone();
