@@ -224,7 +224,10 @@ public sealed class ChromeCdpClient : IChromeCdpClient, IAsyncDisposable
         {
             try
             {
-                await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disposing", CancellationToken.None);
+                // Bounded: a peer that never answers the close handshake must
+                // not stall disposal (and therefore app shutdown) forever.
+                await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disposing", CancellationToken.None)
+                    .WaitAsync(TimeSpan.FromSeconds(5));
             }
             catch
             {

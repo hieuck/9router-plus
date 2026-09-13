@@ -99,12 +99,23 @@ public sealed class VaultStoreBaseTests
         // Start disposal on background thread
         var disposeTask = Task.Run(() => store.Dispose());
 
-        // Give disposal a moment to start
-        await Task.Delay(5);
+        // Poll until an operation observes disposal: a fixed delay races
+        // StopAsync against the scheduler and flakes on loaded machines.
+        var threw = false;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!threw && DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                await store.TestOperationAsync();
+            }
+            catch (ObjectDisposedException)
+            {
+                threw = true;
+            }
+        }
 
-        // Attempting new operations should throw
-        await Assert.ThrowsAsync<ObjectDisposedException>(
-            async () => await store.TestOperationAsync());
+        Assert.True(threw, "Operations should throw once disposal starts.");
 
         await disposeTask;
     }
