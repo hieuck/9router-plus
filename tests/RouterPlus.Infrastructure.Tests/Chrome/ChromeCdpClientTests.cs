@@ -85,6 +85,25 @@ public sealed class ChromeCdpClientTests
 
         var response = Encoding.UTF8.GetBytes($"{{\"id\":{requestId},\"error\":{{}}}}");
         await webSocket.SendAsync(response, WebSocketMessageType.Text, true, cancellationToken);
+
+        // One-way close (no handshake wait): the close frame is ordered after
+        // the error frame on the wire, unlike disposing the socket immediately
+        // after SendAsync, whose TCP RST can discard the buffered error frame
+        // on a loaded machine ("CDP connection closed."). Waiting for the
+        // peer's close response here would deadlock: the test only disposes
+        // the client after this server task completes.
+        await webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "done", CancellationToken.None);
+        using var graceCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            await ReceiveMessageAsync(webSocket, graceCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (WebSocketException)
+        {
+        }
     }
 
     private static async Task<byte[]> ReceiveMessageAsync(
