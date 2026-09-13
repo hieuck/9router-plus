@@ -99,7 +99,12 @@ public sealed class AppDriver
         {
             if (state != targetState)
             {
-                checkbox.Click();
+                // Toggle programmatically instead of Click(): coordinate
+                // clicks miss collapsed or not-yet-laid-out boxes on slow
+                // runners while succeeding silently.
+                var toggle = checkbox.Patterns.Toggle.Pattern
+                    ?? throw new InvalidOperationException("Profile checkbox does not support the Toggle pattern");
+                toggle.Toggle();
             }
         }
     }
