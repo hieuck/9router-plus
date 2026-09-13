@@ -1775,14 +1775,16 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SaveRowCommand_reports_batch_running_when_batch_is_active()
+    public async Task SaveRowCommand_is_disabled_while_batch_running()
     {
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
             "Test Profile", "user@example.test", "synthetic-password", "NONE"));
         var runnerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runnerRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var automationCalls = 0;
         var viewModel = CreateViewModel(async (_, _, _) =>
         {
+            Interlocked.Increment(ref automationCalls);
             runnerStarted.TrySetResult(true);
             await runnerRelease.Task;
             return GoogleLoginResult.Success();
@@ -1805,13 +1807,26 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             Password = "new-password",
             TotpSecret = "NONE"
         };
-        viewModel.SaveRowCommand.Execute(saveRow);
-        await Task.Delay(50);
 
-        // Assert
-        Assert.Contains("Batch login is already running", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            // Real command behavior: the save button is disabled while a batch
+            // runs, so executing it is skipped and the batch is undisturbed.
+            Assert.False(viewModel.SaveRowCommand.CanExecute(saveRow));
 
-        runnerRelease.SetResult(true);
+            viewModel.SaveRowCommand.Execute(saveRow);
+            await Task.Delay(50);
+
+            Assert.True(viewModel.IsBatchLoginRunning);
+            Assert.Equal(1, automationCalls);
+        }
+        finally
+        {
+            // Always release the runner: without this, a failed assert would
+            // leave the batch task pending and DisposeAsync would hang forever.
+            runnerRelease.TrySetResult(true);
+        }
+
         await WaitForAsync(() => !viewModel.IsBatchLoginRunning);
     }
 
@@ -1970,14 +1985,16 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task CheckHealthRowCommand_reports_batch_running()
+    public async Task CheckHealthRowCommand_is_disabled_while_batch_running()
     {
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
             "Test Profile", "user@example.test", "synthetic-password", "NONE"));
         var runnerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runnerRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var automationCalls = 0;
         var viewModel = CreateViewModel(async (_, _, _) =>
         {
+            Interlocked.Increment(ref automationCalls);
             runnerStarted.TrySetResult(true);
             await runnerRelease.Task;
             return GoogleLoginResult.Success();
@@ -1991,12 +2008,25 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         viewModel.BatchLoginCommand.Execute(null);
         await runnerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        viewModel.CheckHealthRowCommand.Execute(row);
-        await Task.Delay(50);
+        try
+        {
+            // Real command behavior: the row button is disabled while a batch
+            // runs, so executing it is skipped and the batch is undisturbed.
+            Assert.False(viewModel.CheckHealthRowCommand.CanExecute(row));
 
-        Assert.Contains("Batch login is already running", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+            viewModel.CheckHealthRowCommand.Execute(row);
+            await Task.Delay(50);
 
-        runnerRelease.SetResult(true);
+            Assert.True(viewModel.IsBatchLoginRunning);
+            Assert.Equal(1, automationCalls);
+        }
+        finally
+        {
+            // Always release the runner: without this, a failed assert would
+            // leave the batch task pending and DisposeAsync would hang forever.
+            runnerRelease.TrySetResult(true);
+        }
+
         await WaitForAsync(() => !viewModel.IsBatchLoginRunning);
     }
 
@@ -2110,12 +2140,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SaveCodexRowCommand_reports_batch_running()
+    public async Task SaveCodexRowCommand_is_disabled_while_batch_running()
     {
         var runnerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runnerRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var automationCalls = 0;
         var viewModel = CreateViewModel(async (_, _, _) =>
         {
+            Interlocked.Increment(ref automationCalls);
             runnerStarted.TrySetResult(true);
             await runnerRelease.Task;
             return GoogleLoginResult.Success();
@@ -2127,6 +2159,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             "Test Profile", "user@example.test", "synthetic-password", "NONE"));
         var vm2 = CreateViewModel(async (_, _, _) =>
         {
+            Interlocked.Increment(ref automationCalls);
             runnerStarted.TrySetResult(true);
             await runnerRelease.Task;
             return GoogleLoginResult.Success();
@@ -2146,12 +2179,26 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             Email = "codex@example.test",
             Password = "synthetic-password"
         };
-        vm2.SaveCodexRowCommand.Execute(codexRow);
-        await Task.Delay(50);
 
-        Assert.Contains("Batch login is already running", vm2.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            // Real command behavior: the save button is disabled while a batch
+            // runs, so executing it is skipped and the batch is undisturbed.
+            Assert.False(vm2.SaveCodexRowCommand.CanExecute(codexRow));
 
-        runnerRelease.SetResult(true);
+            vm2.SaveCodexRowCommand.Execute(codexRow);
+            await Task.Delay(50);
+
+            Assert.True(vm2.IsBatchLoginRunning);
+            Assert.Equal(1, automationCalls);
+        }
+        finally
+        {
+            // Always release the runner: without this, a failed assert would
+            // leave the batch task pending and DisposeAsync would hang forever.
+            runnerRelease.TrySetResult(true);
+        }
+
         await WaitForAsync(() => !vm2.IsBatchLoginRunning);
     }
 
@@ -2269,14 +2316,16 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task LoginCodexRowCommand_reports_batch_running()
+    public async Task LoginCodexRowCommand_is_disabled_while_batch_running()
     {
         var runnerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runnerRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
             "Test Profile", "user@example.test", "synthetic-password", "NONE"));
+        var automationCalls = 0;
         var viewModel = CreateViewModel(async (_, _, _) =>
         {
+            Interlocked.Increment(ref automationCalls);
             runnerStarted.TrySetResult(true);
             await runnerRelease.Task;
             return GoogleLoginResult.Success();
@@ -2300,12 +2349,26 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         };
         await CreateVaultAsync("synthetic-password");
         await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
-        viewModel.LoginCodexRowCommand.Execute(codexRow);
-        await Task.Delay(50);
 
-        Assert.Contains("Batch login is already running", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            // Real command behavior: the row button is disabled while a batch
+            // runs, so executing it is skipped and the batch is undisturbed.
+            Assert.False(viewModel.LoginCodexRowCommand.CanExecute(codexRow));
 
-        runnerRelease.SetResult(true);
+            viewModel.LoginCodexRowCommand.Execute(codexRow);
+            await Task.Delay(50);
+
+            Assert.True(viewModel.IsBatchLoginRunning);
+            Assert.Equal(1, automationCalls);
+        }
+        finally
+        {
+            // Always release the runner: without this, a failed assert would
+            // leave the batch task pending and DisposeAsync would hang forever.
+            runnerRelease.TrySetResult(true);
+        }
+
         await WaitForAsync(() => !viewModel.IsBatchLoginRunning);
     }
 
@@ -2672,14 +2735,16 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task LoginKiroRowCommand_reports_batch_running()
+    public async Task LoginKiroRowCommand_is_disabled_while_batch_running()
     {
         var runnerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runnerRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
             "Test Profile", "user@example.test", "synthetic-password", "NONE"));
+        var automationCalls = 0;
         var viewModel = CreateViewModel(async (_, _, _) =>
         {
+            Interlocked.Increment(ref automationCalls);
             runnerStarted.TrySetResult(true);
             await runnerRelease.Task;
             return GoogleLoginResult.Success();
@@ -2701,12 +2766,26 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             Email = "kiro@example.test",
             Password = "synthetic-password"
         };
-        viewModel.LoginKiroRowCommand.Execute(kiroRow);
-        await Task.Delay(50);
 
-        Assert.Contains("Batch login is already running", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            // Real command behavior: the row button is disabled while a batch
+            // runs, so executing it is skipped and the batch is undisturbed.
+            Assert.False(viewModel.LoginKiroRowCommand.CanExecute(kiroRow));
 
-        runnerRelease.SetResult(true);
+            viewModel.LoginKiroRowCommand.Execute(kiroRow);
+            await Task.Delay(50);
+
+            Assert.True(viewModel.IsBatchLoginRunning);
+            Assert.Equal(1, automationCalls);
+        }
+        finally
+        {
+            // Always release the runner: without this, a failed assert would
+            // leave the batch task pending and DisposeAsync would hang forever.
+            runnerRelease.TrySetResult(true);
+        }
+
         await WaitForAsync(() => !viewModel.IsBatchLoginRunning);
     }
 
@@ -2954,8 +3033,9 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         _mainViewModel.Profiles.Add(secondProfile);
         _mainViewModel.FilteredProfiles.Add(secondProfile);
 
-        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
-            _profile.Id, "first@example.test", "synthetic-password", "NONE"));
+        await CreateVaultAsync("synthetic-password",
+            new GoogleLoginCredential(_profile.Id, "first@example.test", "synthetic-password", "NONE"),
+            new GoogleLoginCredential(secondProfile.Id, "second@example.test", "synthetic-password", "NONE"));
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 2);
         await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
@@ -2994,9 +3074,11 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task BatchLoginCommand_codex_direct_missing_email_fails_that_row()
     {
-        await CreateVaultAsync("synthetic-password");
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            _profile.Id, "direct@example.test", "synthetic-password", "NONE"));
         var viewModel = CreateViewModel();
         await WaitForAsync(() => viewModel.CodexConnections.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
         var codexRow = Assert.Single(viewModel.CodexConnections);
         codexRow.AuthMethod = AuthMethod.Direct;
         codexRow.Email = string.Empty;
@@ -3008,8 +3090,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         await viewModel.BatchLoginTask!;
 
         Assert.Contains("Batch login completed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Email and password required", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("0 succeeded", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("0 succeeded, 1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -3156,7 +3237,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         await viewModel.BatchLoginTask!;
 
         Assert.False(invoked);
-        Assert.Contains("must be logged in first", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("0 succeeded, 1 failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Properties ──
@@ -3518,14 +3599,16 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task LoginRowCommand_reports_batch_running()
+    public async Task LoginRowCommand_is_disabled_while_batch_running()
     {
         await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
             "Test Profile", "user@example.test", "synthetic-password", "NONE"));
         var runnerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runnerRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var automationCalls = 0;
         var viewModel = CreateViewModel(async (_, _, _) =>
         {
+            Interlocked.Increment(ref automationCalls);
             runnerStarted.TrySetResult(true);
             await runnerRelease.Task;
             return GoogleLoginResult.Success();
@@ -3548,12 +3631,26 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             TotpSecret = "NONE",
             HasCredentials = true
         };
-        viewModel.LoginRowCommand.Execute(loginRow);
-        await Task.Delay(50);
 
-        Assert.Contains("Batch login is already running", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            // Real command behavior: the row button is disabled while a batch
+            // runs, so executing it is skipped and the batch is undisturbed.
+            Assert.False(viewModel.LoginRowCommand.CanExecute(loginRow));
 
-        runnerRelease.SetResult(true);
+            viewModel.LoginRowCommand.Execute(loginRow);
+            await Task.Delay(50);
+
+            Assert.True(viewModel.IsBatchLoginRunning);
+            Assert.Equal(1, automationCalls);
+        }
+        finally
+        {
+            // Always release the runner: without this, a failed assert would
+            // leave the batch task pending and DisposeAsync would hang forever.
+            runnerRelease.TrySetResult(true);
+        }
+
         await WaitForAsync(() => !viewModel.IsBatchLoginRunning);
     }
 
@@ -3600,24 +3697,14 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task SaveRowCommand_reports_error_when_vault_save_fails()
     {
-        var providerStore = new ProviderConnectionVaultStore(
-            Path.Combine(_rootDirectory, $"provider-{Guid.NewGuid():N}.vault"));
-        var session = new SyntheticVaultSession(new GoogleAccountVault());
-        var throwingStore = new AlwaysThrowGoogleVaultStore();
-        var viewModel = new CredentialsManagerViewModel(
-            _mainViewModel,
-            throwingStore,
-            providerStore,
-            _vaultPaths,
-            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
-            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
-            (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
-        _viewModels.Add(viewModel);
-        _syntheticProviderStores.Add(providerStore);
-        _syntheticSessions.Add(session);
-
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile", "user@example.test", "synthetic-password", "NONE"));
+        var viewModel = CreateViewModel(
+            googleVaultStore: new SaveThrowingGoogleVaultStore(_googleVaultStore));
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
         var row = Assert.Single(viewModel.GoogleAccounts);
+        row.IsEditing = true;
         row.Email = "user@example.test";
         row.Password = "synthetic-password";
 
@@ -3630,20 +3717,12 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     [Fact]
     public async Task RemoveGoogleAccountAsync_row_reports_error_on_exception()
     {
-        var session = new SyntheticVaultSession(new GoogleAccountVault());
-        var throwingStore = new AlwaysThrowGoogleVaultStore();
-        var viewModel = new CredentialsManagerViewModel(
-            _mainViewModel,
-            throwingStore,
-            _providerVaultStore,
-            _vaultPaths,
-            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
-            (_, _, _) => Task.FromResult(GoogleLoginResult.Success()),
-            (_, _, _) => Task.FromResult(CodexLoginResult.Success()));
-        _viewModels.Add(viewModel);
-        _syntheticSessions.Add(session);
-
+        await CreateVaultAsync("synthetic-password", new GoogleLoginCredential(
+            "Test Profile", "user@example.test", "synthetic-password", "NONE"));
+        var viewModel = CreateViewModel(
+            googleVaultStore: new SaveThrowingGoogleVaultStore(_googleVaultStore));
         await WaitForAsync(() => viewModel.GoogleAccounts.Count == 1);
+        await viewModel.UnlockVaultAsync("synthetic-password", remember: false);
         var row = Assert.Single(viewModel.GoogleAccounts);
         row.HasCredentials = true;
 
@@ -3709,6 +3788,22 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         _ => new Exception("synthetic secret: unexpected failure")
     };
 
+    private sealed class SaveThrowingGoogleVaultStore(IGoogleAccountVaultStore inner) : IGoogleAccountVaultStore
+    {
+        public Task<GoogleAccountVaultSession> CreateAsync(string path, string vaultPassword, CancellationToken cancellationToken = default) =>
+            inner.CreateAsync(path, vaultPassword, cancellationToken);
+        public Task<GoogleAccountVaultSession> OpenAsync(string path, string vaultPassword, CancellationToken cancellationToken = default) =>
+            inner.OpenAsync(path, vaultPassword, cancellationToken);
+        public Task<GoogleAccountVaultSession?> TryOpenRememberedAsync(string path, CancellationToken cancellationToken = default) =>
+            inner.TryOpenRememberedAsync(path, cancellationToken);
+        public Task SaveAsync(GoogleAccountVaultSession session, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("synthetic vault save failure");
+        public Task ExportAsync(GoogleAccountVaultSession session, string destinationPath, string exportPassword, CancellationToken cancellationToken = default) =>
+            inner.ExportAsync(session, destinationPath, exportPassword, cancellationToken);
+        public Task ImportAsync(string currentPath, string sourcePath, string sourcePassword, CancellationToken cancellationToken = default) =>
+            inner.ImportAsync(currentPath, sourcePath, sourcePassword, cancellationToken);
+    }
+
     private sealed class ThrowingGoogleVaultStore(Exception exception) : IGoogleAccountVaultStore
     {
         public Task<GoogleAccountVaultSession> CreateAsync(string path, string vaultPassword, CancellationToken cancellationToken = default) => Task.FromException<GoogleAccountVaultSession>(exception);
@@ -3743,15 +3838,16 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         return viewModel;
     }
 
-    private async Task CreateVaultAsync(string password, GoogleLoginCredential? credential = null)
+    private async Task CreateVaultAsync(string password, params GoogleLoginCredential?[] credentials)
     {
         await using var session = await _googleVaultStore.CreateAsync(
             _vaultPaths.VaultPath,
             password,
             CancellationToken.None);
-        if (credential is not null)
+        var records = credentials.OfType<GoogleLoginCredential>().ToArray();
+        if (records.Length > 0)
         {
-            session.Replace(new GoogleAccountVault(new[] { credential }));
+            session.Replace(new GoogleAccountVault(records));
         }
 
         await _googleVaultStore.SaveAsync(session, CancellationToken.None);
