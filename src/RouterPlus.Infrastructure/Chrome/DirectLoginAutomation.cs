@@ -115,8 +115,19 @@ public abstract class DirectLoginAutomation
 
             // Identifier-first pages (e.g. Auth0) only reveal the password
             // field after the email step is submitted. Advance when needed.
+            // A remembered session may also land straight on the service.
             if (!await EnsurePasswordStepAsync(cancellationToken))
             {
+                if (await IsLoginCompleteAsync(cancellationToken))
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "DirectLogin",
+                        "AlreadyLoggedIn",
+                        "No password step: already on the target service");
+                    return new DirectLoginResult(Success: true, Message: "Login completed");
+                }
+
                 return new DirectLoginResult(
                     Success: false,
                     Message: "Password field did not appear after submitting the email step.");
@@ -289,8 +300,21 @@ public abstract class DirectLoginAutomation
             return true;
         }
 
+        var beforeUrl = await GetCurrentUrlAsync(cancellationToken);
         await SubmitEmailAsync(cancellationToken);
-        return await WaitForSelectorAsync(GetPasswordSelector(), cancellationToken, PasswordStepTimeoutMs);
+        var found = await WaitForSelectorAsync(GetPasswordSelector(), cancellationToken, PasswordStepTimeoutMs);
+        if (!found)
+        {
+            var afterUrl = await GetCurrentUrlAsync(cancellationToken);
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "DirectLogin",
+                "PasswordStepNotReached",
+                "Password field did not appear after submitting the email step",
+                new { before_url = beforeUrl, after_url = afterUrl });
+        }
+
+        return found;
     }
 
     /// <summary>
