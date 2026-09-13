@@ -1,3 +1,4 @@
+using RouterPlus.App.Tests.TestHelpers;
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Providers;
@@ -41,7 +42,7 @@ public sealed class MainViewModelBehaviorTests
         try
         {
             var profile = CreateProfile("Synthetic", "Default", directory);
-            var settingsStore = new SettingsStore(Path.Combine(directory, "settings.json"));
+            var settingsStore = Mocks.CreateSettingsStore(directory);
             await settingsStore.SaveAsync(new RouterSettings(
                 DashboardBaseUrl: "http://synthetic-router",
                 FontScale: 1.25d,
@@ -118,8 +119,7 @@ public sealed class MainViewModelBehaviorTests
         var directory = CreateTempDirectory();
         try
         {
-            var settingsPath = Path.Combine(directory, "settings.json");
-            var store = new SettingsStore(settingsPath);
+            var store = Mocks.CreateSettingsStore(directory);
             var viewModel = new MainViewModel(
                 store,
                 harnessProfiles: Array.Empty<ChromeProfile>(),
@@ -273,12 +273,7 @@ public sealed class MainViewModelBehaviorTests
             userDataDirectory ?? @"C:\Chrome\User Data",
             directoryName == "Default");
 
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "RouterPlusMainViewModelTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
+    private static string CreateTempDirectory() => TestData.CreateTempDirectory();
 
     private sealed class NoOpSecretVault : ISecretVault
     {

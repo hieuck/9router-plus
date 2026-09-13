@@ -1,4 +1,3 @@
-using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -15,21 +14,9 @@ namespace RouterPlus.App.Tests.ViewModels;
 
 public sealed class MainViewModelPublicTests
 {
-    private static string CreateTempDirectory()
-    {
-        var directory = Path.Combine(Path.GetTempPath(), "rp-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        return directory;
-    }
-
-    private static ChromeProfile CreateProfile(string name, string directoryName, string userDataDirectory) =>
-        TestData.CreateProfile(name, directoryName, userDataDirectory);
-
-
-
     private static async Task<MainViewModel> CreateViewModelAsync(string directory, params ChromeProfile[] profiles)
     {
-        var settingsStore = new SettingsStore(Path.Combine(directory, "settings.json"));
+        var settingsStore = Mocks.CreateSettingsStore(directory);
         await settingsStore.SaveAsync(new RouterSettings(DashboardBaseUrl: "http://localhost:20128"));
 
         var viewModel = new MainViewModel(
@@ -41,17 +28,14 @@ public sealed class MainViewModelPublicTests
         return viewModel;
     }
 
-    private static ProviderConnectionVaultStore CreateProviderVault(string directory) =>
-        new(Path.Combine(directory, "provider-connections.vault"));
-
     [Fact]
     public async Task HasVaultCredentialsAsync_returns_true_when_a_provider_has_credentials()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestData.CreateTempDirectory();
         try
         {
-            var profile = CreateProfile("Work", "Default", directory);
-            var vault = CreateProviderVault(directory);
+            var profile = TestData.CreateProfile("Work", "Default", directory);
+            var vault = Mocks.CreateProviderVault(directory);
             await vault.SaveConnectionAsync(new ProviderAuthConnection
             {
                 ProfileName = profile.Name,
@@ -73,10 +57,10 @@ public sealed class MainViewModelPublicTests
     [Fact]
     public async Task HasVaultCredentialsAsync_returns_false_when_no_provider_has_credentials()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestData.CreateTempDirectory();
         try
         {
-            var profile = CreateProfile("Work", "Default", directory);
+            var profile = TestData.CreateProfile("Work", "Default", directory);
             var viewModel = await CreateViewModelAsync(directory, profile);
 
             Assert.False(await viewModel.HasVaultCredentialsAsync(profile, CancellationToken.None));
@@ -90,12 +74,12 @@ public sealed class MainViewModelPublicTests
     [Fact]
     public async Task SelectProfilesWithVaultCredentialsAsync_selects_only_profiles_with_credentials()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestData.CreateTempDirectory();
         try
         {
-            var withCreds = CreateProfile("WithCreds", "Default", directory);
-            var withoutCreds = CreateProfile("WithoutCreds", "Profile 1", directory);
-            var vault = CreateProviderVault(directory);
+            var withCreds = TestData.CreateProfile("WithCreds", "Default", directory);
+            var withoutCreds = TestData.CreateProfile("WithoutCreds", "Profile 1", directory);
+            var vault = Mocks.CreateProviderVault(directory);
             await vault.SaveConnectionAsync(new ProviderAuthConnection
             {
                 ProfileName = withCreds.Name,

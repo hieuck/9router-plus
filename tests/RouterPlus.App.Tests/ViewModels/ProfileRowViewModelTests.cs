@@ -1,3 +1,4 @@
+using RouterPlus.App.Tests.TestHelpers;
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Providers;
@@ -195,7 +196,7 @@ public sealed class ProfileRowViewModelTests
         var viewModel = new ProfileRowViewModel(_testProfile, _providers);
         var connections = new[]
         {
-            new ProviderConnection("conn-id", ProviderKind.Codex, "Profile 1", 1, true)
+            TestData.CreateConnection(ProviderKind.Codex)
         };
 
         // Act
@@ -221,7 +222,7 @@ public sealed class ProfileRowViewModelTests
 
         var connections = new[]
         {
-            new ProviderConnection("conn-id", ProviderKind.Codex, "Profile 1", 1, true)
+            TestData.CreateConnection(ProviderKind.Codex)
         };
 
         // Act
@@ -239,7 +240,7 @@ public sealed class ProfileRowViewModelTests
         var viewModel = new ProfileRowViewModel(_testProfile, _providers);
         var connections = new[]
         {
-            new ProviderConnection("conn-3", ProviderKind.Codex, "Profile 1", 1, true)
+            TestData.CreateConnection(ProviderKind.Codex)
         };
         viewModel.UpdateConnections(connections);
 
