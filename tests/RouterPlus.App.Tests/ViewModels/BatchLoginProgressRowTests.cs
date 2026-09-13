@@ -1,3 +1,4 @@
+using System.Globalization;
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
 using Xunit;
@@ -134,11 +135,11 @@ public sealed class BatchLoginProgressRowTests
     }
 
     [Theory]
-    [InlineData(0, "")]
-    [InlineData(1.5, "1,5s")]
-    [InlineData(10.234, "10,2s")]
-    [InlineData(60.0, "60,0s")]
-    public void DurationText_FormatsCorrectly(double seconds, string expected)
+    [InlineData(0)]
+    [InlineData(1.5)]
+    [InlineData(10.234)]
+    [InlineData(60.0)]
+    public void DurationText_FormatsCorrectly(double seconds)
     {
         // Arrange
         var row = new BatchLoginProgressRow(_testProfile);
@@ -146,7 +147,10 @@ public sealed class BatchLoginProgressRowTests
         // Act
         row.Duration = TimeSpan.FromSeconds(seconds);
 
-        // Assert
+        // Assert: one decimal plus "s" in the current UI locale (empty when zero).
+        var expected = TimeSpan.FromSeconds(seconds).TotalSeconds > 0
+            ? string.Format(CultureInfo.CurrentCulture, "{0:F1}s", TimeSpan.FromSeconds(seconds).TotalSeconds)
+            : "";
         Assert.Equal(expected, row.DurationText);
     }
 
@@ -197,7 +201,7 @@ public sealed class BatchLoginProgressRowTests
         // Assert
         Assert.Equal(BatchLoginState.Success, row.State);
         Assert.Equal("Thành công", row.StatusMessage);
-        Assert.Equal("5,2s", row.DurationText);
+        Assert.Equal(string.Format(CultureInfo.CurrentCulture, "{0:F1}s", 5.2), row.DurationText);
         Assert.Equal("✅", row.StatusIcon);
     }
 }

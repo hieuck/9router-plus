@@ -143,7 +143,14 @@ public sealed class AsyncRelayCommandTests
 
         // Act & Assert - should not throw, exception is caught and logged
         command.Execute(null);
-        await Task.Delay(50); // Give async execution time to complete
+
+        // Poll for completion instead of a fixed delay: on a loaded machine
+        // the command may need more than a few dozen milliseconds.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!command.CanExecute(null) && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
 
         // Command should be executable again after exception
         Assert.True(command.CanExecute(null));
