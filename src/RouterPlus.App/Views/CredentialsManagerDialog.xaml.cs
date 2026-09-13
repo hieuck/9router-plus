@@ -82,6 +82,12 @@ public partial class CredentialsManagerDialog : Window
         }
     }
 
+    private void CopyStatus_Click(object sender, RoutedEventArgs e)
+    {
+        UIEventLogger.LogClick("CredentialsManager.CopyStatus");
+        System.Windows.Clipboard.SetText(_viewModel.StatusMessage ?? string.Empty);
+    }
+
     private async void UnlockVault_Click(object sender, RoutedEventArgs e)
     {
         UIEventLogger.LogClick("CredentialsManager.UnlockVault");
