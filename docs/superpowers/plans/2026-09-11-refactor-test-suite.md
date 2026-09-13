@@ -481,4 +481,28 @@ git commit -m "docs: record final test suite state after refactor"
 - [ ] Không còn file test nào nằm ở `tests/RouterPlus.Core.Tests/Unit/` (thư mục này không còn tồn tại hoặc rỗng).
 - [ ] Không file test nào còn namespace `RouterPlus.Core.Tests;` nếu nó nằm trong thư mục con.
 - [ ] `tests/RouterPlus.Core.Tests/TestHelpers/` chứa `TestData.cs` và `Mocks.cs`.
-- [ ] `git diff --stat src/` rỗng — không có thay đổi nào trong `src/`.
+- [ ] `git diff --stat src/` rỗng — không có thay đổi nào trong `src/` (ngoại lệ sau COMPLETE xem bên dưới).
+
+---
+
+## Bổ sung sau COMPLETE (2026-09-13, 27 commits `abb228b..f46edf3`)
+
+Kế hoạch gốc dừng ở "App.Tests chỉ chạy focused". Phần tiếp theo verify toàn bộ suite + đưa CI về xanh.
+
+**Kết quả verify đầy đủ (local + CI run 34742192903, ~6 phút, 19/19 steps xanh):**
+- `dotnet build RouterPlus.sln` (Release): 0 Warning, 0 Error.
+- Core 970/970 · Infrastructure 532/532 · Updater 57/57 · App.Tests 512/512 (~70s — "full run dài" trước đây là sai: chậm là do các test treo, không phải PBKDF2/DPAPI) · E2E 22/22 — 0 failed, 0 skipped.
+- Publish self-contained `win-x64` (App + Updater) và ZIP artifact thành công trên CI.
+
+**Nhóm fix ngoài kế hoạch:**
+1. Deadlock batch-gate (5 test `*_reports_batch_running`): assert status mà lệnh thật không bao giờ set (mid-batch `Execute` bị gate skip) + teardown treo chờ batch không bao giờ release → assert disabled-while-running + `finally`-release (`811f1b7`).
+2. Setup vault-failure sai (2 test): store ném lỗi cả lúc load nên row không tồn tại → wrapper chỉ ném lúc save trên vault thật (`811f1b7`).
+3. Bug prod thật: parse credit OpenRouter theo `CurrentCulture` (`2.50` → 250 trên máy vi-VN, sai quota auto-disable) → `InvariantCulture` (`94352de`).
+4. Race TCP RST ở fake CDP server → graceful close; fixture `LocalCdpServer` unbounded → CTS 30s + dispose cap 5s, re-enable 4 test, 0 skip (`08b890a`, `bf645ba`, `f46edf3`).
+5. Test phụ thuộc locale/load: `DurationText` assert theo `CurrentCulture`, poll thay delay cứng (`AsyncRelayCommand`, `QuotaPolling`) (`c220f72`, `a12a515`).
+6. E2E: exe path theo configuration build, gate live-test sau `ROUTERPLUS_LIVE_E2E`, checkbox dùng Toggle pattern + focus verify (`1731ff4`, `aca7bb1`, `776bf17`, `27d2445`, `8dc76e0`).
+7. CI: preflight false-positive pattern `AIza` trên fixture synthetic (`8eb7196`), image scan loại `node_modules` (`49393a7`), trx riêng từng project (`5e09fe4`), blame-hang 5m (`bc69564`), bỏ `CODECOV_TOKEN` chết — chính nó làm CI chết lúc khởi động (`ee3962c`), giữ restore graph `win-x64` (`d9c1005`).
+
+**Ngoại lệ so với constraint "không sửa `src/`":** thêm 2 fix prod có lý do (bug thật do test phát hiện, happy path không đổi) — `UsageInferenceService` (`94352de`) và `ChromeCdpClient.DisposeAsync` cap close-handshake 5s (`f46edf3`).
+
+**Bài học:** CI timeout 20 phút che giấu hang — blame-hang 5m + console detailed log cho tín hiệu nhanh hơn nhiều; test treo phải fix bằng bounded-await, không phải tăng timeout.

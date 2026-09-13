@@ -78,3 +78,20 @@ Quy ước: **namespace khớp tên thư mục** (`RouterPlus.Core.Tests.Provide
 | Test đang đỏ bị "sửa" thành test vô nghĩa để xanh | Chỉ sửa assertion khi chứng minh được hành vi mới là hành vi đúng; ghi lý do trong commit |
 | Mất coverage khi gộp file | Không xoá test; chỉ di chuyển và sửa |
 | `dotnet test` chậm (E2E ~5 phút) | Chạy lọc theo project trong vòng lặp, chạy full ở bước cuối |
+
+## Bổ sung sau Wynik końcowy (2026-09-13, sau commit `c58dc2d`)
+
+27 commits tiếp theo (`abb228b..f46edf3`, chi tiết trong plan) đưa toàn bộ suite và CI về xanh, vượt phạm vi kế hoạch gốc:
+
+- `dotnet build RouterPlus.sln` (Release): 0 Warning, 0 Error.
+- `dotnet test` đầy đủ, verify cả local và CI (run 34742192903):
+  - `RouterPlus.Core.Tests` — Passed: 970, Failed: 0
+  - `RouterPlus.Infrastructure.Tests` — Passed: 532, Failed: 0, Skipped: 0
+  - `RouterPlus.Updater.Tests` — Passed: 57, Failed: 0
+  - `RouterPlus.App.Tests` — Passed: 512, Failed: 0 (~70s — kết luận "full run dài" trước đây là sai: chậm là do các test treo, không phải PBKDF2/DPAPI)
+  - `RouterPlus.App.E2E` — Passed: 22, Failed: 0
+- CI 19/19 steps xanh (~6 phút), gồm publish self-contained `win-x64` và ZIP artifact.
+
+Constraint "không sửa `src/`" có thêm 2 ngoại lệ có lý do (bug thật do test phát hiện, happy path không đổi):
+- `UsageInferenceService`: parse credit OpenRouter bằng `InvariantCulture` (trước đây máy vi-VN tính `2.50` thành 250, sai quota auto-disable).
+- `ChromeCdpClient.DisposeAsync`: cap close-handshake 5s (peer không trả lời không được treo teardown).
