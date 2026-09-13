@@ -425,7 +425,7 @@ public sealed class DirectLoginAutomationTests
     public async Task EnsurePasswordStep_SubmitsEmailAndWaits_WhenPasswordHidden()
     {
         // Arrange
-        var client = new FakeCdpClient { Responses = [Result(false), Result(true)] };
+        var client = new FakeCdpClient { Responses = [Result(false), ResultString("https://example.test/identifier"), Result(true)] };
         var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
         {
             SelectorResults = [true]
@@ -436,15 +436,15 @@ public sealed class DirectLoginAutomationTests
 
         // Assert
         Assert.True(result);
-        Assert.Equal(2, client.Calls.Count);
-        Assert.Equal("Click", client.Calls[1].Operation);
+        Assert.Equal(3, client.Calls.Count);
+        Assert.Equal("Click", client.Calls[2].Operation);
     }
 
     [Fact]
     public async Task EnsurePasswordStep_ReturnsFalse_WhenPasswordNeverAppears()
     {
         // Arrange
-        var client = new FakeCdpClient { Responses = [Result(false), Result(true)] };
+        var client = new FakeCdpClient { Responses = [Result(false), ResultString("https://example.test/identifier"), Result(true), ResultString("https://example.test/identifier")] };
         var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
         {
             SelectorResults = [false]
@@ -455,7 +455,7 @@ public sealed class DirectLoginAutomationTests
 
         // Assert
         Assert.False(result);
-        Assert.Equal(2, client.Calls.Count);
+        Assert.Equal(4, client.Calls.Count);
     }
 
     [Fact]
@@ -469,6 +469,7 @@ public sealed class DirectLoginAutomationTests
                 Result(true),
                 Result(true),
                 Result(false),
+                ResultString("https://example.test/identifier"),
                 Result(true),
                 Result(true),
                 Result(true),
@@ -501,7 +502,40 @@ public sealed class DirectLoginAutomationTests
                 Result(true),
                 Result(true),
                 Result(false),
-                Result(true)
+                ResultString("https://example.test/identifier"),
+                Result(true),
+                ResultString("https://example.test/identifier")
+            ]
+        };
+        var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
+        {
+            SelectorResults = [true, false],
+            CompleteResult = false
+        };
+
+        // Act
+        var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Contains("Password", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(["FillEmail"], automation.FilledActions);
+    }
+
+    [Fact]
+    public async Task RunAsync_ReturnsSuccess_WhenSessionCompletesWithoutPasswordStep()
+    {
+        // Arrange: identifier submitted, no password field, but already home.
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                Result(true),
+                Result(true),
+                Result(false),
+                ResultString("https://example.test/identifier"),
+                Result(true),
+                ResultString("https://example.test/identifier")
             ]
         };
         var automation = new ProbeDirectLoginAutomation(client, "session", "target", "user@example.test", "synthetic-password")
@@ -513,8 +547,8 @@ public sealed class DirectLoginAutomationTests
         var result = await automation.RunAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
 
         // Assert
-        Assert.False(result.Success);
-        Assert.Contains("Password", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.Success);
+        Assert.Equal("Login completed", result.Message);
         Assert.Equal(["FillEmail"], automation.FilledActions);
     }
 
@@ -608,6 +642,7 @@ public sealed class DirectLoginAutomationTests
         public List<string> FilledActions { get; } = [];
         public List<TimeSpan> Delays { get; } = [];
         public List<bool> SelectorResults { get; init; } = [];
+        public bool CompleteResult { get; init; } = true;
 
         public Task<bool> IsVisibleAsync(string selector, CancellationToken cancellationToken) => IsElementVisibleAsync(selector, cancellationToken);
         public Task<bool> EnsurePasswordStepPublicAsync(CancellationToken cancellationToken) => EnsurePasswordStepAsync(cancellationToken);
@@ -623,7 +658,7 @@ public sealed class DirectLoginAutomationTests
         protected override string? GetTotpSelector() => "input[name='otp']";
         protected override string GetSubmitSelector() => "button[type='submit']";
 
-        protected override Task<bool> IsLoginCompleteAsync(CancellationToken cancellationToken) => Task.FromResult(true);
+        protected override Task<bool> IsLoginCompleteAsync(CancellationToken cancellationToken) => Task.FromResult(CompleteResult);
 
         protected override async Task<bool> WaitForSelectorAsync(string selector, CancellationToken cancellationToken, int timeoutMs = 5000)
         {
