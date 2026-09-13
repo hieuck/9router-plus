@@ -4,6 +4,11 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 
 ## Unreleased
 
+### Fixed
+
+- **Test suite**: sửa 5 test batch-gate treo `dotnet test` (assert status lệnh thật không bao giờ set khiến teardown chờ batch mãi); căn lại 2 test vault-failure dùng store ném lỗi cả lúc load; sửa race fake CDP server; gate 3 test E2E live sau `ROUTERPLUS_LIVE_E2E=1`.
+- **CI preflight**: bỏ false positive secret-pattern trên fixture API key synthetic; loại `node_modules`/`packages` khỏi quét ảnh release.
+
 ## [v0.2.0] - 2026-08-29
 
 ### Added
