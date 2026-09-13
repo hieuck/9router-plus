@@ -26,5 +26,8 @@
     <ProjectReference Include="..\..\src\RouterPlus.Infrastructure\RouterPlus.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\RouterPlus.Core\RouterPlus.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="TestHelpers\" />
+  </ItemGroup>
 
 </Project>
