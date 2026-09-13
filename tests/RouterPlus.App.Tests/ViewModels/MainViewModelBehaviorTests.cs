@@ -320,4 +320,75 @@ public sealed class MainViewModelBehaviorTests
             Directory.Delete(path, recursive: true);
         }
     }
+
+    [Fact]
+    public void Selecting_profile_raises_start_batch_can_execute_changed()
+    {
+        var viewModel = CreateViewModel(new[] { CreateProfile("Work", "Default") });
+        viewModel.RefreshProfiles();
+
+        Assert.False(viewModel.StartBatchAutoLoginCommand.CanExecute(null));
+
+        var eventFired = false;
+        viewModel.StartBatchAutoLoginCommand.CanExecuteChanged += (_, _) => eventFired = true;
+
+        viewModel.IsMultiSelectMode = true;
+        Assert.Single(viewModel.ProfileRows).IsSelected = true;
+
+        Assert.True(eventFired);
+        Assert.True(viewModel.StartBatchAutoLoginCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Batch_completion_raises_close_progress_can_execute_changed()
+    {
+        var directory = TestData.CreateTempDirectory();
+        try
+        {
+            var profile = TestData.CreateProfile("Synthetic", "Default", directory);
+            var settingsStore = Mocks.CreateSettingsStore(directory);
+            await settingsStore.SaveAsync(new RouterSettings(DashboardBaseUrl: "http://localhost:20128"));
+            var viewModel = new MainViewModel(
+                settingsStore,
+                googleLoginVaultStore: new FakeVaultStore(null),
+                googleLoginVaultPaths: new GoogleAccountVaultPaths(directory),
+                harnessProfiles: new[] { profile },
+                secretVault: new NoOpSecretVault());
+            await viewModel.InitializeAsync();
+
+            var eventFired = false;
+            viewModel.CloseBatchProgressCommand.CanExecuteChanged += (_, _) => eventFired = true;
+
+            viewModel.IsMultiSelectMode = true;
+            Assert.Single(viewModel.ProfileRows).IsSelected = true;
+            Assert.True(viewModel.StartBatchAutoLoginCommand.CanExecute(null));
+
+            viewModel.StartBatchAutoLoginCommand.Execute(null);
+            await WaitForAsync(() => !viewModel.IsBatchLoginRunning);
+            Assert.True(eventFired);
+
+            Assert.True(eventFired);
+            Assert.True(viewModel.CloseBatchProgressCommand.CanExecute(null));
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public void Loading_profiles_raises_check_all_health_can_execute_changed()
+    {
+        var viewModel = CreateViewModel(new[] { CreateProfile("Work", "Default") });
+
+        Assert.False(viewModel.CheckAllProfilesHealthCommand.CanExecute(null));
+
+        var eventFired = false;
+        viewModel.CheckAllProfilesHealthCommand.CanExecuteChanged += (_, _) => eventFired = true;
+
+        viewModel.RefreshProfiles();
+
+        Assert.True(eventFired);
+        Assert.True(viewModel.CheckAllProfilesHealthCommand.CanExecute(null));
+    }
 }

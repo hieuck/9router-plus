@@ -216,7 +216,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SelectProfilesWithVaultCommand = new AsyncRelayCommand(() => SelectProfilesWithVaultCredentialsAsync());
         StartBatchAutoLoginCommand = new AsyncRelayCommand(StartBatchAutoLoginAsync, () => HasSelectedProfiles && !IsBatchLoginRunning);
         StopBatchLoginCommand = new RelayCommand(StopBatchLogin, () => IsBatchLoginRunning);
-        CloseBatchProgressCommand = new RelayCommand(CloseBatchProgress, () => !IsBatchLoginRunning);
+        CloseBatchProgressCommand = new AsyncRelayCommand(() => { CloseBatchProgress(); return Task.CompletedTask; }, () => !IsBatchLoginRunning);
         LaunchSelectedCommand = new AsyncRelayCommand(LaunchSelectedProfileAsync, () => SelectedProfile is not null);
         LaunchProfileCommand = new AsyncRelayCommand<ChromeProfile>(LaunchProfileAsync);
         LaunchRecentCommand = new AsyncRelayCommand<object>(LaunchRecentAsync);
@@ -441,6 +441,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _isMultiSelectMode = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasSelectedProfiles));
+            StartBatchAutoLoginCommand.RaiseCanExecuteChanged();
 
             // Clear selections when exiting multi-select mode
             if (!value)
@@ -1380,7 +1381,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AsyncRelayCommand ConnectOpenRouterOAuthCommand { get; }
     public AsyncRelayCommand StartBatchAutoLoginCommand { get; }
     public RelayCommand StopBatchLoginCommand { get; }
-    public RelayCommand CloseBatchProgressCommand { get; }
+    public AsyncRelayCommand CloseBatchProgressCommand { get; }
 
     public AsyncRelayCommand LaunchSelectedCommand { get; }
     public AsyncRelayCommand<ChromeProfile> LaunchProfileCommand { get; }
@@ -2067,6 +2068,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenProviderDashboardCommand.RaiseCanExecuteChanged();
         TestConnectionCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
+        CheckAllProfilesHealthCommand.RaiseCanExecuteChanged();
     }
 
     private void RefreshHarnessProfiles(string? previousProfileId)
@@ -2091,6 +2093,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenProviderDashboardCommand.RaiseCanExecuteChanged();
         TestConnectionCommand.RaiseCanExecuteChanged();
         WaitForConnectionCommand.RaiseCanExecuteChanged();
+        CheckAllProfilesHealthCommand.RaiseCanExecuteChanged();
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Info,
             "Chrome",
@@ -2265,6 +2268,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(SelectedProfilesText));
         OnPropertyChanged(nameof(AreAllProfilesSelected));
         OnPropertyChanged(nameof(SelectAllButtonText));
+        StartBatchAutoLoginCommand.RaiseCanExecuteChanged();
     }
 
     /// <summary>
@@ -2391,6 +2395,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         // Setup
         IsBatchLoginRunning = true;
         BatchProgressRows.Clear();
+        CloseBatchProgressCommand.RaiseCanExecuteChanged();
         _batchLoginCts = new CancellationTokenSource();
         var ct = _batchLoginCts.Token;
 
@@ -2499,6 +2504,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _batchLoginCts = null;
             StartBatchAutoLoginCommand.RaiseCanExecuteChanged();
             StopBatchLoginCommand.RaiseCanExecuteChanged();
+            CloseBatchProgressCommand.RaiseCanExecuteChanged();
         }
     }
 
