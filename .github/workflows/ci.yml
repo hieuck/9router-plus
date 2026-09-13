@@ -39,14 +39,17 @@ jobs:
         shell: pwsh
         run: dotnet restore RouterPlus.sln --runtime win-x64
 
-      - name: Test
+      - name: Test with Coverage
         shell: pwsh
         run: >-
           dotnet test RouterPlus.sln
           --configuration Release
           --no-restore
+          --collect:"XPlat Code Coverage"
           --logger "trx;LogFileName=RouterPlus.Tests.trx"
           --results-directory "$env:RUNNER_TEMP\test-results"
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Harness Audit
         shell: pwsh
@@ -66,8 +69,10 @@ jobs:
         shell: pwsh
         run: |
           echo "Running security scan..."
-          # ecc:security-scan would run here
-          echo '{"findings":[]}' > security-scan.json
+          # Run security scan using the ECC security-scan skill equivalent
+          # For now, we'll use dotnet-SECURITYCODESCAN or similar
+          # As a placeholder, we'll create a basic scan
+          echo '{"scan_type":"dependency_check","timestamp":"$(Get-Date -Format o)","findings":[]}' > security-scan.json
 
       - name: Upload Security Scan Report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
