@@ -103,6 +103,15 @@ public sealed class QuotaPollingServiceTests
 
         service.Start();
         await refreshFailed.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        // Wait for the fallback delay (and the next cycle) to be scheduled
+        // instead of racing StopAsync against the polling loop: on a loaded
+        // machine StopAsync can win after only the first delay is recorded.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (delays.Count < 2 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
+
         await service.StopAsync();
 
         Assert.Equal([TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)], delays);
