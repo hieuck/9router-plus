@@ -52,6 +52,7 @@ jobs:
           --configuration Release
           --collect:"XPlat Code Coverage"
           --logger "trx;LogFileName=Infrastructure.trx"
+          --logger "console;verbosity=detailed"
           --blame-hang --blame-hang-timeout 5m
           --results-directory "$env:RUNNER_TEMP\test-results" };
           if ($?) { dotnet test tests/RouterPlus.Updater.Tests/RouterPlus.Updater.Tests.csproj
