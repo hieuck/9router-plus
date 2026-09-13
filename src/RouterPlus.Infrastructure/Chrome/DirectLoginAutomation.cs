@@ -113,6 +113,15 @@ public abstract class DirectLoginAutomation
                 "EmailFilled",
                 "Email field filled");
 
+            // Identifier-first pages (e.g. Auth0) only reveal the password
+            // field after the email step is submitted. Advance when needed.
+            if (!await EnsurePasswordStepAsync(cancellationToken))
+            {
+                return new DirectLoginResult(
+                    Success: false,
+                    Message: "Password field did not appear after submitting the email step.");
+            }
+
             // Fill password
             await FillPasswordAsync(cancellationToken);
             await DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
@@ -253,6 +262,35 @@ public abstract class DirectLoginAutomation
     protected virtual async Task SubmitLoginAsync(CancellationToken cancellationToken)
     {
         await ClickAsync(GetSubmitSelector(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Maximum wait for the password field to appear after submitting the
+    /// email/identifier step on two-step login pages.
+    /// </summary>
+    protected virtual int PasswordStepTimeoutMs => 10000;
+
+    /// <summary>
+    /// Submits the email/identifier step to advance to the password step.
+    /// Default reuses the submit action (continue button on identifier pages).
+    /// </summary>
+    protected virtual Task SubmitEmailAsync(CancellationToken cancellationToken) =>
+        SubmitLoginAsync(cancellationToken);
+
+    /// <summary>
+    /// Ensures the password field is showing. Single-page forms already show
+    /// it; identifier-first pages need the email step submitted first.
+    /// Returns false when the password field never appears.
+    /// </summary>
+    protected virtual async Task<bool> EnsurePasswordStepAsync(CancellationToken cancellationToken)
+    {
+        if (await IsElementVisibleAsync(GetPasswordSelector(), cancellationToken))
+        {
+            return true;
+        }
+
+        await SubmitEmailAsync(cancellationToken);
+        return await WaitForSelectorAsync(GetPasswordSelector(), cancellationToken, PasswordStepTimeoutMs);
     }
 
     /// <summary>
