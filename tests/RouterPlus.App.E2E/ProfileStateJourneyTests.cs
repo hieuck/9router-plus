@@ -68,9 +68,15 @@ public sealed class ProfileStateJourneyTests
         {
             driver.EnableMultiSelectMode();
             driver.ClickSelectAll();
+            Retry.WhileFalse(
+                () => driver.ReadProfileCheckboxStates().All(selected => selected),
+                TimeSpan.FromSeconds(5));
             Assert.All(driver.ReadProfileCheckboxStates(), Assert.True);
 
             driver.ClickSelectAll();
+            Retry.WhileFalse(
+                () => driver.ReadProfileCheckboxStates().All(selected => !selected),
+                TimeSpan.FromSeconds(5));
             Assert.All(driver.ReadProfileCheckboxStates(), Assert.False);
         }
         catch
