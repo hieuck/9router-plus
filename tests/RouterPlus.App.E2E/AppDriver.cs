@@ -69,11 +69,22 @@ public sealed class AppDriver
     public void EnableMultiSelectMode()
     {
         _app.Instrumentation.Record("CLICK_MULTI_SELECT");
+        // The Ctrl+A keystroke only lands when the window is foreground.
+        // Without focus the multiselect checkboxes stay collapsed and later
+        // clicks silently no-op on them, so focus first and verify they
+        // actually became visible.
+        _app.MainWindow.Focus();
         FlaUI.Core.Input.Keyboard.TypeSimultaneously(new[]
         {
             FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL,
             FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_A
         });
+        Retry.WhileFalse(
+            () => FindProfileList()
+                .FindAllDescendants(cf => cf.ByControlType(ControlType.CheckBox))
+                .All(box => !box.IsOffscreen),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(250));
     }
 
     public void ClickSelectAll()
