@@ -1,6 +1,7 @@
 # 9Router Profile Tool
 
 [![CI](https://github.com/hieuck/9router-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/hieuck/9router-plus/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/hieuck/9router-plus/main/coverage.json)](https://github.com/hieuck/9router-plus/actions)
 
 Công cụ Windows hỗ trợ mở Chrome profile và thêm connection vào 9Router.
 
