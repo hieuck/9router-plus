@@ -47,7 +47,7 @@ $allowedImagePaths = @(
     (Get-RepositoryPath 'src\RouterPlus.App\Assets\RouterPlus.ico')
 ) | ForEach-Object { [IO.Path]::GetFullPath($_) }
 $releaseImages = Get-ChildItem -Path $repositoryRoot -Recurse -File -Include '*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp', '*.bmp', '*.ico' -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\\(\.git|bin|obj|artifacts|work|\.worktrees|\.bootstrap|\.dotnet)\\' }
+    Where-Object { $_.FullName -notmatch '\\(\.git|bin|obj|artifacts|work|\.worktrees|\.bootstrap|\.dotnet|node_modules|packages)\\' }
 $unexpectedImages = $releaseImages |
     Where-Object { $allowedImagePaths -notcontains [IO.Path]::GetFullPath($_.FullName) }
 if ($unexpectedImages) {
