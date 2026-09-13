@@ -3315,9 +3315,17 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         viewModel.BatchLoginCommand.Execute(null);
         await runnerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(viewModel.CanModifyCredentials);
+        try
+        {
+            Assert.False(viewModel.CanModifyCredentials);
+        }
+        finally
+        {
+            // Always release the runner: without this, a failed assert would
+            // leave the batch task pending and DisposeAsync would hang forever.
+            runnerRelease.TrySetResult(true);
+        }
 
-        runnerRelease.SetResult(true);
         await WaitForAsync(() => !viewModel.IsBatchLoginRunning);
         Assert.True(viewModel.CanModifyCredentials);
     }
