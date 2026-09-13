@@ -44,12 +44,14 @@ jobs:
         run: >-
           dotnet test tests/RouterPlus.Core.Tests/RouterPlus.Core.Tests.csproj
           --configuration Release
+          --no-restore
           --collect:"XPlat Code Coverage"
           --logger "trx;LogFileName=Core.trx"
           --blame-hang --blame-hang-timeout 5m
           --results-directory "$env:RUNNER_TEMP\test-results";
           if ($?) { dotnet test tests/RouterPlus.Infrastructure.Tests/RouterPlus.Infrastructure.Tests.csproj
           --configuration Release
+          --no-restore
           --collect:"XPlat Code Coverage"
           --logger "trx;LogFileName=Infrastructure.trx"
           --logger "console;verbosity=detailed"
@@ -57,18 +59,21 @@ jobs:
           --results-directory "$env:RUNNER_TEMP\test-results" };
           if ($?) { dotnet test tests/RouterPlus.Updater.Tests/RouterPlus.Updater.Tests.csproj
           --configuration Release
+          --no-restore
           --collect:"XPlat Code Coverage"
           --logger "trx;LogFileName=Updater.trx"
           --blame-hang --blame-hang-timeout 5m
           --results-directory "$env:RUNNER_TEMP\test-results" };
           if ($?) { dotnet test tests/RouterPlus.App.Tests/RouterPlus.App.Tests.csproj
           --configuration Release
+          --no-restore
           --collect:"XPlat Code Coverage"
           --logger "trx;LogFileName=App.trx"
           --blame-hang --blame-hang-timeout 5m
           --results-directory "$env:RUNNER_TEMP\test-results" };
           if ($?) { dotnet test tests/RouterPlus.App.E2E/RouterPlus.App.E2E.csproj
           --configuration Release
+          --no-restore
           --collect:"XPlat Code Coverage"
           --logger "trx;LogFileName=E2E.trx"
           --blame-hang --blame-hang-timeout 8m
