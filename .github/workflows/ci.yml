@@ -48,8 +48,6 @@ jobs:
           --collect:"XPlat Code Coverage"
           --logger "trx;LogFileName=RouterPlus.Tests.trx"
           --results-directory "$env:RUNNER_TEMP\test-results"
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Harness Audit
         shell: pwsh
