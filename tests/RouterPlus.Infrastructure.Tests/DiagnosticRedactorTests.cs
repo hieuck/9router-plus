@@ -16,7 +16,7 @@ public sealed class DiagnosticRedactorTests
 
     private const string SyntheticPassword = "S3cret!Passw0rd";
     private const string SyntheticTotp = "471293";
-    private const string SyntheticApiKey = "AIzaSyD-synthetic-api-key-9x";
+    private const string SyntheticApiKey = "synthetic-api-key-9x";
     private const string SyntheticBearer = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
     private const string SyntheticCookie = "sess-abc-4711";
     private const string SyntheticQueryValue = "OAuth2-AuthorizationCode";
