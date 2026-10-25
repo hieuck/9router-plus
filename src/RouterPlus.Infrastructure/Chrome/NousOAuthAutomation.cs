@@ -299,29 +299,27 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
     /// </summary>
     private async Task<bool> HasExactAccountRowAsync(string email, CancellationToken ct)
     {
-        const string script = @"
-(function() {
-    const targetEmail = arguments[0].toLowerCase();
+        var emailJson = System.Text.Json.JsonSerializer.Serialize(email.ToLowerInvariant());
+        var script = $@"
+(function() {{
+    const targetEmail = {emailJson};
     const rows = Array.from(document.querySelectorAll('[data-identifier], [data-email]'));
-    for (const row of rows) {
+    for (const row of rows) {{
         const identifier = (row.getAttribute('data-identifier') || '').toLowerCase();
         const emailAttr = (row.getAttribute('data-email') || '').toLowerCase();
-        if (identifier === targetEmail || emailAttr === targetEmail) {
+        if (identifier === targetEmail || emailAttr === targetEmail) {{
             const rect = row.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-                return true;
-            }
-        }
-    }
+            if (rect.width > 0 && rect.height > 0) return true;
+        }}
+    }}
     return false;
-})()
+}})()
 ";
         try
         {
             var result = await _client.CallAsync("Runtime.evaluate", new
             {
                 expression = script,
-                arguments = new[] { new { value = email } },
                 returnByValue = true
             }, ct, _sessionId);
 

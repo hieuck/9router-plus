@@ -4457,7 +4457,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         await using (vaultSession)
         {
             return vaultSession.Vault.Records.FirstOrDefault(c =>
-                string.Equals(c.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase));
+                string.Equals(c.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase))
+                ?? vaultSession.Vault.Records.FirstOrDefault(c =>
+                    string.Equals(c.Email, profile.Name, StringComparison.OrdinalIgnoreCase));
         }
     }
 
