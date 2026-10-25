@@ -15,7 +15,8 @@ public static class ProviderCatalog
                 "codex",
                 "Codex",
                 "✨",
-                "CX"),
+                "CX",
+                "https://chatgpt.com/"),
             [ProviderKind.Kiro] = new(
                 ProviderKind.Kiro,
                 "Kiro",
@@ -26,7 +27,8 @@ public static class ProviderCatalog
                 "kiro",
                 "Kiro",
                 "🚀",
-                "KI"),
+                "KI",
+                "https://kiro.dev/"),
             [ProviderKind.OpenRouter] = new(
                 ProviderKind.OpenRouter,
                 "OpenRouter",
@@ -37,7 +39,8 @@ public static class ProviderCatalog
                 "openrouter",
                 "OpenR",
                 "🧠",
-                "OR"),
+                "OR",
+                "https://openrouter.ai/"),
             [ProviderKind.Ollama] = new(
                 ProviderKind.Ollama,
                 "Ollama Cloud",
@@ -70,7 +73,8 @@ public static class ProviderCatalog
                 "nous",
                 "Nous",
                 "🔭",
-                "NS")
+                "NS",
+                "https://portal.nousresearch.com/")
         };
 
     private static readonly IReadOnlyDictionary<string, ProviderKind> ApiAliases =
@@ -78,6 +82,12 @@ public static class ProviderCatalog
             definition => definition.Value.ApiAlias,
             definition => definition.Value.Kind,
             StringComparer.OrdinalIgnoreCase);
+
+    private static readonly IReadOnlyDictionary<ProviderKind, Uri> DirectLoginOnlyUrls =
+        new Dictionary<ProviderKind, Uri>
+        {
+            [ProviderKind.GitHub] = new Uri("https://github.com/login")
+        };
 
     public static IReadOnlyList<ProviderDefinition> All { get; } =
         Definitions.Values.OrderBy(definition => definition.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -96,5 +106,22 @@ public static class ProviderCatalog
         }
 
         return ApiAliases.TryGetValue(alias.Trim(), out kind);
+    }
+
+    public static Uri? GetDirectLoginStartUri(ProviderKind kind)
+    {
+        if (Definitions.TryGetValue(kind, out var definition) &&
+            !string.IsNullOrWhiteSpace(definition.DirectLoginStartUrl) &&
+            Uri.TryCreate(definition.DirectLoginStartUrl, UriKind.Absolute, out var uri))
+        {
+            return uri;
+        }
+
+        if (DirectLoginOnlyUrls.TryGetValue(kind, out var directUri))
+        {
+            return directUri;
+        }
+
+        return null;
     }
 }

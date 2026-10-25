@@ -2617,15 +2617,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     private static Uri GetProviderLoginUri(ProviderKind provider)
     {
-        return provider switch
-        {
-            ProviderKind.Codex => new Uri("https://chatgpt.com/"),
-            ProviderKind.Kiro => new Uri("https://view.awsapps.com/"),
-            ProviderKind.GitHub => new Uri("https://github.com/login"),
-            ProviderKind.OpenRouter => new Uri("https://openrouter.ai/"),
-            ProviderKind.Nous => new Uri("https://portal.nousresearch.com/"),
-            _ => new Uri("https://chatgpt.com/")
-        };
+        return ProviderCatalog.GetDirectLoginStartUri(provider) ?? new Uri("https://chatgpt.com/");
     }
 
     private void Profiles_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)

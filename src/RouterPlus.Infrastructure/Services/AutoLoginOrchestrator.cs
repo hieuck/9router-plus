@@ -304,14 +304,7 @@ public sealed class AutoLoginOrchestrator
 
     private Uri GetProviderLoginUrl(ProviderKind provider, Uri fallback)
     {
-        return provider switch
-        {
-            ProviderKind.Codex => new Uri("https://chatgpt.com/"),
-            ProviderKind.Kiro => new Uri("https://kiro.dev/"),
-            ProviderKind.GitHub => new Uri("https://github.com/login"),
-            ProviderKind.OpenRouter => new Uri("https://openrouter.ai/"),
-            _ => fallback
-        };
+        return ProviderCatalog.GetDirectLoginStartUri(provider) ?? fallback;
     }
 }
 

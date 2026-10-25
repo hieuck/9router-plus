@@ -28,7 +28,8 @@ public sealed record ProviderDefinition(
     string ApiAlias,
     string ShortDisplayName,
     string Glyph,
-    string ShortCode)
+    string ShortCode,
+    string? DirectLoginStartUrl = null)
 {
     public string BuildDashboardUrl(string dashboardBaseUrl)
     {

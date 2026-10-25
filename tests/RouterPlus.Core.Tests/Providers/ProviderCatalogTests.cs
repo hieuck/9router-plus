@@ -182,4 +182,48 @@ public sealed class ProviderCatalogTests
         Assert.True(ProviderCatalog.TryGetByApiAlias("  codex  ", out var kind));
         Assert.Equal(ProviderKind.Codex, kind);
     }
+
+    [Theory]
+    [InlineData(ProviderKind.Codex, "https://chatgpt.com/")]
+    [InlineData(ProviderKind.Kiro, "https://kiro.dev/")]
+    [InlineData(ProviderKind.OpenRouter, "https://openrouter.ai/")]
+    [InlineData(ProviderKind.Nous, "https://portal.nousresearch.com/")]
+    [InlineData(ProviderKind.GitHub, "https://github.com/login")]
+    public void GetDirectLoginStartUri_returns_expected_url(ProviderKind kind, string expected)
+    {
+        var uri = ProviderCatalog.GetDirectLoginStartUri(kind);
+
+        Assert.NotNull(uri);
+        Assert.Equal(expected, uri!.ToString());
+    }
+
+    [Theory]
+    [InlineData(ProviderKind.Ollama)]
+    [InlineData(ProviderKind.Kimchi)]
+    public void GetDirectLoginStartUri_returns_null_for_non_direct_login_providers(ProviderKind kind)
+    {
+        Assert.Null(ProviderCatalog.GetDirectLoginStartUri(kind));
+    }
+
+    [Fact]
+    public void GetDirectLoginStartUri_does_not_throw_for_unknown_provider_kind()
+    {
+        var unknownKind = (ProviderKind)999;
+
+        var uri = ProviderCatalog.GetDirectLoginStartUri(unknownKind);
+
+        Assert.Null(uri);
+    }
+
+    [Fact]
+    public void All_does_not_contain_GitHub()
+    {
+        Assert.DoesNotContain(ProviderCatalog.All, definition => definition.Kind == ProviderKind.GitHub);
+    }
+
+    [Fact]
+    public void TryGetByApiAlias_returns_false_for_github()
+    {
+        Assert.False(ProviderCatalog.TryGetByApiAlias("github", out _));
+    }
 }
