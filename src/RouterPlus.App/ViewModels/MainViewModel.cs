@@ -117,7 +117,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _quotaMarkersLoaded;
     private readonly SemaphoreSlim _connectionRefreshGate = new(1, 1);
     private readonly QuotaPollingService _quotaPollingService;
-    private readonly IProviderConnectionService _connectionService;    private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
+    private readonly IProviderConnectionService _connectionService;
+    private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
     private bool _isMultiSelectMode;
     private CancellationTokenSource? _batchLoginCts;
     private readonly object _initializationLock = new();
@@ -166,7 +167,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 useOriginalProfile: true));
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         _profileManager = profileManager ?? new ProfileManager(_chromeLocator, _profileReader);
-        _connectionService = connectionService ?? new ProviderConnectionService();        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _connectionService = connectionService ?? new ProviderConnectionService();
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
         _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
         _runStartupUpdateCheck = runStartupUpdateCheck;
@@ -2819,27 +2821,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 "ConnectionsLoaded",
                 "Provider connections loaded",
                 new { connection_count = connections.Count });
-            _lastReliableNearLimit = connections.Any(connection =>
-                connection.QuotaRows.Count > 0 && connection.IsNearLimit);
+            _lastReliableNearLimit = refreshResult.NearLimit;
 
             var disableFailures = refreshResult.DisableFailures.Count;
-            foreach (var disabledConnectionId in refreshResult.DisabledConnectionIds)
+            foreach (var disabledConnection in refreshResult.DisabledConnections)
             {
-                var disabledConnection = connections.FirstOrDefault(connection =>
-                    string.Equals(connection.Id, disabledConnectionId, StringComparison.Ordinal));
-                if (disabledConnection is not null)
-                {
-                    UpsertQuotaAutoDisableMarker(disabledConnection);
-                }
+                UpsertQuotaAutoDisableMarker(disabledConnection);
             }
-            if (refreshResult.DisabledConnectionIds.Count > 0)
+            if (refreshResult.DisabledConnections.Count > 0)
             {
                 await SaveQuotaAutoDisableMarkersAsync(cancellationToken);
             }
 
             foreach (var failure in refreshResult.DisableFailures)
             {
-                AppendLog("WARN", $"Không thể tự tắt connection {failure.ConnectionId}: {failure.Error}");
+                AppendLog("WARN", $"Không thể tự tắt connection {failure.ConnectionId}: {SafeError(failure.Exception)}");
+            }
+
+            if (refreshResult.FollowUpRefreshException is not null)
+            {
+                throw refreshResult.FollowUpRefreshException;
             }
 
             await UpdateQuotaResetSuggestionsAsync(connections, cancellationToken);

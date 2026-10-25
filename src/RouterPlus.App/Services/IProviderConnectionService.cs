@@ -3,12 +3,14 @@ using RouterPlus.Infrastructure.Router;
 
 namespace RouterPlus.App.Services;
 
-public sealed record ConnectionDisableFailure(string ConnectionId, string Error);
+public sealed record ConnectionDisableFailure(string ConnectionId, Exception Exception);
 
 public sealed record ConnectionRefreshResult(
     IReadOnlyList<ProviderConnection> Connections,
-    IReadOnlyList<string> DisabledConnectionIds,
-    IReadOnlyList<ConnectionDisableFailure> DisableFailures);
+    IReadOnlyList<ProviderConnection> DisabledConnections,
+    IReadOnlyList<ConnectionDisableFailure> DisableFailures,
+    bool NearLimit,
+    Exception? FollowUpRefreshException);
 
 public interface IProviderConnectionService
 {

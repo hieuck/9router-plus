@@ -15,15 +15,18 @@ public sealed class ProviderConnectionService : IProviderConnectionService
         }
 
         var api = await apiFactory();
-        var connections = await api.ListAllConnectionsAsync(cancellationToken);
+        var initialConnections = await api.ListAllConnectionsAsync(cancellationToken, includeQuotas: true);
 
-        var exhaustedConnections = connections
+        var nearLimit = initialConnections.Any(connection =>
+            connection.QuotaRows.Count > 0 && connection.IsNearLimit);
+
+        var exhaustedConnections = initialConnections
             .Where(connection =>
                 connection.IsActive &&
                 QuotaAutoDisablePolicy.CanAutoDisable(connection))
             .ToArray();
 
-        var disabledConnectionIds = new List<string>();
+        var disabledConnections = new List<ProviderConnection>();
         var disableFailures = new List<ConnectionDisableFailure>();
 
         foreach (var connection in exhaustedConnections)
@@ -34,7 +37,7 @@ public sealed class ProviderConnectionService : IProviderConnectionService
                     connection.Id,
                     isActive: false,
                     cancellationToken: cancellationToken);
-                disabledConnectionIds.Add(connection.Id);
+                disabledConnections.Add(connection);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -42,18 +45,34 @@ public sealed class ProviderConnectionService : IProviderConnectionService
             }
             catch (Exception exception)
             {
-                disableFailures.Add(new ConnectionDisableFailure(connection.Id, exception.Message));
+                disableFailures.Add(new ConnectionDisableFailure(connection.Id, exception));
             }
         }
 
+        var connections = initialConnections;
+        Exception? followUpRefreshException = null;
+
         if (exhaustedConnections.Length > 0)
         {
-            connections = await api.ListAllConnectionsAsync(cancellationToken);
+            try
+            {
+                connections = await api.ListAllConnectionsAsync(cancellationToken, includeQuotas: true);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                followUpRefreshException = exception;
+            }
         }
 
         return new ConnectionRefreshResult(
             connections,
-            disabledConnectionIds,
-            disableFailures);
+            disabledConnections,
+            disableFailures,
+            nearLimit,
+            followUpRefreshException);
     }
 }
