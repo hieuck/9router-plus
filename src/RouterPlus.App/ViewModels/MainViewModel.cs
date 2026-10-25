@@ -38,14 +38,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ISecretVault _secretVault;
     private readonly IGoogleAccountVaultStore _googleLoginVaultStore;
     private readonly GoogleAccountVaultPaths _googleLoginVaultPaths;
-    private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
+    private readonly IProviderConnectionVaultStore _providerConnectionVaultStore;
     private ProfileHealthService _profileHealthService;
     private GoogleAccountVault? _googleAccountVault;
 
     // Internal access for CredentialsManagerViewModel
     internal IGoogleAccountVaultStore GoogleAccountVaultStore => _googleLoginVaultStore;
     internal GoogleAccountVaultPaths GoogleAccountVaultPaths => _googleLoginVaultPaths;
-    internal ProviderConnectionVaultStore ProviderConnectionVaultStore => _providerConnectionVaultStore;
+    internal IProviderConnectionVaultStore ProviderConnectionVaultStore => _providerConnectionVaultStore;
     internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginAutomation => _googleLoginAutomation;
     internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginHealthCheckAutomation => _googleLoginHealthCheckAutomation;
     internal Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> CodexLoginAutomation => _codexLoginAutomation;

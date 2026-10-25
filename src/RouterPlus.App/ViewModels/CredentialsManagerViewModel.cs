@@ -8,6 +8,7 @@ using RouterPlus.Core.Providers;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Security;
 using RouterPlus.Core.Observability;
+using RouterPlus.App.Services;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Infrastructure.Security;
 
@@ -22,7 +23,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 {
     private readonly MainViewModel _mainViewModel;
     private readonly IGoogleAccountVaultStore _googleAccountVaultStore;
-    private readonly ProviderConnectionVaultStore _providerConnectionVaultStore;
+    private readonly IProviderConnectionVaultStore _providerConnectionVaultStore;
+    private readonly IProviderConnectionRowService _providerConnectionRowService;
     private readonly GoogleAccountVaultPaths _vaultPaths;
     // Compatibility seam: MainViewModel composes this runner from the shared
     // IGoogleAuthenticationService and owns the Chrome/browser lifetime.
@@ -50,15 +52,17 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     public CredentialsManagerViewModel(
         MainViewModel mainViewModel,
         IGoogleAccountVaultStore googleAccountVaultStore,
-        ProviderConnectionVaultStore providerConnectionVaultStore,
+        IProviderConnectionVaultStore providerConnectionVaultStore,
         GoogleAccountVaultPaths vaultPaths,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleAuthenticationRunner,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleHealthCheckRunner,
-        Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> codexAuthenticationRunner)
+        Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> codexAuthenticationRunner,
+        IProviderConnectionRowService? providerConnectionRowService = null)
     {
         _mainViewModel = mainViewModel ?? throw new ArgumentNullException(nameof(mainViewModel));
         _googleAccountVaultStore = googleAccountVaultStore ?? throw new ArgumentNullException(nameof(googleAccountVaultStore));
         _providerConnectionVaultStore = providerConnectionVaultStore ?? throw new ArgumentNullException(nameof(providerConnectionVaultStore));
+        _providerConnectionRowService = providerConnectionRowService ?? new ProviderConnectionRowService(_providerConnectionVaultStore);
         _vaultPaths = vaultPaths ?? throw new ArgumentNullException(nameof(vaultPaths));
         _runGoogleAuthentication = googleAuthenticationRunner ?? throw new ArgumentNullException(nameof(googleAuthenticationRunner));
         _runGoogleHealthCheck = googleHealthCheckRunner ?? throw new ArgumentNullException(nameof(googleHealthCheckRunner));
@@ -530,11 +534,10 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         foreach (var profile in _mainViewModel.FilteredProfiles)
         {
+            var rowData = await _providerConnectionRowService.LoadAsync(profile, CancellationToken.None);
+
             // Load Codex with full inline editing support
-            var codexConnection = await _providerConnectionVaultStore.GetConnectionAsync(
-                profile.Name,
-                ProviderKind.Codex,
-                CancellationToken.None);
+            var codexConnection = rowData.CodexConnection;
 
             var codexRow = new CodexConnectionRowViewModel
             {
@@ -570,19 +573,21 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
             CodexConnections.Add(codexRow);
 
             // Load other providers with full inline editing support
-            var providers = new[]
+            foreach (var item in rowData.ProviderConnections)
             {
-                (ProviderKind.Kiro, KiroConnections),
-                (ProviderKind.GitHub, GitHubConnections),
-                (ProviderKind.OpenRouter, OpenRouterConnections)
-            };
+                var collection = item.Kind switch
+                {
+                    ProviderKind.Kiro => KiroConnections,
+                    ProviderKind.GitHub => GitHubConnections,
+                    ProviderKind.OpenRouter => OpenRouterConnections,
+                    _ => null
+                };
+                if (collection is null)
+                {
+                    continue;
+                }
 
-            foreach (var (kind, collection) in providers)
-            {
-                var connection = await _providerConnectionVaultStore.GetConnectionAsync(
-                    profile.Name,
-                    kind,
-                    CancellationToken.None);
+                var connection = item.Connection;
 
                 var row = new ProviderConnectionRowViewModel
                 {

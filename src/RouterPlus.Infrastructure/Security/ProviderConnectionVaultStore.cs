@@ -24,7 +24,7 @@ namespace RouterPlus.Infrastructure.Security;
 /// File: provider-connections.vault (DPAPI encrypted)
 /// User request: "dùng ProviderConnectionVaultStore" - Phase 1 Step 1.2
 /// </summary>
-public sealed class ProviderConnectionVaultStore : VaultStoreBase
+public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConnectionVaultStore
 {
     private static readonly byte[] DpapiEntropy = Encoding.UTF8.GetBytes("9RouterPlus.ProviderConnectionVault.v1");
 
