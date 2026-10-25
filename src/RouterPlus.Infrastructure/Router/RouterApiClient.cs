@@ -611,7 +611,7 @@ public sealed class RouterApiClient : IRouterApiClient
             return result;
         }
 
-        const int maxConcurrency = 16;
+        const int maxConcurrency = 64; // bounds sockets while keeping 276-connection full refresh near previous 14-20s (16 measured ~32s)
         using var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
 
         // Create throttled tasks: each task acquires the semaphore BEFORE starting the HTTP call

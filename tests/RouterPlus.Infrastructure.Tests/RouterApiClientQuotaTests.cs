@@ -593,10 +593,10 @@ public class RouterApiClientQuotaTests
     }
 
     [Fact]
-    public async Task FetchAllQuotasAsync_ConcurrencyIsBoundedTo16()
+    public async Task FetchAllQuotasAsync_ConcurrencyIsBoundedTo64()
     {
         // Arrange - use a custom handler that supports true async concurrency
-        var connectionCount = 50;
+        var connectionCount = 128;
         var connectionElements = Enumerable.Range(1, connectionCount)
             .Select(i => $"{{\"id\":\"conn-{i}\",\"provider\":\"codex\",\"name\":\"Test {i}\",\"priority\":1}}");
         var connectionsJson = $$"""
@@ -637,14 +637,22 @@ public class RouterApiClientQuotaTests
         // Act
         var listTask = client.ListAllConnectionsAsync(CancellationToken.None, includeQuotas: true);
 
-        // Wait for all quota requests to start, releasing completions as we go to avoid deadlock
-        // (semaphore limits to 16 concurrent, so we must allow completions to free up slots)
-        var startedCount = 0;
-        while (startedCount < connectionCount)
+        // Wait for the first 64 requests to start (fills the cap) without releasing completions.
+        for (var i = 0; i < 64; i++)
         {
             await requestStarted.WaitAsync(TimeSpan.FromSeconds(10));
-            startedCount++;
-            // Release one completion to allow the next batch to start
+        }
+
+        // Release completions one at a time to let the remaining 64 start, keeping peak at cap.
+        for (var i = 64; i < connectionCount; i++)
+        {
+            allowCompletion.Release();
+            await requestStarted.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        // Release the remaining in-flight completions so the run can finish.
+        for (var i = 0; i < 64; i++)
+        {
             allowCompletion.Release();
         }
 
@@ -652,9 +660,9 @@ public class RouterApiClientQuotaTests
 
         // Assert
         Assert.Equal(connectionCount, connections.Count);
-        // Concurrency should be bounded to 16 (not serialized = 1, not unbounded = 50)
-        Assert.True(peakConcurrency > 1, $"Expected concurrency > 1, got {peakConcurrency}");
-        Assert.True(peakConcurrency <= 16, $"Expected concurrency <= 16, got {peakConcurrency}");
+        // Concurrency is no longer capped at 16 and is bounded at 64
+        Assert.True(peakConcurrency > 16, $"Expected concurrency > 16, got {peakConcurrency}");
+        Assert.True(peakConcurrency <= 64, $"Expected concurrency <= 64, got {peakConcurrency}");
     }
 
     private sealed class ConcurrencyTrackingHandler(
