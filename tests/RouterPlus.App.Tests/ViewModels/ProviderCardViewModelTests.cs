@@ -43,7 +43,7 @@ public sealed class ProviderCardViewModelTests
     }
 
     [Fact]
-    public void ShortCode_MatchesDefinition()
+    public void ShortCode_DelegatesToDefinition()
     {
         var definition = new ProviderDefinition(
             ProviderKind.Codex,
@@ -74,10 +74,11 @@ public sealed class ProviderCardViewModelTests
     [InlineData(ProviderKind.OpenRouter, "OR")]
     [InlineData(ProviderKind.Ollama, "OL")]
     [InlineData(ProviderKind.Kimchi, "KM")]
+    [InlineData(ProviderKind.Nous, "NS")]
     public void ShortCode_ReturnsCorrectCodeForProvider(ProviderKind kind, string expectedCode)
     {
         // Arrange
-        var definition = new ProviderDefinition(kind, "Test", "/dash", "https://test.com", WorkflowKind.OAuth, false, "test", "Test", "*", expectedCode);
+        var definition = ProviderCatalog.Get(kind);
         var viewModel = new ProviderCardViewModel(definition);
 
         // Act

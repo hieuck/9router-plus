@@ -153,4 +153,33 @@ public sealed class ProviderCatalogTests
     {
         Assert.False(ProviderCatalog.TryGetByApiAlias(alias, out _));
     }
+
+    [Theory]
+    [InlineData(ProviderKind.Codex, "codex", "Codex", "✨", "CX")]
+    [InlineData(ProviderKind.Kiro, "kiro", "Kiro", "🚀", "KI")]
+    [InlineData(ProviderKind.OpenRouter, "openrouter", "OpenR", "🧠", "OR")]
+    [InlineData(ProviderKind.Ollama, "ollama", "Ollama", "🦙", "OL")]
+    [InlineData(ProviderKind.Kimchi, "kimchi", "Kimchi", "🌿", "KM")]
+    [InlineData(ProviderKind.Nous, "nous", "Nous", "🔭", "NS")]
+    public void Catalog_exposes_exact_provider_metadata(
+        ProviderKind kind,
+        string expectedApiAlias,
+        string expectedShortDisplayName,
+        string expectedGlyph,
+        string expectedShortCode)
+    {
+        var definition = ProviderCatalog.Get(kind);
+
+        Assert.Equal(expectedApiAlias, definition.ApiAlias);
+        Assert.Equal(expectedShortDisplayName, definition.ShortDisplayName);
+        Assert.Equal(expectedGlyph, definition.Glyph);
+        Assert.Equal(expectedShortCode, definition.ShortCode);
+    }
+
+    [Fact]
+    public void TryGetByApiAlias_trims_padded_input()
+    {
+        Assert.True(ProviderCatalog.TryGetByApiAlias("  codex  ", out var kind));
+        Assert.Equal(ProviderKind.Codex, kind);
+    }
 }
