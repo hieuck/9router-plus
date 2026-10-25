@@ -118,6 +118,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly SemaphoreSlim _connectionRefreshGate = new(1, 1);
     private readonly QuotaPollingService _quotaPollingService;
     private readonly IProviderConnectionService _connectionService;
+    private readonly IProviderApiKeyService _providerApiKeyService;
     private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
     private bool _isMultiSelectMode;
     private CancellationTokenSource? _batchLoginCts;
@@ -146,7 +147,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Func<ChromeProfile, string, Task>? launchUrl = null,
         Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>>? launchManagedChrome = null,
         IProfileManager? profileManager = null,
-        IProviderConnectionService? connectionService = null)
+        IProviderConnectionService? connectionService = null,
+        IProviderApiKeyService? providerApiKeyService = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
@@ -168,6 +170,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         _profileManager = profileManager ?? new ProfileManager(_chromeLocator, _profileReader);
         _connectionService = connectionService ?? new ProviderConnectionService();
+        _providerApiKeyService = providerApiKeyService ?? new ProviderApiKeyService(_secretVault);
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
         _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
@@ -3141,50 +3144,38 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            var api = await CreateApiClientAsync();
-            var existing = await api.ListConnectionsAsync(provider, CancellationToken.None, includeQuotas: false);
-            var existingConnection = existing.FirstOrDefault(connection =>
-                string.Equals(connection.Name?.Trim(), profile.Name.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (existingConnection is not null)
-            {
-                await api.UpdateConnectionAsync(existingConnection.Id, name: profile.Name, apiKey: apiKey);
-                await _secretVault.StoreAsync(ProfileSecretKey.Create(profile, provider), apiKey);
-                if (Equals(SelectedProfile, profile))
-                {
-                    var existingCard = GetProviderCard(provider);
-                    existingCard.ApiKeyValue = apiKey;
-                    existingCard.MarkApiKeySaved();
-                }
-                var existingTestResult = await api.TestConnectionAsync(existingConnection.Id);
-                var updateMessage = existingTestResult.Valid
-                    ? $"{definition.DisplayName} key updated in 9Router for {profile.Name}; local key saved."
-                    : $"{definition.DisplayName} key saved for {profile.Name}, but the connection test failed.";
-                StatusText = updateMessage;
-                ShowToast(updateMessage, existingTestResult.Valid ? ToastType.Success : ToastType.Warning, 5);
-                // Background refresh after UI feedback
-                await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true);
-                return true;
-            }
-
-            var priority = PriorityCalculator.Next(existing);
-            var created = await api.AddApiKeyConnectionAsync(
+            async Task<IRouterApiClient> CreateApiClientWrapper() => await CreateApiClientAsync();
+            var serviceResult = await _providerApiKeyService.AddOrUpdateAsync(
                 provider,
-                profile.Name,
                 apiKey,
-                priority);
-            await _secretVault.StoreAsync(ProfileSecretKey.Create(profile, provider), apiKey);
+                profile,
+                CreateApiClientWrapper,
+                CancellationToken.None);
+
             if (Equals(SelectedProfile, profile))
             {
                 var card = GetProviderCard(provider);
                 card.ApiKeyValue = apiKey;
                 card.MarkApiKeySaved();
             }
-            var createdTestResult = await api.TestConnectionAsync(created.Id);
-            var createMessage = createdTestResult.Valid
-                ? $"Đã thêm {definition.DisplayName} cho {profile.Name}, priority {created.Priority}."
-                : $"Đã lưu {definition.DisplayName} cho {profile.Name}, nhưng kiểm tra kết nối thất bại.";
-            StatusText = createMessage;
-            ShowToast(createMessage, createdTestResult.Valid ? ToastType.Success : ToastType.Warning, 5);
+
+            var connection = serviceResult.Connection;
+            var testResult = serviceResult.TestResult;
+            string message;
+            if (serviceResult.Created)
+            {
+                message = testResult.Valid
+                    ? $"Đã thêm {definition.DisplayName} cho {profile.Name}, priority {connection.Priority}."
+                    : $"Đã lưu {definition.DisplayName} cho {profile.Name}, nhưng kiểm tra kết nối thất bại.";
+            }
+            else
+            {
+                message = testResult.Valid
+                    ? $"{definition.DisplayName} key updated in 9Router for {profile.Name}; local key saved."
+                    : $"{definition.DisplayName} key saved for {profile.Name}, but the connection test failed.";
+            }
+            StatusText = message;
+            ShowToast(message, testResult.Valid ? ToastType.Success : ToastType.Warning, 5);
             // Background refresh after UI feedback
             await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true);
             return true;
