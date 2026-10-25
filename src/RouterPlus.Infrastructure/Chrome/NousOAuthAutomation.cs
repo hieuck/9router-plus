@@ -250,37 +250,25 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
                providerState.HasConnectButton;
     }
 
-    protected override async Task<bool> TryClickProviderConsentButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
+    /// <summary>
+    /// Trusted click via CDP Input.dispatchMouseEvent at element center.
+    /// Returns true if element found and click dispatched.
+    /// </summary>
+    private async Task<bool> TryTrustedClickAsync(
+        string jsFinderScript,
+        string eventName,
+        string logMessage,
+        CancellationToken cancellationToken)
     {
-        ObservabilityHub.Instance.LogEvent(
-            LogLevel.Info,
-            "NousOAuth",
-            "ClickingConnectButton",
-            "Clicking Connect button on Nous portal",
-            new { url = state.CurrentUrl });
-
-        const string script = @"
+        // Step 1: Find element and get its center coordinates
+        string findScript = @"
 (function() {
     const isVisible = el => {
         if (!el) return false;
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     };
-    const buttons = Array.from(document.querySelectorAll('button, a, [role=""button""]')).filter(btn => {
-        if (!isVisible(btn)) return false;
-        // Exclude headings
-        if (btn.tagName === 'H1' || btn.tagName === 'H2' || btn.tagName === 'H3') return false;
-        const text = (btn.innerText || '').trim().toLowerCase();
-        return text.includes('connect hermes') ||
-               text.includes('connect nous') ||
-               text.includes('connect as') ||
-               text === 'connect' ||
-               text.includes('authorize');
-    });
-    if (buttons.length > 0) {
-        buttons[0].click();
-        return true;
-    }
+" + jsFinderScript + @"
     return false;
 })()
 ";
@@ -289,20 +277,55 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         {
             var result = await _client.CallAsync("Runtime.evaluate", new
             {
-                expression = script,
+                expression = findScript,
                 returnByValue = true
             }, cancellationToken, _sessionId);
 
-            if (result.TryGetProperty("result", out var resultProp) &&
-                resultProp.TryGetProperty("value", out var clickedProp) &&
-                clickedProp.GetBoolean())
+            if (!result.TryGetProperty("result", out var resultProp) ||
+                !resultProp.TryGetProperty("value", out var valueProp))
             {
+                return false;
+            }
+
+            // Expected return: { found: true, x: number, y: number } or false
+            if (valueProp.ValueKind == System.Text.Json.JsonValueKind.False)
+            {
+                return false;
+            }
+
+            if (valueProp.TryGetProperty("found", out var foundProp) && foundProp.GetBoolean() &&
+                valueProp.TryGetProperty("x", out var xProp) &&
+                valueProp.TryGetProperty("y", out var yProp))
+            {
+                double x = xProp.GetDouble();
+                double y = yProp.GetDouble();
+
+                // Step 2: Dispatch trusted mouse events via CDP
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mousePressed",
+                    x,
+                    y,
+                    button = "left",
+                    clickCount = 1
+                }, cancellationToken, _sessionId);
+
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseReleased",
+                    x,
+                    y,
+                    button = "left",
+                    clickCount = 1
+                }, cancellationToken, _sessionId);
+
                 ObservabilityHub.Instance.LogEvent(
                     LogLevel.Info,
                     "NousOAuth",
-                    "ConnectButtonClicked",
-                    "Connect button clicked on Nous portal",
-                    new { url = state.CurrentUrl });
+                    eventName,
+                    logMessage,
+                    new { x, y });
+
                 return true;
             }
 
@@ -314,9 +337,45 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         }
     }
 
+    protected override async Task<bool> TryClickProviderConsentButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
+    {
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "NousOAuth",
+            "ClickingConnectButton",
+            "Clicking Connect button on Nous portal",
+            new { url = state.CurrentUrl });
+
+        const string finderScript = @"
+    // Find the connect button (same filters as ReadProviderPageStateAsync)
+    const buttons = Array.from(document.querySelectorAll('button, a, [role=""button""]')).filter(btn => {
+        if (!isVisible(btn)) return false;
+        if (btn.tagName === 'H1' || btn.tagName === 'H2' || btn.tagName === 'H3') return false;
+        const text = (btn.innerText || '').trim().toLowerCase();
+        return text.includes('connect hermes') ||
+               text.includes('connect nous') ||
+               text.includes('connect as') ||
+               text === 'connect' ||
+               text.includes('authorize');
+    });
+    if (buttons.length > 0) {
+        const btn = buttons[0];
+        const rect = btn.getBoundingClientRect();
+        return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+";
+
+        return await TryTrustedClickAsync(
+            finderScript,
+            "ConnectButtonClicked",
+            "Connect button clicked on Nous portal (trusted click)",
+            cancellationToken);
+    }
+
     /// <summary>
     /// Override account picker for Nous: dedicated retry that polls for the account row to appear,
     /// without the base fallback that can click "use another account".
+    /// Uses trusted CDP click at element center.
     /// </summary>
     protected override async Task<bool> TryClickAccountPickerAsync(
         CombinedOAuthPageState state,
@@ -345,27 +404,18 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
                     new { email, attempt, maxAttempts });
             }
 
-            var script = $@"
-(function() {{
-    const targetEmail = {emailJson};
-    const targetEmailLower = {emailLowerJson};
-    const isVisible = el => {{
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }};
-
+            var finderScript = $@"
     // 1) Prefer elements with data-identifier or data-email matching the email
     let candidates = Array.from(document.querySelectorAll('[data-identifier], [data-email]'));
     for (const el of candidates) {{
         if (!isVisible(el)) continue;
         const id = (el.getAttribute('data-identifier') || '').toLowerCase();
         const em = (el.getAttribute('data-email') || '').toLowerCase();
-        if (id === targetEmailLower || em === targetEmailLower) {{
+        if (id === {emailLowerJson} || em === {emailLowerJson}) {{
             // Click a clickable descendant if present, else the element itself
             const clickable = el.querySelector('a, button, [role=\""link\""], [role=\""button\""]) || el;
-            clickable.click();
-            return true;
+            const rect = clickable.getBoundingClientRect();
+            return {{ found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }};
         }}
     }}
 
@@ -374,40 +424,28 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
     for (const el of candidates) {{
         if (!isVisible(el)) continue;
         const text = (el.innerText || '').toLowerCase();
-        if (text.includes(targetEmailLower)) {{
-            el.click();
-            return true;
+        if (text.includes({emailLowerJson})) {{
+            const rect = el.getBoundingClientRect();
+            return {{ found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }};
         }}
     }}
-
-    return false;
-}})()
 ";
 
-            try
-            {
-                var result = await _client.CallAsync("Runtime.evaluate", new
-                {
-                    expression = script,
-                    returnByValue = true
-                }, cancellationToken, _sessionId);
+            var clicked = await TryTrustedClickAsync(
+                finderScript,
+                "AccountPickerClicked",
+                "Account picker row clicked (trusted click)",
+                cancellationToken);
 
-                if (result.TryGetProperty("result", out var resultProp) &&
-                    resultProp.TryGetProperty("value", out var clickedProp) &&
-                    clickedProp.GetBoolean())
-                {
-                    ObservabilityHub.Instance.LogEvent(
-                        LogLevel.Info,
-                        "NousOAuth",
-                        "AccountPickerClicked",
-                        "Account picker row clicked",
-                        new { email, attempt });
-                    return true;
-                }
-            }
-            catch
+            if (clicked)
             {
-                // Ignore JS errors, continue polling
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "NousOAuth",
+                    "AccountPickerClicked",
+                    "Account picker row clicked",
+                    new { email, attempt });
+                return true;
             }
 
             await Task.Delay(delayMs, cancellationToken);
