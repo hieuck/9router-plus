@@ -119,6 +119,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly QuotaPollingService _quotaPollingService;
     private readonly IProviderConnectionService _connectionService;
     private readonly IProviderApiKeyService _providerApiKeyService;
+    private readonly IProviderConnectionRenameService _renameService;
     private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
     private bool _isMultiSelectMode;
     private CancellationTokenSource? _batchLoginCts;
@@ -148,7 +149,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>>? launchManagedChrome = null,
         IProfileManager? profileManager = null,
         IProviderConnectionService? connectionService = null,
-        IProviderApiKeyService? providerApiKeyService = null)
+        IProviderApiKeyService? providerApiKeyService = null,
+        IProviderConnectionRenameService? renameService = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
@@ -171,6 +173,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _profileManager = profileManager ?? new ProfileManager(_chromeLocator, _profileReader);
         _connectionService = connectionService ?? new ProviderConnectionService();
         _providerApiKeyService = providerApiKeyService ?? new ProviderApiKeyService(_secretVault);
+        _renameService = renameService ?? new ProviderConnectionRenameService();
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
         _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
@@ -3774,55 +3777,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         StatusText = $"Đã xác nhận {ProviderCatalog.Get(provider).DisplayName}. Đang chờ 9Router tạo connection (có thể mất 1-2 phút)…";
 
-        ProviderConnection connection;
-        try
+        var result = await _renameService.RenameAsync(
+            api,
+            provider,
+            profile,
+            _workflowExistingConnections,
+            TimeSpan.FromMinutes(5),
+            cancellationToken);
+
+        var connection = result.Connection;
+        if (result.FoundAfterTimeout)
         {
-            connection = await api.WaitForNewConnectionAsync(
-                provider,
-                _workflowExistingConnections,
-                TimeSpan.FromMinutes(5),
-                TimeSpan.FromSeconds(2),
-                cancellationToken);
-        }
-        catch (TimeoutException)
-        {
-            // Fallback: 9Router may have created the connection but we missed it in polling.
-            // List all connections and find one matching the profile name (case-insensitive),
-            // preferring a connection not already in _workflowExistingConnections.
-            var all = await api.ListConnectionsAsync(provider, cancellationToken, includeQuotas: false);
-            var match = all
-                .Where(c => string.Equals(c.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
-                .Where(c => !_workflowExistingConnections.ContainsKey(c.Id))
-                .OrderByDescending(c => c.CreatedAt)
-                .FirstOrDefault();
-            if (match is null)
-            {
-                // If no new-ID match, accept any profile-named connection (may be reused ID renamed by 9Router)
-                match = all
-                    .Where(c => string.Equals(c.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
-                    .OrderByDescending(c => c.CreatedAt)
-                    .FirstOrDefault();
-            }
-            if (match is not null)
-            {
-                connection = match;
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "OAuthWorkflow",
-                    "ConnectionFoundAfterWaitTimeout",
-                    "Found matching connection after WaitForNewConnectionAsync timeout",
-                    new { provider = provider.ToString(), connectionId = connection.Id, profileName = profile.Name, reusedId = _workflowExistingConnections.ContainsKey(connection.Id) });
-            }
-            else
-            {
-                throw;
-            }
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "OAuthWorkflow",
+                "ConnectionFoundAfterWaitTimeout",
+                "Found matching connection after WaitForNewConnectionAsync timeout",
+                new { provider = provider.ToString(), connectionId = connection.Id, profileName = profile.Name, reusedId = result.ReusedExistingId });
         }
 
-        await api.UpdateConnectionAsync(
-            connection.Id,
-            name: profile.Name,
-            cancellationToken: cancellationToken);
         _workflowExistingConnections[connection.Id] = connection;
         _currentWorkflowProvider = null;
         StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.";
