@@ -250,9 +250,10 @@ public sealed class ChromeLauncher
                 "ClosingChromeProcesses",
                 "Closing Chrome processes using profile",
                 new { profile_name = profile.DirectoryName });
-            var killed = CloseProcessesUsingProfile(
+            var killed = await CloseProcessesUsingProfileAsync(
                 installation.UserDataDirectory,
-                profile.DirectoryName);
+                profile.DirectoryName,
+                cancellationToken);
 
             if (!killed)
             {
@@ -449,16 +450,17 @@ public sealed class ChromeLauncher
         }
     }
 
-    private static bool CloseProcessesUsingProfile(
+    private static async Task<bool> CloseProcessesUsingProfileAsync(
         string userDataDirectory,
-        string profileDirectoryName)
+        string profileDirectoryName,
+        CancellationToken cancellationToken)
     {
         try
         {
             var normalizedUserDataDirectory = Path.GetFullPath(userDataDirectory)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var processes = Process.GetProcessesByName("chrome");
-            CloseVisibleBrowserWindows(processes);
+            await CloseVisibleBrowserWindowsAsync(processes, cancellationToken);
             processes = Process.GetProcessesByName("chrome");
 
             var killedCount = 0;
@@ -520,11 +522,15 @@ public sealed class ChromeLauncher
 
             if (killedCount > 0)
             {
-                System.Threading.Thread.Sleep(1500);
+                await Task.Delay(1500, cancellationToken);
                 return true;
             }
 
             return false;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -573,7 +579,7 @@ public sealed class ChromeLauncher
 
     private const uint WM_CLOSE = 0x0010;
 
-    private static void CloseVisibleBrowserWindows(Process[] processes)
+    private static async Task CloseVisibleBrowserWindowsAsync(Process[] processes, CancellationToken cancellationToken)
     {
         try
         {
@@ -605,8 +611,12 @@ public sealed class ChromeLauncher
                     "Sent WM_CLOSE to browser windows",
                     new { closed_count = closedCount });
                 // Wait for graceful shutdown before force-killing remaining processes
-                System.Threading.Thread.Sleep(2000);
+                await Task.Delay(2000, cancellationToken);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
