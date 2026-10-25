@@ -311,6 +311,111 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
             return false;
         }
     }
+
+    /// <summary>
+    /// Override account picker for Nous: dedicated retry that polls for the account row to appear,
+    /// without the base fallback that can click "use another account".
+    /// </summary>
+    protected override async Task<bool> TryClickAccountPickerAsync(
+        CombinedOAuthPageState state,
+        CancellationToken cancellationToken)
+    {
+        var email = _profileEmail;
+        var emailLower = email.ToLowerInvariant();
+        var emailJson = JsonSerializer.Serialize(email);
+        var emailLowerJson = JsonSerializer.Serialize(emailLower);
+
+        const int maxAttempts = 20;
+        const int delayMs = 500;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Debug,
+                "NousOAuth",
+                "AccountPickerWait",
+                $"Waiting for account picker row (attempt {attempt}/{maxAttempts})",
+                new { email, attempt, maxAttempts });
+
+            var script = $@"
+(function() {{
+    const targetEmail = {emailJson};
+    const targetEmailLower = {emailLowerJson};
+    const isVisible = el => {{
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }};
+
+    // 1) Prefer elements with data-identifier or data-email matching the email
+    let candidates = Array.from(document.querySelectorAll('[data-identifier], [data-email]'));
+    for (const el of candidates) {{
+        if (!isVisible(el)) continue;
+        const id = (el.getAttribute('data-identifier') || '').toLowerCase();
+        const em = (el.getAttribute('data-email') || '').toLowerCase();
+        if (id === targetEmailLower || em === targetEmailLower) {{
+            // Click a clickable descendant if present, else the element itself
+            const clickable = el.querySelector('a, button, [role=\""link\""], [role=\""button\""]) || el;
+            clickable.click();
+            return true;
+        }}
+    }}
+
+    // 2) Fallback: role=link or role=button whose innerText includes the email
+    candidates = Array.from(document.querySelectorAll('[role=\""link\""], [role=\""button\""]'));
+    for (const el of candidates) {{
+        if (!isVisible(el)) continue;
+        const text = (el.innerText || '').toLowerCase();
+        if (text.includes(targetEmailLower)) {{
+            el.click();
+            return true;
+        }}
+    }}
+
+    return false;
+}})()
+";
+
+            try
+            {
+                var result = await _client.CallAsync("Runtime.evaluate", new
+                {
+                    expression = script,
+                    returnByValue = true
+                }, cancellationToken, _sessionId);
+
+                if (result.TryGetProperty("result", out var resultProp) &&
+                    resultProp.TryGetProperty("value", out var clickedProp) &&
+                    clickedProp.GetBoolean())
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "NousOAuth",
+                        "AccountPickerClicked",
+                        "Account picker row clicked",
+                        new { email, attempt });
+                    return true;
+                }
+            }
+            catch
+            {
+                // Ignore JS errors, continue polling
+            }
+
+            await Task.Delay(delayMs, cancellationToken);
+        }
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Warning,
+            "NousOAuth",
+            "AccountPickerNotFound",
+            "Account picker row not found after all attempts",
+            new { email, maxAttempts });
+
+        return false;
+    }
 }
 
 /// <summary>
