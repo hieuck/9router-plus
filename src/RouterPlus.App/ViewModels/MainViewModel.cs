@@ -3544,7 +3544,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 _ => throw new NotSupportedException($"Automation not supported for provider {provider}")
             };
 
-            // Run automation in background (don't wait for it)
+            // Run automation in background
             var automationTask = automation.WaitAndConsentAsync(
                 new Uri(verificationUri),
                 TimeSpan.FromMinutes(10), // Longer timeout
@@ -3552,7 +3552,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             // Polling is the source of truth - wait for connection to be detected
             StatusText = $"Đang chờ xác nhận từ {definition.DisplayName}…";
-            await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
+
+            // Race: automation task vs poll task. If automation succeeds first, rename immediately.
+            using var raceCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var pollTask = PollDeviceCodeUntilSuccessAsync(api, provider, session, raceCts.Token);
+
+            var completedTask = await Task.WhenAny(automationTask, pollTask);
+
+            if (completedTask == automationTask)
+            {
+                var automationResult = await automationTask;
+                if (automationResult.Success)
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Providers",
+                        "DeviceCodeAutomationSuccessFirst",
+                        "Automation completed first with success, renaming connection",
+                        new { message = automationResult.Message });
+                    raceCts.Cancel(); // Cancel polling
+                    await RenameNewConnectionAsync(api, provider, cancellationToken);
+                    return;
+                }
+                // Automation failed or incomplete, continue waiting for poll
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "Providers",
+                    "DeviceCodeAutomationIncomplete",
+                    "Automation incomplete, continuing to wait for poll",
+                    new { message = automationResult.Message });
+            }
+            else
+            {
+                // Poll completed first (success or exception)
+                await pollTask; // Propagate exception if any
+                return;
+            }
 
             // Connection detected! Now we can cleanup
             StatusText = "Đã nhận connection. Đang lưu…";
@@ -3564,24 +3599,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 new { });
 
             // Try to get automation result (may still be running)
-            OAuthConsentResult automationResult;
+            OAuthConsentResult automationResultAfterPoll;
             if (automationTask.IsCompleted)
             {
-                automationResult = await automationTask;
+                automationResultAfterPoll = await automationTask;
             }
             else
             {
-                automationResult = new OAuthConsentResult(false, false, "Automation still running");
+                automationResultAfterPoll = new OAuthConsentResult(false, false, "Automation still running");
             }
 
-            if (automationResult.Success)
+            if (automationResultAfterPoll.Success)
+
+            if (automationResultAfterPoll.Success)
             {
                 ObservabilityHub.Instance.LogEvent(
                     LogLevel.Info,
                     "Providers",
                     "DeviceCodeAutomationSuccess",
                     "Device code automation success",
-                    new { message = automationResult.Message });
+                    new { message = automationResultAfterPoll.Message });
             }
             else
             {
@@ -3590,7 +3627,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     "Providers",
                     "DeviceCodeAutomationIncomplete",
                     "Device code automation incomplete",
-                    new { message = automationResult.Message });
+                    new { message = automationResultAfterPoll.Message });
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -3635,10 +3672,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var definition = ProviderCatalog.Get(provider);
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(session.ExpiresIn, 60));
         var intervalSeconds = Math.Clamp(session.Interval, 1, 30);
+        int consecutiveTransientFailures = 0;
+        const int maxConsecutiveTransientFailures = 10;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);
+            DeviceCodePollResult result;
+            try
+            {
+                result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);
+                consecutiveTransientFailures = 0; // Reset on successful HTTP response
+            }
+            catch (Exception ex) when (IsTransientPollException(ex, cancellationToken))
+            {
+                consecutiveTransientFailures++;
+                if (consecutiveTransientFailures >= maxConsecutiveTransientFailures)
+                {
+                    throw;
+                }
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "Providers",
+                    "DeviceCodePollTransientFailure",
+                    "Transient failure during device code poll, will retry",
+                    new { attempt = consecutiveTransientFailures, maxAttempts = maxConsecutiveTransientFailures, error = ex.Message });
+                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
+                continue;
+            }
+
             if (result.Success)
             {
                 await RenameNewConnectionAsync(api, provider, cancellationToken);
@@ -3660,6 +3721,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         throw new TimeoutException($"Hết thời gian chờ đăng nhập {definition.DisplayName}.");
+    }
+
+    private static bool IsTransientPollException(Exception ex, CancellationToken cancellationToken)
+    {
+        if (ex is RouterApiException apiEx)
+        {
+            var status = (int)apiEx.StatusCode;
+            // 408 Request Timeout, 429 Too Many Requests, 5xx Server Errors
+            return status == 408 || status == 429 || status >= 500;
+        }
+        if (ex is HttpRequestException)
+        {
+            return true;
+        }
+        if (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return true;
+        }
+        return false;
     }
 
     private async Task CaptureExistingConnectionsAsync(

@@ -202,4 +202,68 @@ public sealed class MainViewModelDeviceCodeAutomationTests
             ? "{\"connections\":[]}"
             : "{\"connections\":[{\"id\":\"nous-1\",\"provider\":\"nous\",\"name\":\"Work\",\"priority\":1,\"isActive\":true,\"email\":\"work@example.com\"}]}";
     }
+
+    private sealed class NousDeviceCodePollRetryHandler : HttpMessageHandler
+    {
+        private int _providerListCount;
+        private int _pollCount;
+
+        public List<string> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.PathAndQuery;
+            Requests.Add($"{request.Method} {path}");
+            var body = path switch
+            {
+                "/api/providers" => ProviderList(++_providerListCount),
+                "/api/oauth/nous/device-code" =>
+                    "{\"device_code\":\"device-1\",\"user_code\":\"ABCD-EFGH\",\"verification_uri\":\"https://portal.nousresearch.com/device\",\"verification_uri_complete\":\"https://portal.nousresearch.com/device?user_code=ABCD-EFGH\",\"expires_in\":60,\"interval\":1}",
+                "/api/oauth/nous/poll" when _pollCount++ == 0 =>
+                    throw new HttpRequestException("Transient 500", null, HttpStatusCode.InternalServerError),
+                "/api/oauth/nous/poll" => "{\"success\":true}",
+                "/api/usage/nous-1" => "{}",
+                _ when request.Method == HttpMethod.Put && path == "/api/providers/nous-1" => "{}",
+                _ => throw new InvalidOperationException($"Unexpected request: {request.Method} {path}")
+            };
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            });
+        }
+
+        private static string ProviderList(int requestNumber) => requestNumber == 1
+            ? "{\"connections\":[]}"
+            : "{\"connections\":[{\"id\":\"nous-1\",\"provider\":\"nous\",\"name\":\"Work\",\"priority\":1,\"isActive\":true,\"email\":\"work@example.com\"}]}";
+    }
+
+    [Fact]
+    public async Task OpenProvider_nous_retries_poll_on_transient_failure_and_renames_connection()
+    {
+        // Arrange
+        var profile = CreateProfile();
+        var handler = new NousDeviceCodePollRetryHandler();
+        var launchedUrls = new List<string>();
+        using var httpClient = new HttpClient(handler);
+        var viewModel = CreateViewModel(
+            profile,
+            httpClient,
+            launchedUrls,
+            launchManagedChrome: (_, _, _, _) => throw new InvalidOperationException("synthetic automation failure"));
+
+        // Act
+        await viewModel.OpenProviderForTestAsync(ProviderKind.Nous);
+
+        // Assert
+        // Poll was retried (2 calls: first 500, second success)
+        Assert.Equal(2, handler.Requests.Count(r => r.Contains("POST /api/oauth/nous/poll")));
+        // PUT rename happened
+        Assert.Contains("PUT /api/providers/nous-1", handler.Requests);
+        // Final status is the rename status
+        Assert.Equal("Đã kết nối Nous với profile Work.", viewModel.StatusText);
+        Assert.False(viewModel.IsWorkflowInProgress);
+    }
 }
