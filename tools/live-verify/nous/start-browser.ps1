@@ -23,7 +23,7 @@
     Chrome User Data Directory (mandatory).
 
 .PARAMETER ProfileDirectory
-    Chrome profile directory name (mandatory). Example: "Profile 1" or "Profile hieuck.banned@gmail.com".
+    Chrome profile directory name (mandatory). Example: "Profile 1" or "Profile user@example.com".
 
 .PARAMETER Port
     Remote debugging port (default: 9333). Only used when Mode=Cdp.
@@ -32,10 +32,10 @@
     Launch mode: Cdp (default, with remote debugging) or Normal (no remote debugging, Kasada-friendly).
 
 .EXAMPLE
-    .\start-browser.ps1 -Password "123456" -ChromePath "C:\Program Files\Google\Chrome\Application\chrome.exe" -UserDataDir "C:\Users\me\AppData\Local\Google\Chrome\User Data" -ProfileDirectory "Profile 1" -Mode Cdp
+    .\start-browser.ps1 -Password "<DASHBOARD_PASSWORD>" -ChromePath "C:\Program Files\Google\Chrome\Application\chrome.exe" -UserDataDir "C:\Users\me\AppData\Local\Google\Chrome\User Data" -ProfileDirectory "Profile 1" -Mode Cdp
 
 .EXAMPLE
-    .\start-browser.ps1 -BaseUrl "http://localhost:20128" -Password "mypass" -ChromePath "C:\...\chrome.exe" -UserDataDir "C:\...\User Data" -ProfileDirectory "Profile 2" -Mode Normal
+    .\start-browser.ps1 -BaseUrl "http://localhost:20128" -Password "<DASHBOARD_PASSWORD>" -ChromePath "C:\...\chrome.exe" -UserDataDir "C:\...\User Data" -ProfileDirectory "Profile 2" -Mode Normal
 #>
 
 [CmdletBinding()]

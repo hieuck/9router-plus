@@ -25,10 +25,10 @@
     Path to log file (default: $env:TEMP\routerplus-nous-live\watch-connections.log).
 
 .EXAMPLE
-    .\watch-connections.ps1 -Password "123456" -ProfileName "hieuck.banned@gmail.com"
+    .\watch-connections.ps1 -Password "<DASHBOARD_PASSWORD>" -ProfileName "user@example.com"
 
 .EXAMPLE
-    .\watch-connections.ps1 -BaseUrl "http://localhost:20128" -Password "mypass" -ProfileName "My Profile" -DurationMinutes 10 -LogFile "C:\temp\watch.log"
+    .\watch-connections.ps1 -BaseUrl "http://localhost:20128" -Password "<DASHBOARD_PASSWORD>" -ProfileName "My Profile" -DurationMinutes 10 -LogFile "C:\temp\watch.log"
 #>
 
 [CmdletBinding()]

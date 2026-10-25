@@ -57,7 +57,7 @@ Mặc định đọc device file tại `$env:TEMP\routerplus-nous-live\nous-devi
 
 ### 4. Theo dõi connection mới + detect rename
 ```powershell
-.\watch-connections.ps1 -Password "<DASHBOARD_PASSWORD>" -ProfileName "hieuck.banned@gmail.com"
+.\watch-connections.ps1 -Password "<DASHBOARD_PASSWORD>" -ProfileName "user@example.com"
 ```
 Mặc định theo dõi 12 phút, poll 3 giây/lần. Thoát mã 0 khi thấy `RENAMED_TO_PROFILE`.
 
@@ -73,7 +73,7 @@ node pw-cdp.js snapshot
 node pw-cdp.js click-text "Connect"
 
 # Click account picker theo data-identifier
-node pw-cdp.js click-account "hieuck.browser@gmail.com"
+node pw-cdp.js click-account "user@example.com"
 
 # Click link chứa chuỗi
 node pw-cdp.js click-href "provider=googleoauth"

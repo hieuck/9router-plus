@@ -21,10 +21,10 @@
     Path to log file (default: $env:TEMP\routerplus-nous-live\nous-poll.log).
 
 .EXAMPLE
-    .\poll-device-code.ps1 -Password "123456"
+    .\poll-device-code.ps1 -Password "<DASHBOARD_PASSWORD>"
 
 .EXAMPLE
-    .\poll-device-code.ps1 -BaseUrl "http://localhost:20128" -Password "mypass" -DeviceFile "C:\temp\nous-device.json" -LogFile "C:\temp\poll.log"
+    .\poll-device-code.ps1 -BaseUrl "http://localhost:20128" -Password "<DASHBOARD_PASSWORD>" -DeviceFile "C:\temp\nous-device.json" -LogFile "C:\temp\poll.log"
 #>
 
 [CmdletBinding()]
