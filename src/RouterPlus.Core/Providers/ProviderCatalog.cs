@@ -39,6 +39,13 @@ public static class ProviderCatalog
                 "/dashboard/providers/kimchi",
                 "https://app.kimchi.dev/",
                 WorkflowKind.OAuth,
+                true),
+            [ProviderKind.Nous] = new(
+                ProviderKind.Nous,
+                "Nous",
+                "/dashboard/providers/nous",
+                "https://portal.nousresearch.com",
+                WorkflowKind.DeviceCode,
                 true)
         };
 

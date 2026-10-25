@@ -2615,6 +2615,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ProviderKind.Kiro => new Uri("https://view.awsapps.com/"),
             ProviderKind.GitHub => new Uri("https://github.com/login"),
             ProviderKind.OpenRouter => new Uri("https://openrouter.ai/"),
+            ProviderKind.Nous => new Uri("https://portal.nousresearch.com/"),
             _ => new Uri("https://chatgpt.com/")
         };
     }
@@ -3423,7 +3424,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
         var definition = ProviderCatalog.Get(provider);
-        var session = await api.StartDeviceCodeAsync(provider, "idc", cancellationToken);
+        var session = await api.StartDeviceCodeAsync(provider, provider == ProviderKind.Kiro ? "idc" : null, cancellationToken);
 
         // Try automation for Kiro
         if (provider == ProviderKind.Kiro)
@@ -3440,7 +3441,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             // Fallback for other providers
             await LaunchUrlAsync(session.VerificationUriComplete ?? session.VerificationUri);
-            StatusText = $"Đã mở AWS Builder ID cho {definition.DisplayName}. Hoàn tất xác nhận; tool đang tự chờ connection…";
+            StatusText = $"Đã mở trang xác nhận cho {definition.DisplayName}. Hoàn tất xác nhận; tool đang tự chờ connection…";
 
             var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(session.ExpiresIn, 60));
             var intervalSeconds = Math.Clamp(session.Interval, 1, 30);

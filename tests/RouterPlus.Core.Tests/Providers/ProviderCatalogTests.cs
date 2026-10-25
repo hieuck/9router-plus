@@ -10,6 +10,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.OpenRouter, "/dashboard/providers/openrouter", "https://openrouter.ai/settings/keys")]
     [InlineData(ProviderKind.Ollama, "/dashboard/providers/ollama", "https://ollama.com/settings/keys")]
     [InlineData(ProviderKind.Kimchi, "/dashboard/providers/kimchi", "https://app.kimchi.dev/")]
+    [InlineData(ProviderKind.Nous, "/dashboard/providers/nous", "https://portal.nousresearch.com")]
     public void Catalog_exposes_dashboard_and_quick_link_urls(
         ProviderKind kind,
         string dashboardPath,
@@ -29,6 +30,7 @@ public sealed class ProviderCatalogTests
         Assert.Equal(WorkflowKind.ApiKey, ProviderCatalog.Get(ProviderKind.Ollama).Workflow);
         Assert.Equal(WorkflowKind.OAuth, ProviderCatalog.Get(ProviderKind.Codex).Workflow);
         Assert.Equal(WorkflowKind.DeviceCode, ProviderCatalog.Get(ProviderKind.Kiro).Workflow);
+        Assert.Equal(WorkflowKind.DeviceCode, ProviderCatalog.Get(ProviderKind.Nous).Workflow);
     }
 
     [Theory]
@@ -37,6 +39,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.OpenRouter, "OpenR", "🧠")]
     [InlineData(ProviderKind.Ollama, "Ollama", "🦙")]
     [InlineData(ProviderKind.Kimchi, "Kimchi", "🌿")]
+    [InlineData(ProviderKind.Nous, "Nous", "🔭")]
     public void Catalog_exposes_provider_short_names_and_glyphs(
         ProviderKind kind,
         string expectedShortName,

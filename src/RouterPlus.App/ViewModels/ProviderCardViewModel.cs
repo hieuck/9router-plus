@@ -34,6 +34,7 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
         ProviderKind.OpenRouter => "OR",
         ProviderKind.Ollama => "OL",
         ProviderKind.Kimchi => "KM",
+        ProviderKind.Nous => "NS",
         _ => "9R"
     };
 

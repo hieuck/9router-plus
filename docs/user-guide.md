@@ -141,6 +141,14 @@ Xóa profile chỉ xóa thư mục profile được chọn; không xóa toàn b�
 4. Nhập/xác nhận code trên trang provider.
 5. Chờ app nhận connection mới và đồng bộ tên profile.
 
+### Nous
+
+1. Chọn profile.
+2. Nhấn `Thêm` ở card Nous.
+3. Mở trang device code theo hướng dẫn trong trình duyệt (portal.nousresearch.com).
+4. Nhập/xác nhận code trên trang provider.
+5. Chờ app nhận connection mới và đồng bộ tên profile.
+
 ### Kimchi
 
 1. Chọn profile.

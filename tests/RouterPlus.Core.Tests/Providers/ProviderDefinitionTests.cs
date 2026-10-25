@@ -10,6 +10,7 @@ public sealed class ProviderDefinitionTests
     [InlineData(ProviderKind.OpenRouter, "OpenR")]
     [InlineData(ProviderKind.Ollama, "Ollama")]
     [InlineData(ProviderKind.Kimchi, "Kimchi")]
+    [InlineData(ProviderKind.Nous, "Nous")]
     [InlineData(ProviderKind.GitHub, "GitHub display")]
     public void ShortDisplayName_uses_provider_specific_name_or_display_name(
         ProviderKind kind,
@@ -32,6 +33,7 @@ public sealed class ProviderDefinitionTests
     [InlineData(ProviderKind.OpenRouter, "🧠")]
     [InlineData(ProviderKind.Ollama, "🦙")]
     [InlineData(ProviderKind.Kimchi, "🌿")]
+    [InlineData(ProviderKind.Nous, "🔭")]
     [InlineData(ProviderKind.GitHub, "●")]
     public void Glyph_uses_provider_specific_glyph_or_default(
         ProviderKind kind,

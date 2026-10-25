@@ -62,6 +62,7 @@ Wizard không tự cài Python, Visual Studio Build Tools hoặc Chocolatey. Cá
   - OpenRouter API key: `https://openrouter.ai/settings/keys`
   - Ollama API key: `https://ollama.com/settings/keys`
   - Kimchi login: `https://app.kimchi.dev/`
+  - Nous portal: `https://portal.nousresearch.com/`
 - API-key workflow đặt tên connection theo profile và đặt priority ở cuối danh sách.
 - API key được mã hóa bằng Windows DPAPI trong user profile hiện tại.
 - Khi chọn lại profile, key OpenRouter/Ollama đã lưu được nạp lại vào card ở trạng thái ẩn; nút `Hiện key`/`Ẩn key` dùng để so sánh và ô nhập không bị xóa sau khi thêm.

@@ -550,9 +550,10 @@ public sealed class RouterApiClient : IRouterApiClient
             "openrouter" => ProviderKind.OpenRouter,
             "ollama" => ProviderKind.Ollama,
             "kimchi" => ProviderKind.Kimchi,
+            "nous" => ProviderKind.Nous,
             _ => default
         };
-        return value?.Trim().ToLowerInvariant() is "codex" or "kiro" or "openrouter" or "ollama" or "kimchi";
+        return value?.Trim().ToLowerInvariant() is "codex" or "kiro" or "openrouter" or "ollama" or "kimchi" or "nous";
     }
 
     private static string ToApiAlias(ProviderKind provider) => provider switch
@@ -562,6 +563,7 @@ public sealed class RouterApiClient : IRouterApiClient
         ProviderKind.OpenRouter => "openrouter",
         ProviderKind.Ollama => "ollama",
         ProviderKind.Kimchi => "kimchi",
+        ProviderKind.Nous => "nous",
         _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown provider.")
     };
 
