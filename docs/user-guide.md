@@ -145,9 +145,9 @@ Xóa profile chỉ xóa thư mục profile được chọn; không xóa toàn b�
 
 1. Chọn profile.
 2. Nhấn `Thêm` ở card Nous.
-3. Mở trang device code theo hướng dẫn trong trình duyệt (portal.nousresearch.com).
-4. Nhập/xác nhận code trên trang provider.
-5. Chờ app nhận connection mới và đồng bộ tên profile.
+3. App mở Chrome với profile đã chọn và tự động hóa các bước: truy cập portal.nousresearch.com, nhấn liên kết Google để đăng nhập, sau đó nhấn nút "Connect Hermes"/"Connect Nous"/"Connect" trên portal.
+4. Nếu portal hiển thị trang xác minh người ("Verifying humanity" / Kasada), hãy hoàn tất xác minh trong Chrome; app sẽ tiếp tục polling.
+5. Chờ app nhận connection mới và đổi tên theo profile.
 
 ### Kimchi
 

@@ -3426,8 +3426,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var definition = ProviderCatalog.Get(provider);
         var session = await api.StartDeviceCodeAsync(provider, provider == ProviderKind.Kiro ? "idc" : null, cancellationToken);
 
-        // Try automation for Kiro
-        if (provider == ProviderKind.Kiro)
+        // Try automation for Kiro and Nous
+        if (provider is ProviderKind.Kiro or ProviderKind.Nous)
         {
             StatusText = $"Đang mở Chrome và tự động xác nhận {definition.DisplayName}…";
             await RunDeviceCodeWithAutomationAsync(
@@ -3536,7 +3536,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
             }
 
-            var automation = new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator);
+            var definition = ProviderCatalog.Get(provider);
+            GoogleOAuthFlowAutomation automation = provider switch
+            {
+                ProviderKind.Kiro => new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator),
+                ProviderKind.Nous => new NousOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator),
+                _ => throw new NotSupportedException($"Automation not supported for provider {provider}")
+            };
 
             // Run automation in background (don't wait for it)
             var automationTask = automation.WaitAndConsentAsync(
@@ -3545,7 +3551,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 cancellationToken);
 
             // Polling is the source of truth - wait for connection to be detected
-            StatusText = "Đang chờ xác nhận từ AWS…";
+            StatusText = $"Đang chờ xác nhận từ {definition.DisplayName}…";
             await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
 
             // Connection detected! Now we can cleanup

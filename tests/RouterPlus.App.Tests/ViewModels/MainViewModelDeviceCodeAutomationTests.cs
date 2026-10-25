@@ -63,7 +63,7 @@ public sealed class MainViewModelDeviceCodeAutomationTests
     }
 
     [Fact]
-    public async Task OpenProvider_nous_uses_device_code_without_kiro_auth_method_and_renames_connection()
+    public async Task OpenProvider_nous_uses_automation_branch_and_falls_back_on_failure()
     {
         // Arrange
         var profile = CreateProfile();
@@ -86,12 +86,14 @@ public sealed class MainViewModelDeviceCodeAutomationTests
         await viewModel.OpenProviderForTestAsync(ProviderKind.Nous);
 
         // Assert
-        Assert.Equal(["https://portal.nousresearch.com/device?user_code=ABCD-EFGH"], launchedUrls);
+        // Automation was attempted (chrome launched once before throwing)
+        Assert.Equal(1, chromeLaunchCount);
+        // No manual URL launch when automation is attempted (even if it throws)
+        Assert.Empty(launchedUrls);
         Assert.Contains("GET /api/oauth/nous/device-code", handler.Requests);
         Assert.DoesNotContain(handler.Requests, r => r.Contains("nous/device-code?auth_method="));
         Assert.Contains("POST /api/oauth/nous/poll", handler.Requests);
         Assert.Contains("PUT /api/providers/nous-1", handler.Requests);
-        Assert.Equal(0, chromeLaunchCount);
         Assert.False(viewModel.IsWorkflowInProgress);
         Assert.Equal("Đã kết nối Nous với profile Work.", viewModel.StatusText);
     }
