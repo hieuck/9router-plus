@@ -1,3 +1,4 @@
+using RouterPlus.Core.Storage;
 using RouterPlus.Infrastructure.Security;
 
 namespace RouterPlus.Infrastructure.Tests.Security;
@@ -39,9 +40,7 @@ public sealed class GoogleAccountVaultPathsTests
     public void Default_constructor_uses_local_application_data_storage_root()
     {
         var paths = new GoogleAccountVaultPaths();
-        var expectedRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "9RouterPlus");
+        var expectedRoot = AppPaths.LocalAppDataRoot;
 
         Assert.Equal(Path.Combine(expectedRoot, "google-accounts.vault"), paths.VaultPath);
         Assert.Equal(Path.Combine(expectedRoot, "google-accounts.remembered"), paths.RememberedKeyPath);

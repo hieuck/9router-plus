@@ -1,3 +1,4 @@
+using RouterPlus.Core.Storage;
 using RouterPlus.Core.Updates;
 
 namespace RouterPlus.Infrastructure.Updates;
@@ -5,8 +6,7 @@ namespace RouterPlus.Infrastructure.Updates;
 public static class UpdatePaths
 {
     public static string Root => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "9RouterPlus",
+        AppPaths.LocalAppDataRoot,
         "updates");
 
     public static string VersionRoot(ReleaseVersion version) =>

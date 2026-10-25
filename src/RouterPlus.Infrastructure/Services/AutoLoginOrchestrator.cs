@@ -2,6 +2,7 @@ using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Security;
 using RouterPlus.Core.Observability;
+using RouterPlus.Core.Storage;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Diagnostics;
 using RouterPlus.Infrastructure.Security;
@@ -181,9 +182,7 @@ public sealed class AutoLoginOrchestrator
         }
 
         // Get vault path
-        var vaultPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "9RouterPlus", "google-accounts.vault");
+        var vaultPath = AppPaths.GoogleAccountsVaultPath;
 
         // Try to open with remembered key first. A null session means no remembered key;
         // cancellation and vault errors must remain observable to the caller.

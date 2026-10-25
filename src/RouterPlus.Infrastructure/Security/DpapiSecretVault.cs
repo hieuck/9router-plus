@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using RouterPlus.Core.Storage;
 
 namespace RouterPlus.Infrastructure.Security;
 
@@ -16,10 +17,7 @@ public sealed class DpapiSecretVault : ISecretVault
 
     public DpapiSecretVault(string? filePath = null)
     {
-        _filePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "9RouterPlus",
-            "secrets.json");
+        _filePath = filePath ?? AppPaths.SecretsPath;
 
         var normalizedPath = Path.GetFullPath(_filePath);
         _processWideGate = ProcessWideGates.GetOrAdd(normalizedPath, _ => new SemaphoreSlim(1, 1));

@@ -1,3 +1,5 @@
+using RouterPlus.Core.Storage;
+
 namespace RouterPlus.Infrastructure.Security;
 
 /// <summary>
@@ -11,9 +13,7 @@ public sealed class GoogleAccountVaultPaths
     /// Creates paths using the default %LOCALAPPDATA%\9RouterPlus directory.
     /// </summary>
     public GoogleAccountVaultPaths()
-        : this(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "9RouterPlus"))
+        : this(AppPaths.LocalAppDataRoot)
     {
     }
 

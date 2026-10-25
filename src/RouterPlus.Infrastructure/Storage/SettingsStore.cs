@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using RouterPlus.Core.Observability;
+using RouterPlus.Core.Storage;
 using RouterPlus.Infrastructure.Security;
 
 namespace RouterPlus.Infrastructure.Storage;
@@ -30,10 +31,7 @@ public sealed class SettingsStore
     /// <param name="filePath">Optional custom path to the settings file.</param>
     public SettingsStore(string? filePath = null)
     {
-        _filePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "9RouterPlus",
-            "settings.json");
+        _filePath = filePath ?? AppPaths.SettingsPath;
     }
 
     /// <summary>
