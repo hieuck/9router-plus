@@ -110,4 +110,69 @@ public sealed class ProviderConnectionRowServiceTests
             new[] { ProviderKind.Codex, ProviderKind.Kiro, ProviderKind.GitHub, ProviderKind.OpenRouter },
             calls);
     }
+
+    [Fact]
+    public async Task LoadAsync_PassesCancellationTokenToStore()
+    {
+        var profile = MakeProfile();
+        var cts = new CancellationTokenSource();
+        CancellationToken captured = default;
+        var store = new Mock<IProviderConnectionVaultStore>();
+        store.Setup(s => s.GetConnectionAsync(profile.Name, It.IsAny<ProviderKind>(), It.IsAny<CancellationToken>()))
+            .Callback<string, ProviderKind, CancellationToken>((_, _, token) => captured = token)
+            .ReturnsAsync((ProviderAuthConnection?)null);
+
+        var service = new ProviderConnectionRowService(store.Object);
+        await service.LoadAsync(profile, cts.Token);
+
+        Assert.Equal(cts.Token, captured);
+    }
+
+    [Fact]
+    public async Task LoadAsync_PropagatesCancellation()
+    {
+        var profile = MakeProfile();
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var store = new Mock<IProviderConnectionVaultStore>();
+        store.Setup(s => s.GetConnectionAsync(profile.Name, It.IsAny<ProviderKind>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+
+        var service = new ProviderConnectionRowService(store.Object);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.LoadAsync(profile, cts.Token));
+    }
+
+    [Fact]
+    public async Task LoadAsync_DoesNotContinueLookupsAfterCancellation()
+    {
+        var profile = MakeProfile();
+        var cts = new CancellationTokenSource();
+        var calls = new List<ProviderKind>();
+        var store = new Mock<IProviderConnectionVaultStore>();
+        store.Setup(s => s.GetConnectionAsync(profile.Name, It.IsAny<ProviderKind>(), It.IsAny<CancellationToken>()))
+            .Callback<string, ProviderKind, CancellationToken>((_, kind, _) => calls.Add(kind))
+            .Returns<string, ProviderKind, CancellationToken>((_, kind, token) =>
+            {
+                if (kind == ProviderKind.Codex)
+                {
+                    cts.Cancel();
+                }
+
+                if (token.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(token);
+                }
+
+                return Task.FromResult<ProviderAuthConnection?>(null);
+            });
+
+        var service = new ProviderConnectionRowService(store.Object);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.LoadAsync(profile, cts.Token));
+
+        Assert.Equal(new[] { ProviderKind.Codex }, calls);
+    }
 }
