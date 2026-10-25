@@ -2,6 +2,7 @@ using System.Text.Json;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Diagnostics;
 using RouterPlus.Core.Observability;
+using RouterPlus.Core.Storage;
 
 namespace RouterPlus.Infrastructure.Chrome;
 
@@ -332,15 +333,13 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             return overridePath;
         }
 
-        var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(baseDir))
+        var path = AppPaths.DiagnosticLogPath;
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(dir))
         {
-            baseDir = Path.GetTempPath();
+            Directory.CreateDirectory(dir);
         }
-
-        var dir = Path.Combine(baseDir, "RouterPlus");
-        Directory.CreateDirectory(dir);
-        return Path.Combine(dir, "google-login-diag.log");
+        return path;
     }
 
     private async Task CaptureTransitionDiagnosticAsync(

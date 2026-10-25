@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using RouterPlus.Core.Storage;
 
 namespace RouterPlus.Core.Observability;
 
@@ -16,8 +17,8 @@ public sealed class ObservabilitySettings
     public int MaxSessionSizeMB { get; set; } = 100;
 
     private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RouterPlus", "Observability", "settings.json");
+        AppPaths.ObservabilityRoot,
+        "settings.json");
 
     /// <summary>
     /// Loads settings from disk, or returns defaults if file doesn't exist.

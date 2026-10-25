@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using RouterPlus.Core.Storage;
 
 namespace RouterPlus.Infrastructure.Observability;
 
@@ -20,10 +21,7 @@ public sealed class ObservabilityPaths
 
     public ObservabilityPaths(string? rootDirectory = null)
     {
-        RootDirectory = rootDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RouterPlus",
-            "Observability");
+        RootDirectory = rootDirectory ?? AppPaths.ObservabilityRoot;
         SessionsDirectory = Path.Combine(RootDirectory, "sessions");
     }
 

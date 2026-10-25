@@ -1,4 +1,5 @@
 using RouterPlus.Core.Observability;
+using RouterPlus.Core.Storage;
 using Xunit;
 
 namespace RouterPlus.Core.Tests.Observability;
@@ -53,8 +54,8 @@ public sealed class ObservabilitySettingsTests
     {
         // Arrange
         var settingsPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RouterPlus", "Observability", "settings.json");
+            AppPaths.ObservabilityRoot,
+            "settings.json");
         var settingsDirectory = Path.GetDirectoryName(settingsPath)!;
         var hadExistingFile = File.Exists(settingsPath);
         var existingContents = hadExistingFile ? File.ReadAllBytes(settingsPath) : null;

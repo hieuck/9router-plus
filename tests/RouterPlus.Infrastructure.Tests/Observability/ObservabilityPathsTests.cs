@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using RouterPlus.Core.Storage;
 using RouterPlus.Infrastructure.Observability;
 
 namespace RouterPlus.Infrastructure.Tests.Observability;
@@ -10,10 +11,7 @@ public sealed class ObservabilityPathsTests
     public void Constructor_uses_local_app_data_observability_root()
     {
         var paths = new ObservabilityPaths();
-        var expectedRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RouterPlus",
-            "Observability");
+        var expectedRoot = AppPaths.ObservabilityRoot;
 
         Assert.Equal(expectedRoot, paths.RootDirectory);
         Assert.Equal(Path.Combine(expectedRoot, "sessions"), paths.SessionsDirectory);
