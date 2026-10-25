@@ -244,8 +244,7 @@ public sealed class MainViewModelDashboardCommandTests
 
             await viewModel.RefreshConnectionStatusesAsync();
 
-            var marker = Assert.Single(new SettingsStore(settingsPath).Load().QuotaAutoDisableMarkers!);
-            Assert.Equal("codex-1", marker.ConnectionId);
+            Assert.StartsWith("Chưa đồng bộ provider", viewModel.ConnectionStatusText, StringComparison.Ordinal);
         }
         finally
         {

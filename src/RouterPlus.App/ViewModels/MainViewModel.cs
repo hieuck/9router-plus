@@ -117,7 +117,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _quotaMarkersLoaded;
     private readonly SemaphoreSlim _connectionRefreshGate = new(1, 1);
     private readonly QuotaPollingService _quotaPollingService;
-    private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
+    private readonly IProviderConnectionService _connectionService;    private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
     private bool _isMultiSelectMode;
     private CancellationTokenSource? _batchLoginCts;
     private readonly object _initializationLock = new();
@@ -144,7 +144,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProfileHealthService? profileHealthService = null,
         Func<ChromeProfile, string, Task>? launchUrl = null,
         Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>>? launchManagedChrome = null,
-        IProfileManager? profileManager = null)
+        IProfileManager? profileManager = null,
+        IProviderConnectionService? connectionService = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
@@ -165,7 +166,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 useOriginalProfile: true));
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
         _profileManager = profileManager ?? new ProfileManager(_chromeLocator, _profileReader);
-        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _connectionService = connectionService ?? new ProviderConnectionService();        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
         _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
         _runStartupUpdateCheck = runStartupUpdateCheck;
@@ -2799,56 +2800,46 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            var api = await CreateApiClientAsync();
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Info,
                 "Providers",
                 "LoadingConnections",
                 "Loading provider connections",
                 new { });
-            var connections = await api.ListAllConnectionsAsync(cancellationToken, includeQuotas: true);
+
+            await LoadQuotaAutoDisableMarkersAsync();
+
+            var refreshResult = await _connectionService.RefreshConnectionsAsync(
+                async () => (IRouterApiClient)await CreateApiClientAsync(),
+                cancellationToken);
+            var connections = refreshResult.Connections;
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Info,
                 "Providers",
                 "ConnectionsLoaded",
                 "Provider connections loaded",
                 new { connection_count = connections.Count });
-            var exhaustedConnections = connections
-                .Where(connection =>
-                    connection.IsActive &&
-                    QuotaAutoDisablePolicy.CanAutoDisable(connection))
-                .ToArray();
             _lastReliableNearLimit = connections.Any(connection =>
                 connection.QuotaRows.Count > 0 && connection.IsNearLimit);
 
-            await LoadQuotaAutoDisableMarkersAsync();
-            var disableFailures = 0;
-            foreach (var connection in exhaustedConnections)
+            var disableFailures = refreshResult.DisableFailures.Count;
+            foreach (var disabledConnectionId in refreshResult.DisabledConnectionIds)
             {
-                try
+                var disabledConnection = connections.FirstOrDefault(connection =>
+                    string.Equals(connection.Id, disabledConnectionId, StringComparison.Ordinal));
+                if (disabledConnection is not null)
                 {
-                    await api.UpdateConnectionAsync(
-                        connection.Id,
-                        isActive: false,
-                        cancellationToken: cancellationToken);
-                    UpsertQuotaAutoDisableMarker(connection);
-                    await SaveQuotaAutoDisableMarkersAsync(cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception exception)
-                {
-                    disableFailures++;
-                    AppendLog("WARN", $"Không thể tự tắt connection {connection.Id}: {SafeError(exception)}");
+                    UpsertQuotaAutoDisableMarker(disabledConnection);
                 }
             }
-
-            if (exhaustedConnections.Length > 0)
+            if (refreshResult.DisabledConnectionIds.Count > 0)
             {
-                connections = await api.ListAllConnectionsAsync(cancellationToken);
                 await SaveQuotaAutoDisableMarkersAsync(cancellationToken);
+            }
+
+            foreach (var failure in refreshResult.DisableFailures)
+            {
+                AppendLog("WARN", $"Không thể tự tắt connection {failure.ConnectionId}: {failure.Error}");
             }
 
             await UpdateQuotaResetSuggestionsAsync(connections, cancellationToken);
