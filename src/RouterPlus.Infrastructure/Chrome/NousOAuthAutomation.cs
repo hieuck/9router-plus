@@ -408,11 +408,11 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Warning,
             "NousOAuth",
-            "AccountPickerNotFound",
-            "Account picker row not found after all attempts",
+            "AccountPickerManualFallback",
+            "Account picker row not found after all attempts; user will complete manually, keeping automation alive",
             new { email, maxAttempts });
 
-        return false;
+        return true;
     }
 
     /// <summary>

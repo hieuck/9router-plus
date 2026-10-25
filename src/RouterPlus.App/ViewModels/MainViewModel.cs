@@ -3555,7 +3555,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 cancellationToken);
 
             // Polling is the source of truth - wait for connection to be detected
-            StatusText = $"Đang chờ xác nhận từ {definition.DisplayName}…";
+            StatusText = $"Đang chờ xác nhận từ {definition.DisplayName}… Nếu Google yêu cầu TOTP/chọn tài khoản, hãy hoàn tất trong Chrome; app sẽ tự tiếp tục.";
 
             // Polling is the source of truth. Do NOT cancel this: the 9Router poll
             // request is what finalizes and creates the provider connection.
