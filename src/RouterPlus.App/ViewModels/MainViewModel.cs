@@ -3553,43 +3553,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
             // Polling is the source of truth - wait for connection to be detected
             StatusText = $"Đang chờ xác nhận từ {definition.DisplayName}…";
 
-            // Race: automation task vs poll task. If automation succeeds first, rename immediately.
-            using var raceCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var pollTask = PollDeviceCodeUntilSuccessAsync(api, provider, session, raceCts.Token);
-
-            var completedTask = await Task.WhenAny(automationTask, pollTask);
-
-            if (completedTask == automationTask)
+            // Polling is the source of truth. Do NOT cancel this: the 9Router poll
+            // request is what finalizes and creates the provider connection.
+            try
             {
-                var automationResult = await automationTask;
-                if (automationResult.Success)
-                {
-                    ObservabilityHub.Instance.LogEvent(
-                        LogLevel.Info,
-                        "Providers",
-                        "DeviceCodeAutomationSuccessFirst",
-                        "Automation completed first with success, renaming connection",
-                        new { message = automationResult.Message });
-                    raceCts.Cancel(); // Cancel polling
-                    try { await pollTask; } catch (OperationCanceledException) { }
-                    await RenameNewConnectionAsync(api, provider, cancellationToken);
-                    return;
-                }
-                // Automation failed or incomplete, continue waiting for poll
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Warning,
-                    "Providers",
-                    "DeviceCodeAutomationIncomplete",
-                    "Automation incomplete, continuing to wait for poll",
-                    new { message = automationResult.Message });
-                await pollTask; // Propagate success/exception; PollDeviceCodeUntilSuccessAsync renames on success
-                return;
+                await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
             }
-            else
+            catch (Exception) when (automationTask.IsCompletedSuccessfully && automationTask.Result.Success)
             {
-                // Poll completed first (success or exception)
-                await pollTask; // Propagate exception if any
-                return;
+                // Portal confirmed but the poll endpoint failed; try direct rename as a fallback.
+                await RenameNewConnectionAsync(api, provider, cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
