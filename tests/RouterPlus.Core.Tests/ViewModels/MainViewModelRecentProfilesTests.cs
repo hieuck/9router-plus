@@ -2,16 +2,34 @@ using System.Reflection;
 using RouterPlus.App.Services;
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Tests.TestHelpers;
 using RouterPlus.Infrastructure.Storage;
 
 namespace RouterPlus.Core.Tests.ViewModels;
 
-public sealed class MainViewModelRecentProfilesTests
+public sealed class MainViewModelRecentProfilesTests : IDisposable
 {
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "RouterPlusRecentProfilesTests", Guid.NewGuid().ToString("N"));
+
+    public MainViewModelRecentProfilesTests()
+    {
+        Directory.CreateDirectory(_directory);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_directory))
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+    }
+
+    private MainViewModel CreateViewModel() => new MainViewModel(Mocks.CreateSettingsStore(_directory));
+
     [Fact]
     public void LaunchRecentCommand_slot_outside_range_is_noop()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = CreateViewModel();
 
         Assert.NotNull(viewModel.LaunchRecentCommand);
     }
@@ -19,7 +37,7 @@ public sealed class MainViewModelRecentProfilesTests
     [Fact]
     public async Task OpenQuickLaunchPalette_with_no_profiles_is_noop_when_feature_is_disabled()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = CreateViewModel();
 
         await viewModel.OpenQuickLaunchPalette();
 
@@ -30,7 +48,7 @@ public sealed class MainViewModelRecentProfilesTests
     [Fact]
     public async Task OpenQuickLaunchPalette_stays_closed_when_feature_is_disabled()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = CreateViewModel();
         SimulateLoadedProfiles(viewModel, "Personal", "Work");
 
         await viewModel.OpenQuickLaunchPalette();
@@ -42,7 +60,7 @@ public sealed class MainViewModelRecentProfilesTests
     [Fact]
     public void QuickLaunchFilter_narrows_results()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = CreateViewModel();
         SimulateLoadedProfiles(viewModel, "Personal", "Work", "Study");
 
         viewModel.QuickLaunchFilterText = "wo";
@@ -54,7 +72,7 @@ public sealed class MainViewModelRecentProfilesTests
     [Fact]
     public void ClearRecentProfiles_empties_rows_and_disables_command()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = CreateViewModel();
         SimulateLoadedProfiles(viewModel, "Personal", "Work");
         SeedRecents(viewModel, new[]
         {
@@ -70,7 +88,7 @@ public sealed class MainViewModelRecentProfilesTests
     [Fact]
     public void QuickLaunchSelection_wraps_with_arrow_keys()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = CreateViewModel();
         SimulateLoadedProfiles(viewModel, "Alpha", "Beta", "Gamma");
 
         viewModel.OpenQuickLaunchPalette();
@@ -85,7 +103,7 @@ public sealed class MainViewModelRecentProfilesTests
     [Fact]
     public void RecentProfileRows_render_recent_profile_metadata()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = CreateViewModel();
         SimulateLoadedProfiles(viewModel, "Personal", "Work");
         SeedRecents(viewModel, new[]
         {
@@ -143,20 +161,5 @@ public sealed class MainViewModelRecentProfilesTests
         typeof(MainViewModel)
             .GetMethod("UpdateRecentProfilesList", BindingFlags.Instance | BindingFlags.NonPublic)
             !.Invoke(viewModel, null);
-    }
-
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "RouterPlusRecentTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void DeleteTempDirectory(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
     }
 }

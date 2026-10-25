@@ -1,5 +1,6 @@
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
+using RouterPlus.Core.Tests.TestHelpers;
 using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Storage;
 using System.Net;
@@ -8,12 +9,17 @@ using System.Text.Json;
 
 namespace RouterPlus.Core.Tests.ViewModels;
 
-public sealed class MainViewModelDashboardCommandTests
+public sealed class MainViewModelDashboardCommandTests : IDisposable
 {
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "RouterPlusDashboardCommandTests", Guid.NewGuid().ToString("N"));
+
+    public MainViewModelDashboardCommandTests() => Directory.CreateDirectory(_directory);
+
+    public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true); }
     [Fact]
     public void Dashboard_command_is_disabled_until_a_profile_is_selected()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = new MainViewModel(Mocks.CreateSettingsStore(_directory));
 
         Assert.False(viewModel.OpenProviderDashboardCommand.CanExecute(ProviderKind.Kiro));
     }
@@ -21,7 +27,7 @@ public sealed class MainViewModelDashboardCommandTests
     [Fact]
     public async Task Manual_status_sync_appends_a_log_entry_even_when_result_is_unchanged()
     {
-        var viewModel = new MainViewModel();
+        var viewModel = new MainViewModel(Mocks.CreateSettingsStore(_directory));
 
         await viewModel.RefreshConnectionStatusesAsync();
         var firstLog = viewModel.LogText;
@@ -38,7 +44,7 @@ public sealed class MainViewModelDashboardCommandTests
     {
         var handler = new FailsOnSecondProviderRequestHandler();
         using var httpClient = new HttpClient(handler);
-        var viewModel = new MainViewModel(httpClient: httpClient)
+        var viewModel = new MainViewModel(Mocks.CreateSettingsStore(_directory), httpClient: httpClient)
         {
             DashboardBaseUrl = "http://router.test"
         };
@@ -73,7 +79,7 @@ public sealed class MainViewModelDashboardCommandTests
     {
         var handler = new ExhaustedQuotaHandler(provider, connectionId);
         using var httpClient = new HttpClient(handler);
-        var viewModel = new MainViewModel(httpClient: httpClient)
+        var viewModel = new MainViewModel(Mocks.CreateSettingsStore(_directory), httpClient: httpClient)
         {
             DashboardBaseUrl = "http://router.test"
         };
@@ -183,7 +189,7 @@ public sealed class MainViewModelDashboardCommandTests
     {
         var handler = new ReenableSuggestionHandler();
         using var httpClient = new HttpClient(handler);
-        var viewModel = new MainViewModel(httpClient: httpClient)
+        var viewModel = new MainViewModel(Mocks.CreateSettingsStore(_directory), httpClient: httpClient)
         {
             DashboardBaseUrl = "http://router.test"
         };
@@ -259,7 +265,7 @@ public sealed class MainViewModelDashboardCommandTests
     {
         using var cancellation = new CancellationTokenSource();
         using var httpClient = new HttpClient(new RefreshCancellationHandler(cancellation));
-        var viewModel = new MainViewModel(httpClient: httpClient)
+        var viewModel = new MainViewModel(Mocks.CreateSettingsStore(_directory), httpClient: httpClient)
         {
             DashboardBaseUrl = "http://router.test"
         };
@@ -281,7 +287,7 @@ public sealed class MainViewModelDashboardCommandTests
     {
         var handler = new PartialDisableFailureHandler();
         using var httpClient = new HttpClient(handler);
-        var viewModel = new MainViewModel(httpClient: httpClient)
+        var viewModel = new MainViewModel(Mocks.CreateSettingsStore(_directory), httpClient: httpClient)
         {
             DashboardBaseUrl = "http://router.test"
         };
@@ -307,7 +313,7 @@ public sealed class MainViewModelDashboardCommandTests
     {
         var handler = new RecordingHandler();
         using var httpClient = new HttpClient(handler);
-        var viewModel = new MainViewModel(httpClient: httpClient)
+        var viewModel = new MainViewModel(Mocks.CreateSettingsStore(_directory), httpClient: httpClient)
         {
             DashboardBaseUrl = "http://router.test"
         };
@@ -607,3 +613,5 @@ public sealed class MainViewModelDashboardCommandTests
         }
     }
 }
+
+
