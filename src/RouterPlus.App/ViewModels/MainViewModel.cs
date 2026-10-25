@@ -1513,6 +1513,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _quotaMarkersLoaded = true;
             DashboardBaseUrl = settings.DashboardBaseUrl;
             DashboardAuthPassword = settings.DashboardAuthPassword;
+            try
+            {
+                await _settingsStore.MigrateDashboardPasswordAsync();
+            }
+            catch (Exception migrationException)
+            {
+                AppendLog("WARN", $"Dashboard password migration failed: {SafeError(migrationException)}");
+            }
             ChromeExecutablePath = settings.ChromeExecutablePath ?? string.Empty;
             ChromeUserDataDirectory = settings.ChromeUserDataDirectory ?? string.Empty;
             FontScale = settings.FontScale;
