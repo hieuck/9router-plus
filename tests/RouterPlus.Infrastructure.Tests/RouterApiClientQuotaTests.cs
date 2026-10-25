@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Threading;
 using Moq;
 using Moq.Protected;
 using RouterPlus.Core.Providers;
@@ -50,10 +51,10 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal(2, result.QuotaRows.Count);
+        Assert.NotNull(result.Quota);
+        Assert.Equal(2, result.Quota!.QuotaRows.Count);
 
-        var requestsQuota = result.QuotaRows.First(q => q.Name == "requests");
+        var requestsQuota = result.Quota!.QuotaRows.First(q => q.Name == "requests");
         Assert.Equal(750m, requestsQuota.Used);
         Assert.Equal(1000m, requestsQuota.Total);
         Assert.Equal(250m, requestsQuota.Remaining);
@@ -77,7 +78,8 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.Null(result);
+        Assert.Null(result.Quota);
+        Assert.False(result.Failed);
     }
 
     [Fact]
@@ -91,7 +93,8 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.Null(result);
+        Assert.Null(result.Quota);
+        Assert.False(result.Failed);
     }
 
     [Fact]
@@ -111,7 +114,8 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.Null(result);
+        Assert.Null(result.Quota);
+        Assert.False(result.Failed);
     }
 
     [Fact]
@@ -131,7 +135,8 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.Null(result);
+        Assert.Null(result.Quota);
+        Assert.False(result.Failed);
     }
 
     [Fact]
@@ -156,8 +161,8 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.NotNull(result);
-        var quota = result.QuotaRows.First();
+        Assert.NotNull(result.Quota);
+        var quota = result.Quota!.QuotaRows.First();
         Assert.Equal(500m, quota.Used);
         Assert.Equal(1000m, quota.Total);
         Assert.Null(quota.Remaining);
@@ -165,7 +170,7 @@ public class RouterApiClientQuotaTests
     }
 
     [Fact]
-    public async Task FetchQuotaAsync_ReturnsNull_WhenHttpExceptionThrown()
+    public async Task FetchQuotaAsync_ReturnsFailure_WhenHttpExceptionThrown()
     {
         // Arrange
         var connectionId = "conn-123";
@@ -180,7 +185,8 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.Null(result);
+        Assert.Null(result.Quota);
+        Assert.True(result.Failed);
     }
 
     [Fact]
@@ -370,12 +376,12 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal(3, result.QuotaRows.Count);
+        Assert.NotNull(result.Quota);
+        Assert.Equal(3, result.Quota!.QuotaRows.Count);
 
-        Assert.Contains(result.QuotaRows, q => q.Name == "requests");
-        Assert.Contains(result.QuotaRows, q => q.Name == "tokens");
-        Assert.Contains(result.QuotaRows, q => q.Name == "credits");
+        Assert.Contains(result.Quota!.QuotaRows, q => q.Name == "requests");
+        Assert.Contains(result.Quota!.QuotaRows, q => q.Name == "tokens");
+        Assert.Contains(result.Quota!.QuotaRows, q => q.Name == "credits");
     }
 
     [Fact]
@@ -402,8 +408,8 @@ public class RouterApiClientQuotaTests
         var result = await InvokeFetchQuotaAsync(connectionId);
 
         // Assert
-        Assert.NotNull(result);
-        var quota = result.QuotaRows.First();
+        Assert.NotNull(result.Quota);
+        var quota = result.Quota!.QuotaRows.First();
         Assert.NotNull(quota.ResetAt);
         Assert.Equal(new DateTimeOffset(2026, 10, 15, 12, 30, 45, TimeSpan.Zero), quota.ResetAt.Value);
     }
@@ -462,7 +468,7 @@ public class RouterApiClientQuotaTests
             });
     }
 
-    private async Task<RouterApiClient.QuotaData?> InvokeFetchQuotaAsync(
+    private async Task<RouterApiClient.QuotaFetchResult> InvokeFetchQuotaAsync(
         string connectionId,
         CancellationToken cancellationToken = default)
     {
@@ -471,7 +477,7 @@ public class RouterApiClientQuotaTests
             "FetchQuotaAsync",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
-        var task = (Task<RouterApiClient.QuotaData?>)method!.Invoke(_client, new object[] { connectionId, cancellationToken })!;
+        var task = (Task<RouterApiClient.QuotaFetchResult>)method!.Invoke(_client, new object[] { connectionId, cancellationToken })!;
         return await task;
     }
 
@@ -615,14 +621,15 @@ public class RouterApiClientQuotaTests
 
         var requestStarted = new SemaphoreSlim(0, connectionCount);
         var allowCompletion = new SemaphoreSlim(0, connectionCount);
-        var peakConcurrency = 0;
+        int peakConcurrency = 0;
+        object peakLock = new();
 
         var handler = new ConcurrencyTrackingHandler(
             connectionsJson,
             quotaJson,
             requestStarted,
             allowCompletion,
-            peak => { if (peak > peakConcurrency) peakConcurrency = peak; });
+            peak => { lock (peakLock) { if (peak > peakConcurrency) peakConcurrency = peak; } });
 
         using var httpClient = new HttpClient(handler);
         var client = new RouterApiClient(httpClient, "https://api.example.com");
@@ -657,12 +664,6 @@ public class RouterApiClientQuotaTests
         SemaphoreSlim allowCompletion,
         Action<int> updatePeak) : HttpMessageHandler
     {
-        public int GetCurrentConcurrency()
-        {
-            // Thread-safe read without locking
-            return _concurrentCount;
-        }
-
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -676,23 +677,23 @@ public class RouterApiClientQuotaTests
                 };
             }
 
-            var threadId = Environment.CurrentManagedThreadId;
-            Console.WriteLine($"[Handler:{threadId}] Enter SendAsync for {path}");
-
-            // Track concurrency - no gate, use Interlocked for thread-safe increments
+            // Track concurrency - use Interlocked for thread-safe increments
             var current = Interlocked.Increment(ref _concurrentCount);
             updatePeak(current);
-            Console.WriteLine($"[Handler:{threadId}] Concurrency now: {current}");
 
             // Signal that this request has started
             requestStarted.Release();
 
-            // Wait for test to allow completion (this allows other requests to start concurrently)
-            await allowCompletion.WaitAsync(cancellationToken);
-            Console.WriteLine($"[Handler:{threadId}] Completing request");
-
-            Interlocked.Decrement(ref _concurrentCount);
-            Console.WriteLine($"[Handler:{threadId}] Concurrency decremented to: {_concurrentCount}");
+            try
+            {
+                // Wait for test to allow completion (this allows other requests to start concurrently)
+                await allowCompletion.WaitAsync(cancellationToken);
+            }
+            finally
+            {
+                // Always decrement in finally so cancellation cannot make counter negative
+                Interlocked.Decrement(ref _concurrentCount);
+            }
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -704,15 +705,17 @@ public class RouterApiClientQuotaTests
     }
 
     [Fact]
-    public async Task FetchAllQuotasAsync_OneFailedQuotaDoesNotFailList_LogsAggregateWarning()
+    public async Task FetchAllQuotasAsync_RealFailureIsCounted_404AndEmptyAreNot()
     {
-        // Arrange
+        // Arrange - 5xx = failure, 404/empty/message = normal no-data
         var connectionsJson = """
             {
                 "connections": [
-                    {"id":"conn-1","provider":"codex","name":"Test 1","priority":1},
-                    {"id":"conn-2","provider":"codex","name":"Test 2","priority":2},
-                    {"id":"conn-3","provider":"codex","name":"Test 3","priority":3}
+                    {"id":"conn-500","provider":"codex","name":"Test 500","priority":1},
+                    {"id":"conn-404","provider":"codex","name":"Test 404","priority":2},
+                    {"id":"conn-empty","provider":"codex","name":"Test Empty","priority":3},
+                    {"id":"conn-message","provider":"codex","name":"Test Message","priority":4},
+                    {"id":"conn-success","provider":"codex","name":"Test Success","priority":5}
                 ]
             }
             """;
@@ -726,6 +729,18 @@ public class RouterApiClientQuotaTests
                         "remaining": 900
                     }
                 }
+            }
+            """;
+
+        var quotaEmptyJson = """
+            {
+                "quotas": {}
+            }
+            """;
+
+        var quotaMessageJson = """
+            {
+                "message": "Connection not found"
             }
             """;
 
@@ -747,15 +762,39 @@ public class RouterApiClientQuotaTests
                 }
 
                 requestCount++;
-                // Fail the second request (conn-2)
-                if (path == "/api/usage/conn-2")
+                // conn-500: 500 = real failure
+                if (path == "/api/usage/conn-500")
                 {
                     return new HttpResponseMessage(HttpStatusCode.InternalServerError)
                     {
                         Content = new StringContent("{}", Encoding.UTF8, "application/json")
                     };
                 }
-
+                // conn-404: 404 = normal no-data
+                if (path == "/api/usage/conn-404")
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound)
+                    {
+                        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                    };
+                }
+                // conn-empty: 200 with empty quotas = normal no-data
+                if (path == "/api/usage/conn-empty")
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(quotaEmptyJson, Encoding.UTF8, "application/json")
+                    };
+                }
+                // conn-message: 200 with message = normal no-data
+                if (path == "/api/usage/conn-message")
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(quotaMessageJson, Encoding.UTF8, "application/json")
+                    };
+                }
+                // conn-success: 200 with quota data = success
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(quotaSuccessJson, Encoding.UTF8, "application/json")
@@ -766,14 +805,179 @@ public class RouterApiClientQuotaTests
         var connections = await _client.ListAllConnectionsAsync(CancellationToken.None, includeQuotas: true);
 
         // Assert
-        Assert.Equal(3, connections.Count);
-        // conn-1 and conn-3 should have quota data, conn-2 should not
-        var conn1 = connections.First(c => c.Id == "conn-1");
-        var conn2 = connections.First(c => c.Id == "conn-2");
-        var conn3 = connections.First(c => c.Id == "conn-3");
+        Assert.Equal(5, connections.Count);
+        
+        // Only conn-500 should be a failure; others should have quota data or be normal no-data
+        var conn500 = connections.First(c => c.Id == "conn-500");
+        var conn404 = connections.First(c => c.Id == "conn-404");
+        var connEmpty = connections.First(c => c.Id == "conn-empty");
+        var connMessage = connections.First(c => c.Id == "conn-message");
+        var connSuccess = connections.First(c => c.Id == "conn-success");
 
-        Assert.NotEmpty(conn1.QuotaRows);
-        Assert.Empty(conn2.QuotaRows); // Failed quota fetch results in empty quota rows
-        Assert.NotEmpty(conn3.QuotaRows);
+        // conn-500: 5xx failure -> no quota data
+        Assert.Empty(conn500.QuotaRows);
+        
+        // conn-404: 404 -> normal no-data, no quota data
+        Assert.Empty(conn404.QuotaRows);
+        
+        // conn-empty: empty quotas -> normal no-data, no quota data
+        Assert.Empty(connEmpty.QuotaRows);
+        
+        // conn-message: message property -> normal no-data, no quota data
+        Assert.Empty(connMessage.QuotaRows);
+        
+        // conn-success: has quota data
+        Assert.NotEmpty(connSuccess.QuotaRows);
+    }
+
+    [Fact]
+    public async Task FetchQuotaAsync_ReturnsNoData_When404()
+    {
+        // Arrange
+        var connectionId = "conn-123";
+        SetupHttpResponse(HttpStatusCode.NotFound, "{}");
+
+        // Act
+        var result = await InvokeFetchQuotaAsync(connectionId);
+
+        // Assert - 404 is normal no-data, not a failure
+        Assert.Null(result.Quota);
+        Assert.False(result.Failed); // Should not be failed
+    }
+
+    [Fact]
+    public async Task FetchQuotaAsync_ReturnsNoData_WhenEmptyQuotas()
+    {
+        // Arrange
+        var connectionId = "conn-123";
+        var json = """
+            {
+                "quotas": {}
+            }
+            """;
+        SetupHttpResponse(HttpStatusCode.OK, json);
+
+        // Act
+        var result = await InvokeFetchQuotaAsync(connectionId);
+
+        // Assert - empty quotas is normal no-data
+        Assert.Null(result.Quota);
+        Assert.False(result.Failed);
+    }
+
+    [Fact]
+    public async Task FetchQuotaAsync_ReturnsNoData_WhenMessageProperty()
+    {
+        // Arrange
+        var connectionId = "conn-123";
+        var json = """
+            {
+                "message": "Connection not found"
+            }
+            """;
+        SetupHttpResponse(HttpStatusCode.OK, json);
+
+        // Act
+        var result = await InvokeFetchQuotaAsync(connectionId);
+
+        // Assert - message property is normal no-data
+        Assert.Null(result.Quota);
+        Assert.False(result.Failed);
+    }
+
+    [Fact]
+    public async Task FetchQuotaAsync_ReturnsFailure_When5xx()
+    {
+        // Arrange
+        var connectionId = "conn-123";
+        SetupHttpResponse(HttpStatusCode.InternalServerError, "{}");
+
+        // Act
+        var result = await InvokeFetchQuotaAsync(connectionId);
+
+        // Assert - 5xx is a real failure
+        Assert.Null(result.Quota);
+        Assert.True(result.Failed);
+    }
+
+    [Fact]
+    public async Task FetchQuotaAsync_ReturnsFailure_WhenTransportException()
+    {
+        // Arrange
+        var connectionId = "conn-123";
+        _httpHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("Network error"));
+
+        // Act
+        var result = await InvokeFetchQuotaAsync(connectionId);
+
+        // Assert - transport exception is a real failure
+        Assert.Null(result.Quota);
+        Assert.True(result.Failed);
+    }
+
+    [Fact]
+    public async Task WaitForNewConnectionAsync_PollingUsesIncludeQuotasFalse()
+    {
+        // Arrange - fake handler returns a new connection on first poll
+        var connectionsJsonFirstPoll = """
+            {
+                "connections": [
+                    {"id":"conn-old","provider":"codex","name":"Old","priority":1},
+                    {"id":"conn-new","provider":"codex","name":"Test Profile","priority":2}
+                ]
+            }
+            """;
+
+        var requestPaths = new List<string>();
+        var callCount = 0;
+        _httpHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                callCount++;
+                requestPaths.Add(request.RequestUri!.AbsolutePath);
+                
+                if (request.RequestUri!.AbsolutePath == "/api/providers")
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(connectionsJsonFirstPoll, Encoding.UTF8, "application/json")
+                    };
+                }
+                return new HttpResponseMessage(HttpStatusCode.NotFound)
+                {
+                    Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                };
+            });
+
+        var existingConnections = new Dictionary<string, ProviderConnection>
+        {
+            ["conn-old"] = new ProviderConnection("conn-old", ProviderKind.Codex, "Old", 1, true, null, null, null, null, null, null, null, null, null, null, null, null, Array.Empty<ProviderQuota>())
+        };
+
+        var api = new RouterApiClient(_httpClient, "https://api.example.com");
+
+        // Act - should find the new connection on first poll (2s timeout, 1s poll interval)
+        var connection = await api.WaitForNewConnectionAsync(
+            ProviderKind.Codex,
+            existingConnections,
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        // Assert
+        Assert.Equal("conn-new", connection.Id);
+        Assert.Equal("Test Profile", connection.Name);
+        
+        // Verify no /api/usage calls were made during polling
+        Assert.DoesNotContain(requestPaths, path => path.StartsWith("/api/usage/", StringComparison.Ordinal));
     }
 }

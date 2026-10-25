@@ -154,8 +154,7 @@ public sealed class RouterApiClientHttpBehaviorTests
         Assert.Contains(handler.Requests, request =>
             request.Method == HttpMethod.Get &&
             new Uri(request.Uri).AbsolutePath == "/api/providers");
-        Assert.Contains(handler.Requests, request => request.Uri.EndsWith("/api/usage/kiro-1", StringComparison.Ordinal));
-        Assert.Contains(handler.Requests, request => request.Uri.EndsWith("/api/usage/kiro-2", StringComparison.Ordinal));
+        Assert.DoesNotContain(handler.Requests, request => request.Uri.Contains("/api/usage/", StringComparison.Ordinal));
     }
 
     [Fact]

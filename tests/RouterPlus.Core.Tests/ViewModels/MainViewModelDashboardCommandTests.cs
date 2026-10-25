@@ -378,7 +378,7 @@ public sealed class MainViewModelDashboardCommandTests
 
             if (request.Method == HttpMethod.Get && path == "/api/usage/codex-1")
             {
-                return Task.FromResult(Json(HttpStatusCode.OK, "{\"quotas\":{\"session\":{\"used\":0,\"total\":100,\"remaining\":100,\"resetAt\":\"2026-10-01T00:00:00Z\"}}}"));
+                return Task.FromResult(Json(HttpStatusCode.OK, "{\"quotas\":{\"session\":{\"used\":0,\"total\":100,\"remaining\":100,\"resetAt\":\"2099-01-01T00:00:00Z\"}}}"));
             }
 
             throw new InvalidOperationException($"Unexpected request: {request.Method} {path}");
@@ -410,7 +410,7 @@ public sealed class MainViewModelDashboardCommandTests
 
             if (request.Method == HttpMethod.Get && path == "/api/usage/codex-1")
             {
-                return Task.FromResult(Json(HttpStatusCode.OK, "{\"quotas\":{\"session\":{\"used\":100,\"total\":100,\"remaining\":0,\"resetAt\":\"2026-10-01T00:00:00Z\"}}}"));
+                return Task.FromResult(Json(HttpStatusCode.OK, "{\"quotas\":{\"session\":{\"used\":100,\"total\":100,\"remaining\":0,\"resetAt\":\"2099-01-01T00:00:00Z\"}}}"));
             }
 
             throw new InvalidOperationException($"Unexpected request: {request.Method} {path}");
@@ -447,7 +447,7 @@ public sealed class MainViewModelDashboardCommandTests
 
             if (request.Method == HttpMethod.Get && path == "/api/usage/codex-1")
             {
-                return Task.FromResult(Json(HttpStatusCode.OK, "{\"quotas\":{\"session\":{\"used\":100,\"total\":100,\"remaining\":0,\"resetAt\":\"2026-10-01T00:00:00Z\"}}}"));
+                return Task.FromResult(Json(HttpStatusCode.OK, "{\"quotas\":{\"session\":{\"used\":100,\"total\":100,\"remaining\":0,\"resetAt\":\"2099-01-01T00:00:00Z\"}}}"));
             }
 
             throw new InvalidOperationException($"Unexpected request: {request.Method} {path}");

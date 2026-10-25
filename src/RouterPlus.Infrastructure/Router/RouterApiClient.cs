@@ -262,7 +262,7 @@ public sealed class RouterApiClient : IRouterApiClient
             return created;
         }
 
-        var connections = await ListConnectionsAsync(provider, cancellationToken);
+        var connections = await ListConnectionsAsync(provider, cancellationToken, includeQuotas: false);
         return connections.LastOrDefault(connection =>
                    string.Equals(connection.Name, name, StringComparison.OrdinalIgnoreCase))
                ?? throw new RouterApiException("9Router did not return the created connection.", HttpStatusCode.OK);
@@ -351,7 +351,7 @@ public sealed class RouterApiClient : IRouterApiClient
             IReadOnlyList<ProviderConnection> current;
             try
             {
-                current = await ListConnectionsAsync(provider, pollCancellation.Token);
+                current = await ListConnectionsAsync(provider, pollCancellation.Token, includeQuotas: false);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && pollCancellation.IsCancellationRequested)
             {
@@ -581,6 +581,19 @@ public sealed class RouterApiClient : IRouterApiClient
         public DateTimeOffset? ResetAt => QuotaRows.FirstOrDefault(quota => quota.ResetAt.HasValue)?.ResetAt;
     }
 
+    /// <summary>
+    /// Result of a single quota fetch, distinguishing normal no-data from real failures.
+    /// </summary>
+    internal readonly record struct QuotaFetchResult
+    {
+        public QuotaData? Quota { get; init; }
+        public bool Failed { get; init; } // true = transport/HTTP exception/5xx; false = 404, message, empty quotas, or success
+
+        public static QuotaFetchResult Success(QuotaData? quota) => new() { Quota = quota, Failed = false };
+        public static QuotaFetchResult NoData() => new() { Quota = null, Failed = false };
+        public static QuotaFetchResult Failure() => new() { Quota = null, Failed = true };
+    }
+
     private async Task<Dictionary<string, QuotaData>> FetchAllQuotasAsync(
         JsonElement connections, CancellationToken cancellationToken)
     {
@@ -607,8 +620,8 @@ public sealed class RouterApiClient : IRouterApiClient
             await semaphore.WaitAsync(cancellationToken);
             try
             {
-                var quota = await FetchQuotaAsync(id, cancellationToken);
-                return (id, quota);
+                var fetchResult = await FetchQuotaAsync(id, cancellationToken);
+                return (id, fetchResult);
             }
             finally
             {
@@ -618,13 +631,13 @@ public sealed class RouterApiClient : IRouterApiClient
 
         var completed = await Task.WhenAll(tasks);
         int failedCount = 0;
-        foreach (var (id, quota) in completed)
+        foreach (var (id, fetchResult) in completed)
         {
-            if (quota is not null)
+            if (fetchResult.Quota is not null)
             {
-                result[id] = quota;
+                result[id] = fetchResult.Quota;
             }
-            else
+            if (fetchResult.Failed)
             {
                 failedCount++;
             }
@@ -650,21 +663,33 @@ public sealed class RouterApiClient : IRouterApiClient
         return result;
     }
 
-    private async Task<QuotaData?> FetchQuotaAsync(string connectionId, CancellationToken cancellationToken)
+    private async Task<QuotaFetchResult> FetchQuotaAsync(string connectionId, CancellationToken cancellationToken)
     {
         try
         {
             using var response = await _httpClient.GetAsync(
                 CreateUri($"api/usage/{Uri.EscapeDataString(connectionId)}"), cancellationToken);
-            if (!response.IsSuccessStatusCode) return null;
+            
+            // 404 / other 4xx (except 429) and empty quotas / message = normal no-data.
+            // 429 (rate limited) and 5xx = real failure.
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
+                    return QuotaFetchResult.Failure();
+                return QuotaFetchResult.NoData();
+            }
+
             using var doc = await ReadDocumentAsync(response, cancellationToken);
             var root = doc.RootElement;
-            if (root.TryGetProperty("message", out _)) return null;
+            
+            // "message" property = normal no-data (e.g., "Connection not found")
+            if (root.TryGetProperty("message", out _))
+                return QuotaFetchResult.NoData();
 
             if (!root.TryGetProperty("quotas", out var quotas) ||
                 quotas.ValueKind != JsonValueKind.Object)
             {
-                return null;
+                return QuotaFetchResult.NoData();
             }
 
             var quotaRows = quotas.EnumerateObject()
@@ -683,15 +708,28 @@ public sealed class RouterApiClient : IRouterApiClient
                 })
                 .ToArray();
 
-            return quotaRows.Length == 0 ? null : new QuotaData(quotaRows);
+            return quotaRows.Length == 0 
+                ? QuotaFetchResult.NoData() 
+                : QuotaFetchResult.Success(new QuotaData(quotaRows));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
+        catch (HttpRequestException)
+        {
+            // Transport failure = real failure
+            return QuotaFetchResult.Failure();
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Timeout = transport failure
+            return QuotaFetchResult.Failure();
+        }
         catch
         {
-            return null;
+            // Any other exception = treat as failure to be safe
+            return QuotaFetchResult.Failure();
         }
     }
 

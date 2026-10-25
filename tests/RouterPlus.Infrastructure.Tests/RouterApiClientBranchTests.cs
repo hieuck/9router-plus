@@ -233,7 +233,7 @@ public sealed class RouterApiClientBranchTests
 
         Assert.Equal("conn-fallback", connection.Id);
         Assert.Equal(ProviderKind.Codex, connection.Provider);
-        Assert.Equal(3, handler.RequestCount);
+        Assert.Equal(2, handler.RequestCount);
     }
 
     [Fact]

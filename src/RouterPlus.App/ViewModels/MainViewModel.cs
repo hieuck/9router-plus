@@ -1193,7 +1193,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 .ToArray();
             await SaveQuotaAutoDisableMarkersAsync(cancellationToken);
             RemoveQuotaResetSuggestion(connectionId);
-            await RefreshConnectionStatusesAsync(showStatus: false, cancellationToken: cancellationToken);
+            await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true, cancellationToken: cancellationToken);
             StatusText = $"Đã bật lại connection {marker.Name ?? connectionId}.";
             ShowToast(StatusText, ToastType.Success);
             return true;
@@ -1561,7 +1561,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             else
             {
-                await RefreshConnectionStatusesAsync(showStatus: true);
+                await RefreshConnectionStatusesAsync(showStatus: true, forceLog: true);
             }
             _isInitialized = true;
             _initializationCompletion.TrySetResult(true);
@@ -2688,7 +2688,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         // Coalesce duplicate background refreshes: skip non-forced if another refresh is running
         if (!forceLog)
         {
-            if (!_connectionRefreshGate.WaitAsync(0, cancellationToken).Result)
+            if (!await _connectionRefreshGate.WaitAsync(0, cancellationToken))
             {
                 ObservabilityHub.Instance.LogEvent(
                     LogLevel.Debug,
@@ -3159,12 +3159,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     existingCard.MarkApiKeySaved();
                 }
                 var existingTestResult = await api.TestConnectionAsync(existingConnection.Id);
-                await RefreshConnectionStatusesAsync(showStatus: false);
                 var updateMessage = existingTestResult.Valid
                     ? $"{definition.DisplayName} key updated in 9Router for {profile.Name}; local key saved."
                     : $"{definition.DisplayName} key saved for {profile.Name}, but the connection test failed.";
                 StatusText = updateMessage;
                 ShowToast(updateMessage, existingTestResult.Valid ? ToastType.Success : ToastType.Warning, 5);
+                // Background refresh after UI feedback
+                await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true);
                 return true;
             }
 
@@ -3182,12 +3183,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 card.MarkApiKeySaved();
             }
             var createdTestResult = await api.TestConnectionAsync(created.Id);
-            await RefreshConnectionStatusesAsync(showStatus: false);
             var createMessage = createdTestResult.Valid
                 ? $"Đã thêm {definition.DisplayName} cho {profile.Name}, priority {created.Priority}."
                 : $"Đã lưu {definition.DisplayName} cho {profile.Name}, nhưng kiểm tra kết nối thất bại.";
             StatusText = createMessage;
             ShowToast(createMessage, createdTestResult.Valid ? ToastType.Success : ToastType.Warning, 5);
+            // Background refresh after UI feedback
+            await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true);
             return true;
         }
         catch (Exception exception)
@@ -3327,9 +3329,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 {
                     await ResumeQuotaPollingAsync();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Resume must not hide workflow exceptions or deadlock
+                    // Resume must not hide workflow exceptions or deadlock, but log for diagnostics
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Warning,
+                        "Providers",
+                        "QuotaPollingResumeFailed",
+                        "Failed to resume quota polling after workflow",
+                        new { provider = provider.ToString(), error = ex.Message });
                 }
             }
 
@@ -3907,9 +3915,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 cancellationToken: cancellationToken);
             _workflowExistingConnections[connection.Id] = connection;
             _currentWorkflowProvider = null;
-            await RefreshConnectionStatusesAsync(showStatus: false, cancellationToken: cancellationToken);
             StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {SelectedProfile.Name}.";
             ShowToast(StatusText, ToastType.Success, 5);
+            // Background refresh after UI feedback
+            await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true, cancellationToken: cancellationToken);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -5061,7 +5070,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
             }
 
-            await RefreshConnectionStatusesAsync(showStatus: false);
+            await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true);
             StatusText = $"Đã xóa {deletedCount} connection {definition.DisplayName} cho profile {profile.Name}.";
             ShowToast(StatusText, ToastType.Success, 5);
         }
