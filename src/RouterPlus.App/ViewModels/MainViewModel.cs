@@ -3489,6 +3489,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         ChromeManagedSession? chromeSession = null;
+        var definition = ProviderCatalog.Get(provider);
         try
         {
             ObservabilityHub.Instance.LogEvent(
@@ -3535,8 +3536,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     }
                 }
             }
-
-            var definition = ProviderCatalog.Get(provider);
             GoogleOAuthFlowAutomation automation = provider switch
             {
                 ProviderKind.Kiro => new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator),
@@ -3555,15 +3554,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             // Polling is the source of truth. Do NOT cancel this: the 9Router poll
             // request is what finalizes and creates the provider connection.
-            try
+            var pollTask = PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
+
+            // Observe automation task without canceling the poll
+            var completed = await Task.WhenAny(automationTask, pollTask);
+            if (completed == automationTask)
             {
-                await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
+                var result = await automationTask;
+                if (!result.Success)
+                {
+                    StatusText = $"Không thể tự động chọn tài khoản Google. Hãy chọn/đăng nhập tài khoản trong Chrome; app vẫn đang chờ {definition.DisplayName}…";
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Warning,
+                        "Providers",
+                        "DeviceCodeAutomationIncomplete",
+                        "Automation incomplete, continuing to wait for poll",
+                        new { message = result.Message });
+                }
             }
-            catch (Exception) when (automationTask.IsCompletedSuccessfully && automationTask.Result.Success)
-            {
-                // Portal confirmed but the poll endpoint failed; try direct rename as a fallback.
-                await RenameNewConnectionAsync(api, provider, cancellationToken);
-            }
+
+            await pollTask;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

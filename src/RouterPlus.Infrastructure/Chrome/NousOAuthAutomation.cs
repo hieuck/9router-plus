@@ -250,108 +250,6 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
                providerState.HasConnectButton;
     }
 
-    /// <summary>
-    /// Trusted click via CDP Input.dispatchMouseEvent at element center.
-    /// Returns true if element found and click dispatched.
-    /// </summary>
-    private async Task<bool> TryTrustedClickAsync(
-        string jsFinderScript,
-        string eventName,
-        string logMessage,
-        CancellationToken cancellationToken)
-    {
-        // Step 1: Find element and get its center coordinates
-        string findScript = @"
-(function() {
-    const isVisible = el => {
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    };
-" + jsFinderScript + @"
-    return false;
-})()
-";
-
-        try
-        {
-            var result = await _client.CallAsync("Runtime.evaluate", new
-            {
-                expression = findScript,
-                returnByValue = true
-            }, cancellationToken, _sessionId);
-
-            if (!result.TryGetProperty("result", out var resultProp) ||
-                !resultProp.TryGetProperty("value", out var valueProp))
-            {
-                return false;
-            }
-
-            // Expected return: { found: true, x: number, y: number } or false
-            if (valueProp.ValueKind == System.Text.Json.JsonValueKind.False)
-            {
-                return false;
-            }
-
-            if (valueProp.TryGetProperty("found", out var foundProp) && foundProp.GetBoolean() &&
-                valueProp.TryGetProperty("x", out var xProp) &&
-                valueProp.TryGetProperty("y", out var yProp))
-            {
-                double x = xProp.GetDouble();
-                double y = yProp.GetDouble();
-
-                // Step 2: Dispatch trusted mouse events via CDP
-                // First dispatch mouseMoved to ensure element is hovered (helps with some sites)
-                await _client.CallAsync("Input.dispatchMouseEvent", new
-                {
-                    type = "mouseMoved",
-                    x,
-                    y,
-                    button = "none"
-                }, cancellationToken, _sessionId);
-
-                await _client.CallAsync("Input.dispatchMouseEvent", new
-                {
-                    type = "mousePressed",
-                    x,
-                    y,
-                    button = "left",
-                    clickCount = 1
-                }, cancellationToken, _sessionId);
-
-                await _client.CallAsync("Input.dispatchMouseEvent", new
-                {
-                    type = "mouseReleased",
-                    x,
-                    y,
-                    button = "left",
-                    clickCount = 1
-                }, cancellationToken, _sessionId);
-
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "NousOAuth",
-                    eventName,
-                    logMessage,
-                    new { x, y });
-
-                return true;
-            }
-
-            return false;
-        }
-        catch (Exception ex)
-        {
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Warning,
-                "NousOAuth",
-                "TrustedClickFailed",
-                "CDP trusted click failed",
-                new { eventName, error = ex.Message });
-            return false;
-        }
-    }
-
     protected override async Task<bool> TryClickProviderConsentButtonAsync(CombinedOAuthPageState state, CancellationToken cancellationToken)
     {
         ObservabilityHub.Instance.LogEvent(
@@ -390,17 +288,13 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
 
     /// <summary>
     /// Override account picker for Nous: dedicated retry that polls for the account row to appear,
-    /// without the base fallback that can click "use another account".
-    /// Uses trusted CDP click at element center.
+    /// using the shared Google detector (base.TryClickAccountPickerAsync) with JS click and exact data-identifier.
     /// </summary>
     protected override async Task<bool> TryClickAccountPickerAsync(
         CombinedOAuthPageState state,
         CancellationToken cancellationToken)
     {
         var email = _profileEmail;
-        var emailLower = email.ToLowerInvariant();
-        var emailJson = JsonSerializer.Serialize(email);
-        var emailLowerJson = JsonSerializer.Serialize(emailLower);
 
         const int maxAttempts = 120;
         const int delayMs = 500;
@@ -420,58 +314,12 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
                     new { email, attempt, maxAttempts });
             }
 
-            var finderScript = $@"
-    // 1) Prefer elements with data-identifier or data-email matching the email
-    let candidates = Array.from(document.querySelectorAll('[data-identifier], [data-email]'));
-    for (const el of candidates) {{
-        if (!isVisible(el)) continue;
-        const id = (el.getAttribute('data-identifier') || '').toLowerCase();
-        const em = (el.getAttribute('data-email') || '').toLowerCase();
-        if (id === {emailLowerJson} || em === {emailLowerJson}) {{
-            // Click a clickable descendant if present, else the element itself
-            const clickable = el.querySelector('a, button, [role=\""link\""], [role=\""button\""]) || el;
-            clickable.scrollIntoView({{ block: 'center' }});
-            const rect = clickable.getBoundingClientRect();
-            return {{ found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }};
-        }}
-    }}
-
-    // 2) Fallback: role=link or role=button whose innerText includes the email
-    candidates = Array.from(document.querySelectorAll('[role=\""link\""], [role=\""button\""]'));
-    for (const el of candidates) {{
-        if (!isVisible(el)) continue;
-        const text = (el.innerText || '').toLowerCase();
-        if (text.includes({emailLowerJson})) {{
-            el.scrollIntoView({{ block: 'center' }});
-            const rect = el.getBoundingClientRect();
-            return {{ found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }};
-        }}
-    }}
-";
-
-            var clicked = await TryTrustedClickAsync(
-                finderScript,
-                "AccountPickerClicked",
-                "Account picker row clicked (trusted click)",
-                cancellationToken);
-
+            var clicked = await base.TryClickAccountPickerAsync(state, cancellationToken);
             if (clicked)
             {
                 // Wait briefly and verify navigation away from accountchooser
                 await Task.Delay(1000, cancellationToken);
-                var urlCheck = await _client.CallAsync("Runtime.evaluate", new
-                {
-                    expression = "location.pathname",
-                    returnByValue = true
-                }, cancellationToken, _sessionId);
-
-                string pathname = "";
-                if (urlCheck.TryGetProperty("result", out var rp) &&
-                    rp.TryGetProperty("value", out var vp) &&
-                    vp.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    pathname = vp.GetString() ?? "";
-                }
+                var pathname = await GetPathnameAsync(cancellationToken);
 
                 if (pathname.Contains("accountchooser", StringComparison.OrdinalIgnoreCase))
                 {
@@ -479,7 +327,7 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
                         LogLevel.Debug,
                         "NousOAuth",
                         "AccountPickerClickDidNotNavigate",
-                        "Trusted click did not navigate away from accountchooser, continuing retry",
+                        "Account picker click did not navigate away from accountchooser, continuing retry",
                         new { email, attempt, pathname });
                 }
                 else
@@ -505,6 +353,158 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
             new { email, maxAttempts });
 
         return false;
+    }
+
+    /// <summary>
+    /// Gets the current page pathname via CDP Runtime.evaluate.
+    /// </summary>
+    private async Task<string> GetPathnameAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = "location.pathname",
+                returnByValue = true
+            }, cancellationToken, _sessionId);
+
+            if (result.TryGetProperty("result", out var rp) &&
+                rp.TryGetProperty("value", out var vp) &&
+                vp.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                return vp.GetString() ?? "";
+            }
+        }
+        catch
+        {
+            // Ignore errors, return empty
+        }
+        return "";
+    }
+
+    /// <summary>
+    /// Trusted click via CDP Input.dispatchMouseEvent at element center.
+    /// Returns true if element found and click dispatched.
+    /// </summary>
+    private async Task<bool> TryTrustedClickAsync(
+        string jsFinderScript,
+        string eventName,
+        string logMessage,
+        CancellationToken cancellationToken)
+    {
+        // Step 1: Find element and get its center coordinates
+        string findScript = @"
+(function() {
+    const isVisible = el => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    };
+" + jsFinderScript + @"
+    return false;
+})()
+";
+
+        try
+        {
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = findScript,
+                returnByValue = true
+            }, cancellationToken, _sessionId);
+
+            if (!result.TryGetProperty("result", out var resultProp) ||
+                !resultProp.TryGetProperty("value", out var valueProp))
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "NousOAuth",
+                    "TrustedClickNotFound",
+                    "Trusted click element not found",
+                    new { eventName, valueKind = "null" });
+                return false;
+            }
+
+            // Check for exceptionDetails
+            if (resultProp.TryGetProperty("exceptionDetails", out var exceptionDetails))
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "NousOAuth",
+                    "TrustedClickScriptFailed",
+                    "Trusted click script failed with exception",
+                    new { eventName, exception = exceptionDetails.ToString() });
+                return false;
+            }
+
+            // Expected return: { found: true, x: number, y: number } or false
+            if (valueProp.ValueKind == System.Text.Json.JsonValueKind.False)
+            {
+                return false;
+            }
+
+            if (valueProp.TryGetProperty("found", out var foundProp) && foundProp.GetBoolean() &&
+                valueProp.TryGetProperty("x", out var xProp) &&
+                valueProp.TryGetProperty("y", out var yProp))
+            {
+                double x = xProp.GetDouble();
+                double y = yProp.GetDouble();
+
+                // Step 2: Dispatch trusted mouse events via CDP with proper button states
+                // mouseMoved: buttons = 0
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseMoved",
+                    x,
+                    y,
+                    button = "none",
+                    buttons = 0
+                }, cancellationToken, _sessionId);
+
+                // mousePressed: buttons = 1
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mousePressed",
+                    x,
+                    y,
+                    button = "left",
+                    buttons = 1,
+                    clickCount = 1
+                }, cancellationToken, _sessionId);
+
+                // mouseReleased: buttons = 0
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseReleased",
+                    x,
+                    y,
+                    button = "left",
+                    buttons = 0,
+                    clickCount = 1
+                }, cancellationToken, _sessionId);
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "NousOAuth",
+                    eventName,
+                    logMessage,
+                    new { x, y });
+
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "NousOAuth",
+                "TrustedClickFailed",
+                "CDP trusted click failed",
+                new { eventName, error = ex.Message });
+            return false;
+        }
     }
 }
 
