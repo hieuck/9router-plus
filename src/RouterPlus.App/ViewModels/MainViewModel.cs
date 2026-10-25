@@ -3571,6 +3571,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         "Automation completed first with success, renaming connection",
                         new { message = automationResult.Message });
                     raceCts.Cancel(); // Cancel polling
+                    try { await pollTask; } catch (OperationCanceledException) { }
                     await RenameNewConnectionAsync(api, provider, cancellationToken);
                     return;
                 }
@@ -3581,53 +3582,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     "DeviceCodeAutomationIncomplete",
                     "Automation incomplete, continuing to wait for poll",
                     new { message = automationResult.Message });
+                await pollTask; // Propagate success/exception; PollDeviceCodeUntilSuccessAsync renames on success
+                return;
             }
             else
             {
                 // Poll completed first (success or exception)
                 await pollTask; // Propagate exception if any
                 return;
-            }
-
-            // Connection detected! Now we can cleanup
-            StatusText = "Đã nhận connection. Đang lưu…";
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Info,
-                "Providers",
-                "DeviceCodePollingSucceeded",
-                "Device code polling succeeded",
-                new { });
-
-            // Try to get automation result (may still be running)
-            OAuthConsentResult automationResultAfterPoll;
-            if (automationTask.IsCompleted)
-            {
-                automationResultAfterPoll = await automationTask;
-            }
-            else
-            {
-                automationResultAfterPoll = new OAuthConsentResult(false, false, "Automation still running");
-            }
-
-            if (automationResultAfterPoll.Success)
-
-            if (automationResultAfterPoll.Success)
-            {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "Providers",
-                    "DeviceCodeAutomationSuccess",
-                    "Device code automation success",
-                    new { message = automationResultAfterPoll.Message });
-            }
-            else
-            {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Warning,
-                    "Providers",
-                    "DeviceCodeAutomationIncomplete",
-                    "Device code automation incomplete",
-                    new { message = automationResultAfterPoll.Message });
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
