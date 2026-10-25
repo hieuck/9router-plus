@@ -61,6 +61,7 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         const text = (btn.innerText || '').trim().toLowerCase();
         return text.includes('connect hermes') ||
                text.includes('connect nous') ||
+               text.includes('connect as') ||
                text === 'connect' ||
                text.includes('authorize');
     });
@@ -272,6 +273,7 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         const text = (btn.innerText || '').trim().toLowerCase();
         return text.includes('connect hermes') ||
                text.includes('connect nous') ||
+               text.includes('connect as') ||
                text === 'connect' ||
                text.includes('authorize');
     });
@@ -325,19 +327,23 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         var emailJson = JsonSerializer.Serialize(email);
         var emailLowerJson = JsonSerializer.Serialize(emailLower);
 
-        const int maxAttempts = 20;
+        const int maxAttempts = 120;
         const int delayMs = 500;
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Debug,
-                "NousOAuth",
-                "AccountPickerWait",
-                $"Waiting for account picker row (attempt {attempt}/{maxAttempts})",
-                new { email, attempt, maxAttempts });
+            // Log only every 10th attempt (1, 10, 20, ..., 120) to avoid log spam
+            if (attempt == 1 || attempt % 10 == 0)
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "NousOAuth",
+                    "AccountPickerWait",
+                    $"Waiting for account picker row (attempt {attempt}/{maxAttempts})",
+                    new { email, attempt, maxAttempts });
+            }
 
             var script = $@"
 (function() {{
