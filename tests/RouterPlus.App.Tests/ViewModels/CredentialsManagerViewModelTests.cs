@@ -3,6 +3,7 @@ using RouterPlus.Core.Models;
 using RouterPlus.Core.Security;
 using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Security;
+using RouterPlus.Infrastructure.Storage;
 using RouterPlus.App.ViewModels;
 
 namespace RouterPlus.App.Tests.ViewModels;
@@ -38,6 +39,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _rootDirectory,
             true);
         _mainViewModel = new MainViewModel(
+            settingsStore: new SettingsStore(Path.Combine(_rootDirectory, "settings.json")), // temp settings store: InitializeAsync runs the one-time DPAPI migration
             googleLoginVaultPaths: _vaultPaths,
             harnessProfiles: new[] { _profile });
     }
@@ -1315,6 +1317,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         Assert.NotEqual(first.Id, second.Id);
 
         var mainViewModel = new MainViewModel(
+            settingsStore: new SettingsStore(Path.Combine(siblingRoot, "settings.json")), // temp settings store: InitializeAsync runs the one-time DPAPI migration
             googleLoginVaultPaths: _vaultPaths,
             harnessProfiles: new[] { first, second });
         await mainViewModel.InitializeAsync();
@@ -1379,6 +1382,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             siblingRoot,
             true);
         var mainViewModel = new MainViewModel(
+            settingsStore: new SettingsStore(Path.Combine(siblingRoot, "settings.json")), // temp settings store: InitializeAsync runs the one-time DPAPI migration
             googleLoginVaultPaths: _vaultPaths,
             harnessProfiles: new[] { first, second });
         await mainViewModel.InitializeAsync();
@@ -1439,6 +1443,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             siblingRoot,
             true);
         var mainViewModel = new MainViewModel(
+            settingsStore: new SettingsStore(Path.Combine(siblingRoot, "settings.json")), // temp settings store: InitializeAsync runs the one-time DPAPI migration
             googleLoginVaultPaths: _vaultPaths,
             harnessProfiles: new[] { first, second });
         await mainViewModel.InitializeAsync();

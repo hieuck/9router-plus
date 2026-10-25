@@ -86,6 +86,7 @@ public sealed class MainViewModelBehaviorTests
             var vaultStore = new FakeVaultStore(new GoogleAccountVault(new[] { credential }));
             var automationCalls = 0;
             var viewModel = new MainViewModel(
+                settingsStore: Mocks.CreateSettingsStore(directory), // temp settings store: InitializeAsync runs the one-time DPAPI migration
                 googleLoginVaultStore: vaultStore,
                 googleLoginAutomation: (_, actual, _) =>
                 {
@@ -151,6 +152,7 @@ public sealed class MainViewModelBehaviorTests
             var profile = CreateProfile("Work", "Default", directory);
             var automationCalls = 0;
             var viewModel = new MainViewModel(
+                settingsStore: Mocks.CreateSettingsStore(directory), // temp settings store: InitializeAsync runs the one-time DPAPI migration
                 googleLoginVaultStore: new FakeVaultStore(null),
                 googleLoginAutomation: (_, _, _) =>
                 {
