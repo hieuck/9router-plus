@@ -24,30 +24,12 @@ public sealed record ProviderDefinition(
     string DashboardPath,
     string QuickLink,
     WorkflowKind Workflow,
-    bool RenamesConnection)
+    bool RenamesConnection,
+    string ApiAlias,
+    string ShortDisplayName,
+    string Glyph,
+    string ShortCode)
 {
-    public string ShortDisplayName => Kind switch
-    {
-        ProviderKind.Codex => "Codex",
-        ProviderKind.Kiro => "Kiro",
-        ProviderKind.OpenRouter => "OpenR",
-        ProviderKind.Ollama => "Ollama",
-        ProviderKind.Kimchi => "Kimchi",
-        ProviderKind.Nous => "Nous",
-        _ => DisplayName
-    };
-
-    public string Glyph => Kind switch
-    {
-        ProviderKind.Codex => "✨",
-        ProviderKind.Kiro => "🚀",
-        ProviderKind.OpenRouter => "🧠",
-        ProviderKind.Ollama => "🦙",
-        ProviderKind.Kimchi => "🌿",
-        ProviderKind.Nous => "🔭",
-        _ => "●"
-    };
-
     public string BuildDashboardUrl(string dashboardBaseUrl)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dashboardBaseUrl);

@@ -546,31 +546,11 @@ public sealed class RouterApiClient : IRouterApiClient
         };
     }
 
-    private static bool TryParseProvider(string? value, out ProviderKind provider)
-    {
-        provider = value?.Trim().ToLowerInvariant() switch
-        {
-            "codex" => ProviderKind.Codex,
-            "kiro" => ProviderKind.Kiro,
-            "openrouter" => ProviderKind.OpenRouter,
-            "ollama" => ProviderKind.Ollama,
-            "kimchi" => ProviderKind.Kimchi,
-            "nous" => ProviderKind.Nous,
-            _ => default
-        };
-        return value?.Trim().ToLowerInvariant() is "codex" or "kiro" or "openrouter" or "ollama" or "kimchi" or "nous";
-    }
+    private static bool TryParseProvider(string? value, out ProviderKind provider) =>
+        ProviderCatalog.TryGetByApiAlias(value, out provider);
 
-    private static string ToApiAlias(ProviderKind provider) => provider switch
-    {
-        ProviderKind.Codex => "codex",
-        ProviderKind.Kiro => "kiro",
-        ProviderKind.OpenRouter => "openrouter",
-        ProviderKind.Ollama => "ollama",
-        ProviderKind.Kimchi => "kimchi",
-        ProviderKind.Nous => "nous",
-        _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown provider.")
-    };
+    private static string ToApiAlias(ProviderKind provider) =>
+        ProviderCatalog.Get(provider).ApiAlias;
 
     public record QuotaData(
         IReadOnlyList<ProviderQuota> QuotaRows)

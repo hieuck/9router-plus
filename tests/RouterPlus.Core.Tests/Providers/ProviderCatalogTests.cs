@@ -110,4 +110,47 @@ public sealed class ProviderCatalogTests
         // Assert
         Assert.Throws<ArgumentOutOfRangeException>(action);
     }
+
+    [Fact]
+    public void Every_definition_has_non_empty_metadata()
+    {
+        foreach (var definition in ProviderCatalog.All)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(definition.ApiAlias));
+            Assert.False(string.IsNullOrWhiteSpace(definition.ShortDisplayName));
+            Assert.False(string.IsNullOrWhiteSpace(definition.Glyph));
+            Assert.False(string.IsNullOrWhiteSpace(definition.ShortCode));
+        }
+    }
+
+    [Fact]
+    public void Api_aliases_are_unique()
+    {
+        var aliases = ProviderCatalog.All.Select(d => d.ApiAlias).ToArray();
+        Assert.Equal(aliases.Length, aliases.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    [Theory]
+    [InlineData("codex")]
+    [InlineData("kiro")]
+    [InlineData("openrouter")]
+    [InlineData("ollama")]
+    [InlineData("kimchi")]
+    [InlineData("nous")]
+    public void TryGetByApiAlias_round_trips_case_insensitive(string alias)
+    {
+        Assert.True(ProviderCatalog.TryGetByApiAlias(alias, out var kind));
+        Assert.Equal(alias, ProviderCatalog.Get(kind).ApiAlias, StringComparer.OrdinalIgnoreCase);
+        Assert.True(ProviderCatalog.TryGetByApiAlias(alias.ToUpperInvariant(), out _));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("unknown")]
+    public void TryGetByApiAlias_returns_false_for_unknown(string? alias)
+    {
+        Assert.False(ProviderCatalog.TryGetByApiAlias(alias, out _));
+    }
 }

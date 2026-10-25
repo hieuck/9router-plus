@@ -4,50 +4,25 @@ namespace RouterPlus.Core.Tests.Providers;
 
 public sealed class ProviderDefinitionTests
 {
-    [Theory]
-    [InlineData(ProviderKind.Codex, "Codex")]
-    [InlineData(ProviderKind.Kiro, "Kiro")]
-    [InlineData(ProviderKind.OpenRouter, "OpenR")]
-    [InlineData(ProviderKind.Ollama, "Ollama")]
-    [InlineData(ProviderKind.Kimchi, "Kimchi")]
-    [InlineData(ProviderKind.Nous, "Nous")]
-    [InlineData(ProviderKind.GitHub, "GitHub display")]
-    public void ShortDisplayName_uses_provider_specific_name_or_display_name(
-        ProviderKind kind,
-        string expected)
+    [Fact]
+    public void Constructor_stores_metadata_fields()
     {
         var definition = new ProviderDefinition(
-            kind,
-            "GitHub display",
+            ProviderKind.Codex,
+            "Codex",
             "/dashboard",
             "https://example.test",
-            WorkflowKind.ApiKey,
-            RenamesConnection: false);
+            WorkflowKind.OAuth,
+            RenamesConnection: true,
+            ApiAlias: "codex",
+            ShortDisplayName: "Codex",
+            Glyph: "✨",
+            ShortCode: "CX");
 
-        Assert.Equal(expected, definition.ShortDisplayName);
-    }
-
-    [Theory]
-    [InlineData(ProviderKind.Codex, "✨")]
-    [InlineData(ProviderKind.Kiro, "🚀")]
-    [InlineData(ProviderKind.OpenRouter, "🧠")]
-    [InlineData(ProviderKind.Ollama, "🦙")]
-    [InlineData(ProviderKind.Kimchi, "🌿")]
-    [InlineData(ProviderKind.Nous, "🔭")]
-    [InlineData(ProviderKind.GitHub, "●")]
-    public void Glyph_uses_provider_specific_glyph_or_default(
-        ProviderKind kind,
-        string expected)
-    {
-        var definition = new ProviderDefinition(
-            kind,
-            "Display",
-            "/dashboard",
-            "https://example.test",
-            WorkflowKind.ApiKey,
-            RenamesConnection: false);
-
-        Assert.Equal(expected, definition.Glyph);
+        Assert.Equal("codex", definition.ApiAlias);
+        Assert.Equal("Codex", definition.ShortDisplayName);
+        Assert.Equal("✨", definition.Glyph);
+        Assert.Equal("CX", definition.ShortCode);
     }
 
     [Fact]
@@ -59,7 +34,11 @@ public sealed class ProviderDefinitionTests
             "/dashboard/providers/codex",
             "https://example.test",
             WorkflowKind.OAuth,
-            RenamesConnection: true);
+            RenamesConnection: true,
+            ApiAlias: "codex",
+            ShortDisplayName: "Codex",
+            Glyph: "✨",
+            ShortCode: "CX");
 
         Assert.Equal(
             "https://localhost:20128/dashboard/providers/codex",
@@ -78,7 +57,11 @@ public sealed class ProviderDefinitionTests
             "/dashboard",
             "https://example.test",
             WorkflowKind.OAuth,
-            RenamesConnection: true);
+            RenamesConnection: true,
+            ApiAlias: "codex",
+            ShortDisplayName: "Codex",
+            Glyph: "✨",
+            ShortCode: "CX");
 
         Assert.ThrowsAny<ArgumentException>(() => definition.BuildDashboardUrl(baseUrl!));
     }

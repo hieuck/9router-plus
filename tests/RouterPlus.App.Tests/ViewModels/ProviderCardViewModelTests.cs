@@ -20,7 +20,11 @@ public sealed class ProviderCardViewModelTests
             "/dashboard",
             "https://openrouter.ai",
             WorkflowKind.ApiKey,
-            false);
+            false,
+            "openrouter",
+            "OpenR",
+            "🧠",
+            "OR");
     }
 
     [Fact]
@@ -39,6 +43,25 @@ public sealed class ProviderCardViewModelTests
     }
 
     [Fact]
+    public void ShortCode_MatchesDefinition()
+    {
+        var definition = new ProviderDefinition(
+            ProviderKind.Codex,
+            "Codex",
+            "/d",
+            "https://cx.ai",
+            WorkflowKind.OAuth,
+            false,
+            "codex",
+            "Codex",
+            "✨",
+            "ZZ");
+        var viewModel = new ProviderCardViewModel(definition);
+
+        Assert.Equal(definition.ShortCode, viewModel.ShortCode);
+    }
+
+    [Fact]
     public void Constructor_ThrowsWhenDefinitionIsNull()
     {
         // Arrange, Act & Assert
@@ -54,7 +77,7 @@ public sealed class ProviderCardViewModelTests
     public void ShortCode_ReturnsCorrectCodeForProvider(ProviderKind kind, string expectedCode)
     {
         // Arrange
-        var definition = new ProviderDefinition(kind, "Test", "/dash", "https://test.com", WorkflowKind.OAuth, false);
+        var definition = new ProviderDefinition(kind, "Test", "/dash", "https://test.com", WorkflowKind.OAuth, false, "test", "Test", "*", expectedCode);
         var viewModel = new ProviderCardViewModel(definition);
 
         // Act
@@ -68,7 +91,7 @@ public sealed class ProviderCardViewModelTests
     public void IsOpenRouter_ReturnsTrueForOpenRouter()
     {
         // Arrange
-        var definition = new ProviderDefinition(ProviderKind.OpenRouter, "OpenRouter", "/d", "https://or.ai", WorkflowKind.ApiKey, false);
+        var definition = new ProviderDefinition(ProviderKind.OpenRouter, "OpenRouter", "/d", "https://or.ai", WorkflowKind.ApiKey, false, "openrouter", "OpenR", "🧠", "OR");
         var viewModel = new ProviderCardViewModel(definition);
 
         // Act & Assert
@@ -79,7 +102,7 @@ public sealed class ProviderCardViewModelTests
     public void IsOpenRouter_ReturnsFalseForOtherProviders()
     {
         // Arrange
-        var definition = new ProviderDefinition(ProviderKind.Codex, "Codex", "/d", "https://cx.ai", WorkflowKind.OAuth, false);
+        var definition = new ProviderDefinition(ProviderKind.Codex, "Codex", "/d", "https://cx.ai", WorkflowKind.OAuth, false, "codex", "Codex", "✨", "CX");
         var viewModel = new ProviderCardViewModel(definition);
 
         // Act & Assert

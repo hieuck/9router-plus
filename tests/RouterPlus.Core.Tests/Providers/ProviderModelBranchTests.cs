@@ -25,7 +25,7 @@ public sealed class ProviderModelBranchTests
     }
 
     [Fact]
-    public void Definition_falls_back_to_display_name_and_default_glyph_for_unknown_kind()
+    public void Definition_stores_metadata_for_synthetic_kind()
     {
         // Arrange
         var definition = new ProviderDefinition(
@@ -34,11 +34,17 @@ public sealed class ProviderModelBranchTests
             "/synthetic",
             "https://example.test",
             WorkflowKind.ApiKey,
-            false);
+            false,
+            "synthetic",
+            "Synthetic",
+            "?",
+            "SY");
 
         // Act and assert
-        Assert.Equal("Synthetic Provider", definition.ShortDisplayName);
-        Assert.Equal("●", definition.Glyph);
+        Assert.Equal("synthetic", definition.ApiAlias);
+        Assert.Equal("Synthetic", definition.ShortDisplayName);
+        Assert.Equal("?", definition.Glyph);
+        Assert.Equal("SY", definition.ShortCode);
     }
 
     [Theory]
@@ -56,7 +62,11 @@ public sealed class ProviderModelBranchTests
             "/synthetic",
             "https://example.test",
             WorkflowKind.OAuth,
-            false);
+            false,
+            "codex",
+            "Codex",
+            "✨",
+            "CX");
 
         // Act
         var url = definition.BuildDashboardUrl(baseUrl);

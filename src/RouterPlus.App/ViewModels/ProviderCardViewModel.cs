@@ -27,16 +27,7 @@ public sealed class ProviderCardViewModel : INotifyPropertyChanged
 
     public string DisplayName => Definition.DisplayName;
 
-    public string ShortCode => Kind switch
-    {
-        ProviderKind.Codex => "CX",
-        ProviderKind.Kiro => "KI",
-        ProviderKind.OpenRouter => "OR",
-        ProviderKind.Ollama => "OL",
-        ProviderKind.Kimchi => "KM",
-        ProviderKind.Nous => "NS",
-        _ => "9R"
-    };
+    public string ShortCode => Definition.ShortCode;
 
     public WorkflowKind Workflow => Definition.Workflow;
 

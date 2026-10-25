@@ -19,9 +19,9 @@ public sealed class ProfileRowViewModelTests
         _testProfile = new ChromeProfile("test-id", "Profile 1", "Default", "C:\\UserData", false);
         _providers = new List<ProviderDefinition>
         {
-            new ProviderDefinition(ProviderKind.Codex, "Codex", "/dashboard", "https://codex.example", WorkflowKind.OAuth, false),
-            new ProviderDefinition(ProviderKind.OpenRouter, "OpenRouter", "/dashboard", "https://openrouter.example", WorkflowKind.ApiKey, false),
-            new ProviderDefinition(ProviderKind.Kiro, "Kiro", "/dashboard", "https://kiro.example", WorkflowKind.DeviceCode, false)
+            new ProviderDefinition(ProviderKind.Codex, "Codex", "/dashboard", "https://codex.example", WorkflowKind.OAuth, false, "codex", "Codex", "✨", "CX"),
+            new ProviderDefinition(ProviderKind.OpenRouter, "OpenRouter", "/dashboard", "https://openrouter.example", WorkflowKind.ApiKey, false, "openrouter", "OpenR", "🧠", "OR"),
+            new ProviderDefinition(ProviderKind.Kiro, "Kiro", "/dashboard", "https://kiro.example", WorkflowKind.DeviceCode, false, "kiro", "Kiro", "🚀", "KI")
         };
     }
 
