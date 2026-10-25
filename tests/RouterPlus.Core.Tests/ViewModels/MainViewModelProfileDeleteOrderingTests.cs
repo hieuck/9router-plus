@@ -135,7 +135,7 @@ public sealed class MainViewModelProfileDeleteOrderingTests
                 ChromeUserDataDirectory: userDataDirectory,
                 ManagedProfiles: new[] { new ManagedChromeProfile("Work", "Profile 1", userDataDirectory) }));
 
-            var throwingDeleter = new ChromeProfileDeleter((_, _) => throw new InvalidOperationException("boom"));
+            var throwingDeleter = new ChromeProfileDeleter((_, _, _) => throw new InvalidOperationException("boom"));
             var viewModel = new MainViewModel(new SettingsStore(settingsPath), profileDeleter: throwingDeleter);
             await viewModel.InitializeAsync();
             viewModel.SelectedProfile = viewModel.Profiles.Single(profile => profile.Name == "Work");

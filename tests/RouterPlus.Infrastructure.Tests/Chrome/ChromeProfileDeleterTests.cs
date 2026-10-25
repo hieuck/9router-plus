@@ -7,13 +7,13 @@ namespace RouterPlus.Infrastructure.Tests.Chrome;
 public sealed class ChromeProfileDeleterTests
 {
     [Fact]
-    public void Delete_rejects_null_profile()
+    public async Task Delete_rejects_null_profile()
     {
         var userDataDirectory = CreateTempDirectory();
 
         try
         {
-            Assert.Throws<ArgumentNullException>(() => new ChromeProfileDeleter().Delete(null!, userDataDirectory));
+            await Assert.ThrowsAsync<ArgumentNullException>(async () => await new ChromeProfileDeleter().DeleteAsync(null!, userDataDirectory));
         }
         finally
         {
@@ -22,14 +22,14 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_rejects_whitespace_user_data_directory()
+    public async Task Delete_rejects_whitespace_user_data_directory()
     {
         var userDataDirectory = CreateTempDirectory();
         var profile = CreateProfile(userDataDirectory, "Profile 1");
 
         try
         {
-            Assert.Throws<ArgumentException>(() => new ChromeProfileDeleter().Delete(profile, " "));
+            await Assert.ThrowsAsync<ArgumentException>(async () => await new ChromeProfileDeleter().DeleteAsync(profile, " "));
         }
         finally
         {
@@ -38,7 +38,7 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_rejects_profile_with_different_user_data_directory()
+    public async Task Delete_rejects_profile_with_different_user_data_directory()
     {
         var userDataDirectory = CreateTempDirectory();
         var profileUserDataDirectory = CreateTempDirectory();
@@ -49,8 +49,8 @@ public sealed class ChromeProfileDeleterTests
         {
             var profile = CreateProfile(profileUserDataDirectory, "Profile 1");
 
-            var exception = Assert.Throws<InvalidOperationException>(() =>
-                new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await
+                new ChromeProfileDeleter().DeleteAsync(profile, userDataDirectory));
 
             Assert.Equal("The Chrome profile is outside the configured User Data directory.", exception.Message);
             Assert.True(Directory.Exists(profileDirectory));
@@ -63,7 +63,7 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_rejects_profile_that_is_not_an_immediate_child()
+    public async Task Delete_rejects_profile_that_is_not_an_immediate_child()
     {
         var userDataDirectory = CreateTempDirectory();
         var profileDirectory = Path.Combine(userDataDirectory, "Profiles", "Profile 1");
@@ -73,8 +73,8 @@ public sealed class ChromeProfileDeleterTests
         {
             var profile = CreateProfile(userDataDirectory, Path.Combine("Profiles", "Profile 1"));
 
-            var exception = Assert.Throws<InvalidOperationException>(() =>
-                new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await
+                new ChromeProfileDeleter().DeleteAsync(profile, userDataDirectory));
 
             Assert.Equal("The Chrome profile directory must be an immediate child of User Data.", exception.Message);
             Assert.True(Directory.Exists(profileDirectory));
@@ -86,7 +86,7 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_rejects_profile_path_that_is_a_file()
+    public async Task Delete_rejects_profile_path_that_is_a_file()
     {
         var userDataDirectory = CreateTempDirectory();
         var profilePath = Path.Combine(userDataDirectory, "Profile 1");
@@ -96,8 +96,8 @@ public sealed class ChromeProfileDeleterTests
         {
             var profile = CreateProfile(userDataDirectory, "Profile 1");
 
-            var exception = Assert.Throws<InvalidOperationException>(() =>
-                new ChromeProfileDeleter().Delete(profile, userDataDirectory));
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await
+                new ChromeProfileDeleter().DeleteAsync(profile, userDataDirectory));
 
             Assert.Equal("The Chrome profile path is not a directory.", exception.Message);
             Assert.True(File.Exists(profilePath));
@@ -109,7 +109,7 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_handles_null_local_state_document()
+    public async Task Delete_handles_null_local_state_document()
     {
         var userDataDirectory = CreateTempDirectory();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
@@ -119,7 +119,7 @@ public sealed class ChromeProfileDeleterTests
 
         try
         {
-            new ChromeProfileDeleter().Delete(CreateProfile(userDataDirectory, "Profile 1"), userDataDirectory);
+            await new ChromeProfileDeleter().DeleteAsync(CreateProfile(userDataDirectory, "Profile 1"), userDataDirectory);
 
             Assert.False(Directory.Exists(profileDirectory));
             Assert.Equal("null", File.ReadAllText(localStatePath));
@@ -131,7 +131,7 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_preserves_local_state_when_profile_metadata_is_missing()
+    public async Task Delete_preserves_local_state_when_profile_metadata_is_missing()
     {
         var userDataDirectory = CreateTempDirectory();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
@@ -142,7 +142,7 @@ public sealed class ChromeProfileDeleterTests
 
         try
         {
-            new ChromeProfileDeleter().Delete(CreateProfile(userDataDirectory, "Profile 1"), userDataDirectory);
+            await new ChromeProfileDeleter().DeleteAsync(CreateProfile(userDataDirectory, "Profile 1"), userDataDirectory);
 
             Assert.False(Directory.Exists(profileDirectory));
             Assert.Equal(localStateJson, File.ReadAllText(localStatePath));
@@ -154,7 +154,7 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_removes_case_insensitive_duplicate_profile_entries_and_ignores_non_string_values()
+    public async Task Delete_removes_case_insensitive_duplicate_profile_entries_and_ignores_non_string_values()
     {
         var userDataDirectory = CreateTempDirectory();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
@@ -175,7 +175,7 @@ public sealed class ChromeProfileDeleterTests
 
         try
         {
-            new ChromeProfileDeleter().Delete(CreateProfile(userDataDirectory, "Profile 1"), userDataDirectory);
+            await new ChromeProfileDeleter().DeleteAsync(CreateProfile(userDataDirectory, "Profile 1"), userDataDirectory);
 
             using var document = JsonDocument.Parse(File.ReadAllText(localStatePath));
             var profile = document.RootElement.GetProperty("profile");
@@ -197,7 +197,7 @@ public sealed class ChromeProfileDeleterTests
     }
 
     [Fact]
-    public void Delete_preserves_local_state_when_profile_entries_do_not_match()
+    public async Task Delete_preserves_local_state_when_profile_entries_do_not_match()
     {
         var userDataDirectory = CreateTempDirectory();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
@@ -208,7 +208,7 @@ public sealed class ChromeProfileDeleterTests
 
         try
         {
-            new ChromeProfileDeleter().Delete(CreateProfile(userDataDirectory, "Profile 1"), userDataDirectory);
+            await new ChromeProfileDeleter().DeleteAsync(CreateProfile(userDataDirectory, "Profile 1"), userDataDirectory);
 
             Assert.Equal(localStateJson, File.ReadAllText(localStatePath));
         }

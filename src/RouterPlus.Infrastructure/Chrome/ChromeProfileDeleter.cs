@@ -7,15 +7,41 @@ namespace RouterPlus.Infrastructure.Chrome;
 
 public sealed class ChromeProfileDeleter
 {
-    private readonly Action<string, string> _closeBrowserProcesses;
+    private readonly Func<string, string, CancellationToken, Task> _closeBrowserProcesses;
 
-    public ChromeProfileDeleter(Action<string, string>? closeBrowserProcesses = null)
+    public ChromeProfileDeleter(Func<string, string, CancellationToken, Task>? closeBrowserProcesses = null)
     {
         _closeBrowserProcesses = closeBrowserProcesses ?? CloseBrowserProcesses;
     }
 
-    public void Delete(ChromeProfile profile, string userDataDirectory) =>
-        Delete(profile, userDataDirectory, chromeExecutablePath: null);
+    public Task DeleteAsync(ChromeProfile profile, string userDataDirectory, CancellationToken cancellationToken = default) =>
+        DeleteAsync(profile, userDataDirectory, chromeExecutablePath: null, cancellationToken);
+
+    public async Task DeleteAsync(ChromeProfile profile, string userDataDirectory, string? chromeExecutablePath, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userDataDirectory);
+
+        Validate(profile, userDataDirectory);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var expectedUserDataDirectory = NormalizePath(userDataDirectory);
+        if (!string.IsNullOrWhiteSpace(chromeExecutablePath))
+        {
+            await _closeBrowserProcesses(chromeExecutablePath, expectedUserDataDirectory, cancellationToken).ConfigureAwait(false);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var profilePath = NormalizePath(profile.ProfilePath);
+        RemoveProfileFromLocalState(userDataDirectory, profile.DirectoryName);
+
+        if (Directory.Exists(profilePath))
+        {
+            Directory.Delete(profilePath, recursive: true);
+        }
+    }
 
     public void Validate(ChromeProfile profile, string userDataDirectory)
     {
@@ -44,29 +70,7 @@ public sealed class ChromeProfileDeleter
         }
     }
 
-    public void Delete(ChromeProfile profile, string userDataDirectory, string? chromeExecutablePath)
-    {
-        ArgumentNullException.ThrowIfNull(profile);
-        ArgumentException.ThrowIfNullOrWhiteSpace(userDataDirectory);
-
-        Validate(profile, userDataDirectory);
-
-        var expectedUserDataDirectory = NormalizePath(userDataDirectory);
-        if (!string.IsNullOrWhiteSpace(chromeExecutablePath))
-        {
-            _closeBrowserProcesses(chromeExecutablePath, expectedUserDataDirectory);
-        }
-
-        var profilePath = NormalizePath(profile.ProfilePath);
-        RemoveProfileFromLocalState(userDataDirectory, profile.DirectoryName);
-
-        if (Directory.Exists(profilePath))
-        {
-            Directory.Delete(profilePath, recursive: true);
-        }
-    }
-
-    private static void CloseBrowserProcesses(string chromeExecutablePath, string userDataDirectory)
+    private static async Task CloseBrowserProcesses(string chromeExecutablePath, string userDataDirectory, CancellationToken cancellationToken)
     {
         var expectedExecutablePath = NormalizePath(chromeExecutablePath);
         var processes = Process.GetProcessesByName("chrome")
@@ -90,7 +94,7 @@ public sealed class ChromeProfileDeleter
 
         if (processes.Length > 0)
         {
-            Thread.Sleep(1500);
+            await Task.Delay(1500, cancellationToken).ConfigureAwait(false);
         }
 
         foreach (var process in processes)

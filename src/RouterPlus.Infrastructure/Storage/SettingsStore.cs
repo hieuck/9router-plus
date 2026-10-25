@@ -255,22 +255,6 @@ public sealed class SettingsStore
 
             File.Move(temporaryPath, _filePath, true);
         }
-        catch
-        {
-            // Clean up temp file on failure
-            try
-            {
-                if (File.Exists(temporaryPath))
-                {
-                    File.Delete(temporaryPath);
-                }
-            }
-            catch
-            {
-                // Best effort cleanup
-            }
-            throw;
-        }
         finally
         {
             try

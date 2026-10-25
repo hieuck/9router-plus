@@ -4740,7 +4740,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             try
             {
-                _profileDeleter.Delete(profile, deletionRoot, ChromeExecutablePath);
+                await _profileDeleter.DeleteAsync(profile, deletionRoot, ChromeExecutablePath);
             }
             catch (Exception deleteException)
             {

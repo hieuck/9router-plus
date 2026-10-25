@@ -7,15 +7,11 @@ namespace RouterPlus.Infrastructure.Security;
 /// Protects the 9Router dashboard password at rest using Windows DPAPI (CurrentUser scope).
 /// Stored form is prefixed with <see cref="Prefix"/> so legacy plaintext values remain detectable.
 /// </summary>
-public sealed class DashboardPasswordProtector
+public static class DashboardPasswordProtector
 {
     public const string Prefix = "dpapi:v1:";
 
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("9RouterPlus.DashboardAuth.v1");
-
-    public DashboardPasswordProtector()
-    {
-    }
 
     public static bool IsProtected(string? value) =>
         !string.IsNullOrEmpty(value) && value!.StartsWith(Prefix, StringComparison.Ordinal);
