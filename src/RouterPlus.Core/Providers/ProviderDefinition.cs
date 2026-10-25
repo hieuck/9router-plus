@@ -7,7 +7,8 @@ public enum ProviderKind
     OpenRouter,
     GitHub,
     Ollama,
-    Kimchi
+    Kimchi,
+    Nous
 }
 
 public enum WorkflowKind
@@ -32,6 +33,7 @@ public sealed record ProviderDefinition(
         ProviderKind.OpenRouter => "OpenR",
         ProviderKind.Ollama => "Ollama",
         ProviderKind.Kimchi => "Kimchi",
+        ProviderKind.Nous => "Nous",
         _ => DisplayName
     };
 
@@ -42,6 +44,7 @@ public sealed record ProviderDefinition(
         ProviderKind.OpenRouter => "🧠",
         ProviderKind.Ollama => "🦙",
         ProviderKind.Kimchi => "🌿",
+        ProviderKind.Nous => "🔭",
         _ => "●"
     };
 

@@ -2615,6 +2615,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ProviderKind.Kiro => new Uri("https://view.awsapps.com/"),
             ProviderKind.GitHub => new Uri("https://github.com/login"),
             ProviderKind.OpenRouter => new Uri("https://openrouter.ai/"),
+            ProviderKind.Nous => new Uri("https://portal.nousresearch.com/"),
             _ => new Uri("https://chatgpt.com/")
         };
     }
@@ -3423,10 +3424,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
         var definition = ProviderCatalog.Get(provider);
-        var session = await api.StartDeviceCodeAsync(provider, "idc", cancellationToken);
+        var session = await api.StartDeviceCodeAsync(provider, provider == ProviderKind.Kiro ? "idc" : null, cancellationToken);
 
-        // Try automation for Kiro
-        if (provider == ProviderKind.Kiro)
+        // Try automation for Kiro and Nous
+        if (provider is ProviderKind.Kiro or ProviderKind.Nous)
         {
             StatusText = $"Đang mở Chrome và tự động xác nhận {definition.DisplayName}…";
             await RunDeviceCodeWithAutomationAsync(
@@ -3440,7 +3441,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             // Fallback for other providers
             await LaunchUrlAsync(session.VerificationUriComplete ?? session.VerificationUri);
-            StatusText = $"Đã mở AWS Builder ID cho {definition.DisplayName}. Hoàn tất xác nhận; tool đang tự chờ connection…";
+            StatusText = $"Đã mở trang xác nhận cho {definition.DisplayName}. Hoàn tất xác nhận; tool đang tự chờ connection…";
 
             var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(session.ExpiresIn, 60));
             var intervalSeconds = Math.Clamp(session.Interval, 1, 30);
@@ -3535,55 +3536,60 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
             }
 
-            var automation = new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator);
+            var definition = ProviderCatalog.Get(provider);
+            GoogleOAuthFlowAutomation automation = provider switch
+            {
+                ProviderKind.Kiro => new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator),
+                ProviderKind.Nous => new NousOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator),
+                _ => throw new NotSupportedException($"Automation not supported for provider {provider}")
+            };
 
-            // Run automation in background (don't wait for it)
+            // Run automation in background
             var automationTask = automation.WaitAndConsentAsync(
                 new Uri(verificationUri),
                 TimeSpan.FromMinutes(10), // Longer timeout
                 cancellationToken);
 
             // Polling is the source of truth - wait for connection to be detected
-            StatusText = "Đang chờ xác nhận từ AWS…";
-            await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
+            StatusText = $"Đang chờ xác nhận từ {definition.DisplayName}…";
 
-            // Connection detected! Now we can cleanup
-            StatusText = "Đã nhận connection. Đang lưu…";
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Info,
-                "Providers",
-                "DeviceCodePollingSucceeded",
-                "Device code polling succeeded",
-                new { });
+            // Race: automation task vs poll task. If automation succeeds first, rename immediately.
+            using var raceCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var pollTask = PollDeviceCodeUntilSuccessAsync(api, provider, session, raceCts.Token);
 
-            // Try to get automation result (may still be running)
-            OAuthConsentResult automationResult;
-            if (automationTask.IsCompleted)
-            {
-                automationResult = await automationTask;
-            }
-            else
-            {
-                automationResult = new OAuthConsentResult(false, false, "Automation still running");
-            }
+            var completedTask = await Task.WhenAny(automationTask, pollTask);
 
-            if (automationResult.Success)
+            if (completedTask == automationTask)
             {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "Providers",
-                    "DeviceCodeAutomationSuccess",
-                    "Device code automation success",
-                    new { message = automationResult.Message });
-            }
-            else
-            {
+                var automationResult = await automationTask;
+                if (automationResult.Success)
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Providers",
+                        "DeviceCodeAutomationSuccessFirst",
+                        "Automation completed first with success, renaming connection",
+                        new { message = automationResult.Message });
+                    raceCts.Cancel(); // Cancel polling
+                    try { await pollTask; } catch (OperationCanceledException) { }
+                    await RenameNewConnectionAsync(api, provider, cancellationToken);
+                    return;
+                }
+                // Automation failed or incomplete, continue waiting for poll
                 ObservabilityHub.Instance.LogEvent(
                     LogLevel.Warning,
                     "Providers",
                     "DeviceCodeAutomationIncomplete",
-                    "Device code automation incomplete",
+                    "Automation incomplete, continuing to wait for poll",
                     new { message = automationResult.Message });
+                await pollTask; // Propagate success/exception; PollDeviceCodeUntilSuccessAsync renames on success
+                return;
+            }
+            else
+            {
+                // Poll completed first (success or exception)
+                await pollTask; // Propagate exception if any
+                return;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -3628,10 +3634,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var definition = ProviderCatalog.Get(provider);
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(session.ExpiresIn, 60));
         var intervalSeconds = Math.Clamp(session.Interval, 1, 30);
+        int consecutiveTransientFailures = 0;
+        const int maxConsecutiveTransientFailures = 10;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);
+            DeviceCodePollResult result;
+            try
+            {
+                result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);
+                consecutiveTransientFailures = 0; // Reset on successful HTTP response
+            }
+            catch (Exception ex) when (IsTransientPollException(ex, cancellationToken))
+            {
+                consecutiveTransientFailures++;
+                if (consecutiveTransientFailures >= maxConsecutiveTransientFailures)
+                {
+                    throw;
+                }
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "Providers",
+                    "DeviceCodePollTransientFailure",
+                    "Transient failure during device code poll, will retry",
+                    new { attempt = consecutiveTransientFailures, maxAttempts = maxConsecutiveTransientFailures, error = ex.Message });
+                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
+                continue;
+            }
+
             if (result.Success)
             {
                 await RenameNewConnectionAsync(api, provider, cancellationToken);
@@ -3653,6 +3683,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         throw new TimeoutException($"Hết thời gian chờ đăng nhập {definition.DisplayName}.");
+    }
+
+    private static bool IsTransientPollException(Exception ex, CancellationToken cancellationToken)
+    {
+        if (ex is RouterApiException apiEx)
+        {
+            var status = (int)apiEx.StatusCode;
+            // 408 Request Timeout, 429 Too Many Requests, 5xx Server Errors
+            return status == 408 || status == 429 || status >= 500;
+        }
+        if (ex is HttpRequestException)
+        {
+            return true;
+        }
+        if (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return true;
+        }
+        return false;
     }
 
     private async Task CaptureExistingConnectionsAsync(

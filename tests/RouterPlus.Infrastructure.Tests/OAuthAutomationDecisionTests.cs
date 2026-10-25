@@ -315,6 +315,221 @@ public sealed class OAuthAutomationDecisionTests
         Assert.False(consentResult);
     }
 
+    // ========== NousOAuthAutomation tests ==========
+
+    [Fact]
+    public async Task NousOAuthAutomation_CheckCompletion_returns_success_on_completion_page()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new NousOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new NousOAuthPageState
+            {
+                CurrentUrl = "https://portal.nousresearch.com/manage-subscription?user_code=ABCD-EFGH",
+                IsNousPage = true,
+                IsVerificationPage = false,
+                HasGoogleLoginLink = false,
+                HasConnectButton = false,
+                IsCompletionPage = true
+            }
+        };
+
+        // Act
+        var result = InvokeCompletionCheck(automation, state);
+
+        // Assert
+        Assert.True(result.IsComplete);
+        Assert.NotNull(result.Result);
+        Assert.True(result.Result!.Success);
+        Assert.False(result.Result.AlreadyAuthorized);
+        Assert.Contains("Nous authorization completed", result.Result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NousOAuthAutomation_provider_decisions_require_matching_page_and_button()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new NousOAuthAutomation(client, "session", "target", "user@example.com");
+
+        // Initial button (Google login link) - no connect button yet
+        var initialState = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new NousOAuthPageState
+            {
+                CurrentUrl = "https://portal.nousresearch.com/manage-subscription?user_code=ABCD-EFGH",
+                IsNousPage = true,
+                IsVerificationPage = false,
+                HasGoogleLoginLink = true,
+                HasConnectButton = false,
+                IsCompletionPage = false
+            }
+        };
+
+        // Consent button (Connect) - after Google auth, no Google login link
+        var consentState = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new NousOAuthPageState
+            {
+                CurrentUrl = "https://portal.nousresearch.com/manage-subscription?user_code=ABCD-EFGH",
+                IsNousPage = true,
+                IsVerificationPage = false,
+                HasGoogleLoginLink = false,
+                HasConnectButton = true,
+                IsCompletionPage = false
+            }
+        };
+
+        // Act
+        var initialResult = InvokeDecision(automation, "ShouldClickProviderInitialButton", initialState);
+        var consentResult = InvokeDecision(automation, "ShouldClickProviderConsent", consentState);
+
+        // Assert
+        Assert.True(initialResult);
+        Assert.True(consentResult);
+    }
+
+    [Fact]
+    public async Task NousOAuthAutomation_ShouldClickProviderInitialButton_returns_false_when_google_login_link_missing()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new NousOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new NousOAuthPageState
+            {
+                CurrentUrl = "https://portal.nousresearch.com/manage-subscription?user_code=ABCD-EFGH",
+                IsNousPage = true,
+                IsVerificationPage = false,
+                HasGoogleLoginLink = false,
+                HasConnectButton = true,
+                IsCompletionPage = false
+            }
+        };
+
+        // Act
+        var result = InvokeDecision(automation, "ShouldClickProviderInitialButton", state);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task NousOAuthAutomation_ShouldClickProviderConsent_returns_false_when_connect_button_missing()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new NousOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new NousOAuthPageState
+            {
+                CurrentUrl = "https://portal.nousresearch.com/manage-subscription?user_code=ABCD-EFGH",
+                IsNousPage = true,
+                IsVerificationPage = false,
+                HasGoogleLoginLink = true,
+                HasConnectButton = false,
+                IsCompletionPage = false
+            }
+        };
+
+        // Act
+        var result = InvokeDecision(automation, "ShouldClickProviderConsent", state);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task NousOAuthAutomation_provider_decisions_return_false_on_non_nous_page()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new NousOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new NousOAuthPageState
+            {
+                CurrentUrl = "https://example.com/",
+                IsNousPage = false,
+                IsVerificationPage = false,
+                HasGoogleLoginLink = true,
+                HasConnectButton = true,
+                IsCompletionPage = false
+            }
+        };
+
+        // Act
+        var initialResult = InvokeDecision(automation, "ShouldClickProviderInitialButton", state);
+        var consentResult = InvokeDecision(automation, "ShouldClickProviderConsent", state);
+
+        // Assert
+        Assert.False(initialResult);
+        Assert.False(consentResult);
+    }
+
+    [Fact]
+    public async Task NousOAuthAutomation_ShouldClickProviderInitialButton_returns_false_on_verification_page()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new NousOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new NousOAuthPageState
+            {
+                CurrentUrl = "https://portal.nousresearch.com/manage-subscription?user_code=ABCD-EFGH",
+                IsNousPage = true,
+                IsVerificationPage = true,
+                HasGoogleLoginLink = true,
+                HasConnectButton = false,
+                IsCompletionPage = false
+            }
+        };
+
+        // Act
+        var result = InvokeDecision(automation, "ShouldClickProviderInitialButton", state);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task NousOAuthAutomation_ShouldClickProviderConsent_returns_false_on_google_owned_page()
+    {
+        // Arrange
+        await using var client = CreateClient();
+        var automation = new NousOAuthAutomation(client, "session", "target", "user@example.com");
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            ProviderState = new NousOAuthPageState
+            {
+                CurrentUrl = "https://portal.nousresearch.com/manage-subscription?user_code=ABCD-EFGH",
+                IsNousPage = true,
+                IsVerificationPage = false,
+                HasGoogleLoginLink = false,
+                HasConnectButton = true,
+                IsCompletionPage = false
+            },
+            GoogleState = new GoogleOAuthPageState
+            {
+                CurrentUrl = "https://accounts.google.com/signin",
+                HasAccountPicker = false,
+                HasGoogleTotpInput = false,
+                HasGoogleConsentButton = false
+            }
+        };
+
+        // Act
+        var result = InvokeDecision(automation, "ShouldClickProviderConsent", state);
+
+        // Assert
+        Assert.False(result);
+    }
+
     private static ChromeCdpClient CreateClient() =>
         new(new Uri("http://127.0.0.1:9222"));
 

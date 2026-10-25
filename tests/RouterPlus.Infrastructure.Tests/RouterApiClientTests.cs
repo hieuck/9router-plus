@@ -157,6 +157,29 @@ public sealed class RouterApiClientTests
     }
 
     [Fact]
+    public async Task StartDeviceCodeAsync_nous_uses_device_code_endpoint_without_auth_method()
+    {
+        // Arrange
+        var handler = new RecordingHandler((_, _) => JsonResponse("""
+            {"device_code":"device-1","user_code":"ABCD-EFGH","verification_uri":"https://portal.nousresearch.com/device","verification_uri_complete":"https://portal.nousresearch.com/device?user_code=ABCD-EFGH","expires_in":60,"interval":1}
+            """));
+        using var httpClient = new HttpClient(handler);
+        var client = new RouterApiClient(httpClient, "https://dashboard.example.test");
+
+        // Act
+        var session = await client.StartDeviceCodeAsync(ProviderKind.Nous);
+
+        // Assert
+        Assert.Equal("device-1", session.DeviceCode);
+        Assert.Equal("ABCD-EFGH", session.UserCode);
+        Assert.Equal("https://portal.nousresearch.com/device", session.VerificationUri);
+        Assert.Equal("https://portal.nousresearch.com/device?user_code=ABCD-EFGH", session.VerificationUriComplete);
+        Assert.Equal(60, session.ExpiresIn);
+        Assert.Equal(1, session.Interval);
+        Assert.Equal("https://dashboard.example.test/api/oauth/nous/device-code", handler.Requests.Single().RequestUri!.ToString());
+    }
+
+    [Fact]
     public async Task PollDeviceCodeAsync_posts_device_code_and_extra_data()
     {
         // Arrange
