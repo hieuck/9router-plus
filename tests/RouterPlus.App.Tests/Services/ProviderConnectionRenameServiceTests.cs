@@ -31,7 +31,7 @@ public sealed class ProviderConnectionRenameServiceTests
 
         var service = new ProviderConnectionRenameService();
         var result = await service.RenameAsync(
-            mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), CancellationToken.None);
+            mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.Equal(connection, result.Connection);
         Assert.False(result.FoundAfterTimeout);
@@ -70,7 +70,7 @@ public sealed class ProviderConnectionRenameServiceTests
 
         var service = new ProviderConnectionRenameService();
         var result = await service.RenameAsync(
-            mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), CancellationToken.None);
+            mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.True(result.FoundAfterTimeout);
         Assert.False(result.ReusedExistingId);
@@ -107,11 +107,48 @@ public sealed class ProviderConnectionRenameServiceTests
 
         var service = new ProviderConnectionRenameService();
         var result = await service.RenameAsync(
-            mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), CancellationToken.None);
+            mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.True(result.FoundAfterTimeout);
         Assert.True(result.ReusedExistingId);
         Assert.Equal(existingConnection.Id, result.Connection.Id);
+    }
+
+    [Fact]
+    public async Task Timeout_PrefersNewAccountConnectionOverOldProfileNameMatch()
+    {
+        var profile = MakeProfile();
+        var start = DateTimeOffset.UtcNow;
+        var existingConnection = MakeConnection("c-old", profile.Name, start.AddMinutes(-5));
+        var existing = new Dictionary<string, ProviderConnection>(StringComparer.Ordinal)
+        {
+            [existingConnection.Id] = existingConnection
+        };
+        var oldProfileNameConnection = MakeConnection("c-old2", profile.Name, start.AddMinutes(-1));
+        var newAccountConnection = MakeConnection("c-new", "Account 19", start.AddMinutes(1));
+        var all = new[] { oldProfileNameConnection, newAccountConnection };
+        var mock = new Mock<IRouterApiClient>();
+        mock.Setup(m => m.WaitForNewConnectionAsync(
+                It.IsAny<ProviderKind>(),
+                It.IsAny<IReadOnlyDictionary<string, ProviderConnection>>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TimeoutException("timeout"));
+        mock.Setup(m => m.ListConnectionsAsync(
+                It.IsAny<ProviderKind>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync(all);
+
+        var service = new ProviderConnectionRenameService();
+        var result = await service.RenameAsync(
+            mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), start, CancellationToken.None);
+
+        Assert.True(result.FoundAfterTimeout);
+        Assert.Equal(newAccountConnection.Id, result.Connection.Id);
+        mock.Verify(m => m.UpdateConnectionAsync(
+            newAccountConnection.Id, profile.Name, null, null, It.IsAny<CancellationToken>(), null), Times.Once);
     }
 
     [Fact]
@@ -135,7 +172,7 @@ public sealed class ProviderConnectionRenameServiceTests
 
         var service = new ProviderConnectionRenameService();
         await Assert.ThrowsAsync<TimeoutException>(() =>
-            service.RenameAsync(mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), CancellationToken.None));
+            service.RenameAsync(mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), DateTimeOffset.UtcNow, CancellationToken.None));
     }
 
     [Fact]
@@ -154,7 +191,7 @@ public sealed class ProviderConnectionRenameServiceTests
 
         var service = new ProviderConnectionRenameService();
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service.RenameAsync(mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), CancellationToken.None));
+            service.RenameAsync(mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), DateTimeOffset.UtcNow, CancellationToken.None));
     }
 
     [Fact]
@@ -173,7 +210,7 @@ public sealed class ProviderConnectionRenameServiceTests
             .ReturnsAsync(connection);
 
         var service = new ProviderConnectionRenameService();
-        await service.RenameAsync(mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), CancellationToken.None);
+        await service.RenameAsync(mock.Object, ProviderKind.Codex, profile, existing, TimeSpan.FromMinutes(5), DateTimeOffset.UtcNow, CancellationToken.None);
 
         mock.Verify(m => m.UpdateConnectionAsync(
             connection.Id, "Exact Name", null, null, It.IsAny<CancellationToken>(), null), Times.Once);

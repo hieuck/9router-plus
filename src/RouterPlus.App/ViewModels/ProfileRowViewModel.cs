@@ -124,11 +124,23 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
 
     public int ConnectedProviderCount => ProviderStatuses.Count(status => status.IsConnected);
 
-    public string ConnectionSummary => ProviderStatuses.Any(status => !status.IsKnown)
-        ? "Đang chờ đồng bộ provider…"
-        : ConnectedProviderCount == 0
-            ? "Chưa có provider được gán"
-            : $"{ConnectedProviderCount}/{ProviderStatuses.Count} provider đã thêm";
+    public string ConnectionSummary
+    {
+        get
+        {
+            var baseSummary = ProviderStatuses.Any(status => !status.IsKnown)
+                ? "Đang chờ đồng bộ provider…"
+                : ConnectedProviderCount == 0
+                    ? "Chưa có provider được gán"
+                    : $"{ConnectedProviderCount}/{ProviderStatuses.Count} provider đã thêm";
+
+            var lostSuffix = string.Concat(ProviderStatuses
+                .Where(status => status.HasLostConnection)
+                .Select(status => $" · Mất {status.ShortName} — thêm lại"));
+
+            return baseSummary + lostSuffix;
+        }
+    }
 
     public void UpdateConnections(IEnumerable<ProviderConnection> connections)
     {
@@ -182,6 +194,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
     private string? _testStatus;
     private IReadOnlyList<ProviderConnection> _connections = Array.Empty<ProviderConnection>();
     private bool _hasAutoLoginCredentials;
+    private bool _hasLostConnection;
 
     public ProfileProviderStatusViewModel(ProviderDefinition definition)
     {
@@ -202,6 +215,8 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
     public bool IsKnown => _isKnown;
 
     public bool IsConnected => _connectionCount > 0;
+
+    public bool HasLostConnection => _hasLostConnection;
 
     public ProviderHealthState HealthState => _healthState;
 
@@ -267,6 +282,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         string? lastError = null,
         IReadOnlyList<ProviderConnection>? connections = null)
     {
+        var hadPreviousConnections = _connections.Count > 0;
         _connectionCount = Math.Max(0, connectionCount);
         _isKnown = true;
         _healthState = healthState;
@@ -274,6 +290,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _errorCode = errorCode;
         _lastError = SanitizeLastError(lastError);
         _connections = connections ?? Array.Empty<ProviderConnection>();
+        _hasLostConnection = hadPreviousConnections && _connections.Count == 0;
         RaiseStatusChanged();
     }
 
@@ -298,6 +315,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _errorCode = null;
         _lastError = null;
         _connections = Array.Empty<ProviderConnection>();
+        _hasLostConnection = false;
         RaiseStatusChanged();
     }
 
@@ -316,6 +334,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(IsKnown));
         OnPropertyChanged(nameof(IsConnected));
+        OnPropertyChanged(nameof(HasLostConnection));
         OnPropertyChanged(nameof(HealthState));
         OnPropertyChanged(nameof(IsHealthy));
         OnPropertyChanged(nameof(IsDisabled));

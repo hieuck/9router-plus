@@ -12,6 +12,7 @@ public sealed class ProviderConnectionRenameService : IProviderConnectionRenameS
         ChromeProfile profile,
         IReadOnlyDictionary<string, ProviderConnection> existingConnections,
         TimeSpan timeout,
+        DateTimeOffset workflowStartedAt,
         CancellationToken cancellationToken)
     {
         if (api is null)
@@ -43,18 +44,33 @@ public sealed class ProviderConnectionRenameService : IProviderConnectionRenameS
         catch (TimeoutException)
         {
             var all = await api.ListConnectionsAsync(provider, cancellationToken, includeQuotas: false);
-            var match = all
-                .Where(c => string.Equals(c.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
-                .Where(c => !existingConnections.ContainsKey(c.Id))
+            // Prefer connections created after workflow start (new Account N), newest first.
+            var newConnections = all
+                .Where(c => c.CreatedAt.HasValue && c.CreatedAt.Value >= workflowStartedAt)
                 .OrderByDescending(c => c.CreatedAt)
-                .FirstOrDefault();
+                .ToList();
 
-            if (match is null)
+            ProviderConnection? match = null;
+            if (newConnections.Count > 0)
             {
+                match = newConnections.First();
+            }
+            else
+            {
+                // Reused-ID case: fall back to name match.
                 match = all
                     .Where(c => string.Equals(c.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
+                    .Where(c => !existingConnections.ContainsKey(c.Id))
                     .OrderByDescending(c => c.CreatedAt)
                     .FirstOrDefault();
+
+                if (match is null)
+                {
+                    match = all
+                        .Where(c => string.Equals(c.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(c => c.CreatedAt)
+                        .FirstOrDefault();
+                }
             }
 
             if (match is null)

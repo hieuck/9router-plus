@@ -71,6 +71,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private ChromeInstallation? _installation;
     private CancellationTokenSource? _workflowCancellation;
     private Dictionary<string, ProviderConnection> _workflowExistingConnections = new(StringComparer.Ordinal);
+    private DateTimeOffset _workflowStartedAt = DateTimeOffset.MinValue;
     private ProviderKind? _currentWorkflowProvider;
     private bool _workflowInProgress;
     private readonly IProfileManager _profileManager;
@@ -2862,9 +2863,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ApplyProfileFilter();
 
             var matchedProfiles = ProfileRows.Count(row => row.ConnectedProviderCount > 0);
+            var lostRows = ProfileRows.Where(row => row.ProviderStatuses.Any(status => status.HasLostConnection)).ToList();
             ConnectionStatusText = disableFailures > 0
                 ? $"Đã đồng bộ {connections.Count} connection · tắt tự động thất bại {disableFailures} connection."
                 : $"Đã đồng bộ {connections.Count} connection · {matchedProfiles}/{ProfileRows.Count} profile có provider.";
+            if (lostRows.Count > 0)
+            {
+                var lostNames = string.Join(", ", lostRows.Select(row => row.Name));
+                ConnectionStatusText += $" · Mất connection: {lostNames} — thêm lại";
+                AppendLog("WARN", $"Mất connection: {lostNames} — thêm lại");
+            }
             if (showStatus)
             {
                 if (forceLog)
@@ -3370,6 +3378,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProviderKind provider,
         CancellationToken cancellationToken)
     {
+        _workflowStartedAt = DateTimeOffset.UtcNow;
         await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
         var definition = ProviderCatalog.Get(provider);
         if (provider == ProviderKind.Codex)
@@ -3460,6 +3469,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProviderKind provider,
         CancellationToken cancellationToken)
     {
+        _workflowStartedAt = DateTimeOffset.UtcNow;
         await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
         var definition = ProviderCatalog.Get(provider);
         var session = await api.StartDeviceCodeAsync(provider, provider == ProviderKind.Kiro ? "idc" : null, cancellationToken);
@@ -3783,6 +3793,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             profile,
             _workflowExistingConnections,
             TimeSpan.FromMinutes(5),
+            _workflowStartedAt,
             cancellationToken);
 
         var connection = result.Connection;

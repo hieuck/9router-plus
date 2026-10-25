@@ -17,5 +17,6 @@ public interface IProviderConnectionRenameService
         ChromeProfile profile,
         IReadOnlyDictionary<string, ProviderConnection> existingConnections,
         TimeSpan timeout,
+        DateTimeOffset workflowStartedAt,
         CancellationToken cancellationToken);
 }

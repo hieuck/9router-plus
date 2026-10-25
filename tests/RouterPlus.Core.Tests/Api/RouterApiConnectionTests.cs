@@ -169,14 +169,14 @@ public sealed class RouterApiConnectionTests
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
         // Act
-        var connection = await api.WaitForNewConnectionAsync(
+        var act = () => api.WaitForNewConnectionAsync(
             ProviderKind.Codex,
             new Dictionary<string, ProviderConnection> { [snapshot.Id] = snapshot },
-            TimeSpan.FromSeconds(1),
+            TimeSpan.FromMilliseconds(20),
             TimeSpan.FromMilliseconds(1));
 
         // Assert
-        Assert.Equal(snapshot.Id, connection.Id);
+        await Assert.ThrowsAsync<TimeoutException>(act);
     }
 
     [Fact]

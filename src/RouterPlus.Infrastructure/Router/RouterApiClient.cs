@@ -358,12 +358,10 @@ public sealed class RouterApiClient : IRouterApiClient
                 break;
             }
 
-            var changedConnection = current.FirstOrDefault(connection =>
-                !existingConnections.TryGetValue(connection.Id, out var previous)
-                || HasConnectionChanged(previous, connection));
-            if (changedConnection is not null)
+            var selectedConnection = SelectNewConnection(existingConnections, current);
+            if (selectedConnection is not null)
             {
-                return changedConnection;
+                return selectedConnection;
             }
 
             remaining = deadline - DateTimeOffset.UtcNow;
@@ -376,10 +374,44 @@ public sealed class RouterApiClient : IRouterApiClient
         throw new TimeoutException($"Timed out waiting for a new {ProviderCatalog.Get(provider).DisplayName} connection.");
     }
 
-    private static bool HasConnectionChanged(ProviderConnection previous, ProviderConnection current) =>
-        (current.LastRefreshAt.HasValue &&
-         (!previous.LastRefreshAt.HasValue || current.LastRefreshAt > previous.LastRefreshAt))
-        || !string.Equals(current.Email, previous.Email, StringComparison.OrdinalIgnoreCase);
+    private static ProviderConnection? SelectNewConnection(
+        IReadOnlyDictionary<string, ProviderConnection> existingConnections,
+        IReadOnlyList<ProviderConnection> current)
+    {
+        // 1. Connections with a brand-new id (not present in the snapshot).
+        var newId = current
+            .Where(c => !existingConnections.ContainsKey(c.Id))
+            .OrderByDescending(c => c.CreatedAt ?? DateTimeOffset.MinValue)
+            .ThenByDescending(c => c.Id, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (newId is not null)
+        {
+            return newId;
+        }
+
+        // 2. Existing ids whose CreatedAt increased vs the snapshot.
+        var increased = current
+            .Where(c => existingConnections.TryGetValue(c.Id, out var previous)
+                && c.CreatedAt.HasValue
+                && (!previous.CreatedAt.HasValue || c.CreatedAt.Value > previous.CreatedAt.Value))
+            .OrderByDescending(c => c.CreatedAt ?? DateTimeOffset.MinValue)
+            .ThenByDescending(c => c.Id, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (increased is not null)
+        {
+            return increased;
+        }
+
+        // 3. Last resort: email changed (only meaningful when CreatedAt is unavailable).
+        var emailChanged = current
+            .Where(c => existingConnections.TryGetValue(c.Id, out var previous)
+                && !string.Equals(c.Email, previous.Email, StringComparison.OrdinalIgnoreCase)
+                && (!c.CreatedAt.HasValue || !previous.CreatedAt.HasValue))
+            .OrderByDescending(c => c.CreatedAt ?? DateTimeOffset.MinValue)
+            .ThenByDescending(c => c.Id, StringComparer.Ordinal)
+            .FirstOrDefault();
+        return emailChanged;
+    }
 
     private async Task<JsonDocument> ReadDocumentAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
