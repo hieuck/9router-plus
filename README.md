@@ -57,7 +57,7 @@ Wizard không tự cài Python, Visual Studio Build Tools hoặc Chocolatey. Cá
   - xóa profile sau khi xác nhận; chỉ thư mục profile được xóa, thư mục `User Data` vẫn được giữ lại.
 - Nháy đúp profile để mở dashboard 9Router bằng đúng profile đó.
 - Bảng profile hiển thị trạng thái từng provider bằng badge `✓`/`—` và có nút đồng bộ với 9Router.
-- Nút `Thêm` cho Codex, Kiro và Kimchi; OpenRouter/Ollama có ô API key ngay trong card provider.
+- Nút `Thêm` cho Codex, Kiro, Nous và Kimchi; OpenRouter/Ollama có ô API key ngay trong card provider.
 - Nút mở nhanh:
   - OpenRouter API key: `https://openrouter.ai/settings/keys`
   - Ollama API key: `https://ollama.com/settings/keys`
@@ -66,7 +66,7 @@ Wizard không tự cài Python, Visual Studio Build Tools hoặc Chocolatey. Cá
 - API-key workflow đặt tên connection theo profile và đặt priority ở cuối danh sách.
 - API key được mã hóa bằng Windows DPAPI trong user profile hiện tại.
 - Khi chọn lại profile, key OpenRouter/Ollama đã lưu được nạp lại vào card ở trạng thái ẩn; nút `Hiện key`/`Ẩn key` dùng để so sánh và ô nhập không bị xóa sau khi thêm.
-- Codex, Kiro và Kimchi tự khởi động OAuth/device-code, tự chờ connection mới và đổi tên theo profile sau khi người dùng xác nhận.
+- Codex, Kiro, Nous và Kimchi tự khởi động OAuth/device-code, tự chờ connection mới và đổi tên theo profile sau khi người dùng xác nhận.
 - Settings được thu gọn mặc định; dùng nút `⚙ Cài đặt` để ẩn/hiện khi cần.
 - Menu `Trợ giúp` có About, hướng dẫn bảo mật, kiểm tra update và cài update có xác nhận; request update không gửi profile, email, API key, OAuth state hoặc machine identifier.
 
