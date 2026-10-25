@@ -17,7 +17,7 @@ public sealed class ChromeProfileDeleter
     public void Delete(ChromeProfile profile, string userDataDirectory) =>
         Delete(profile, userDataDirectory, chromeExecutablePath: null);
 
-    public void Delete(ChromeProfile profile, string userDataDirectory, string? chromeExecutablePath)
+    public void Validate(ChromeProfile profile, string userDataDirectory)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentException.ThrowIfNullOrWhiteSpace(userDataDirectory);
@@ -42,12 +42,22 @@ public sealed class ChromeProfileDeleter
         {
             throw new InvalidOperationException("The Chrome profile path is not a directory.");
         }
+    }
 
+    public void Delete(ChromeProfile profile, string userDataDirectory, string? chromeExecutablePath)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userDataDirectory);
+
+        Validate(profile, userDataDirectory);
+
+        var expectedUserDataDirectory = NormalizePath(userDataDirectory);
         if (!string.IsNullOrWhiteSpace(chromeExecutablePath))
         {
             _closeBrowserProcesses(chromeExecutablePath, expectedUserDataDirectory);
         }
 
+        var profilePath = NormalizePath(profile.ProfilePath);
         RemoveProfileFromLocalState(userDataDirectory, profile.DirectoryName);
 
         if (Directory.Exists(profilePath))

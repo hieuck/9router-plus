@@ -73,8 +73,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private Dictionary<string, ProviderConnection> _workflowExistingConnections = new(StringComparer.Ordinal);
     private ProviderKind? _currentWorkflowProvider;
     private bool _workflowInProgress;
-    private readonly List<ManagedChromeProfile> _managedProfiles = new();
-    private readonly List<RecentProfile> _recentProfiles = new();
+    private readonly IProfileManager _profileManager;
     private ChromeProfile? _selectedProfile;
     // Auto-Get-Key seam (mirrors _googleLoginAutomation): runs the Chrome-based
     // key flow for a profile + vault credential. Testable standalone.
@@ -144,7 +143,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IGoogleAuthenticationService? googleAuthenticationService = null,
         ProfileHealthService? profileHealthService = null,
         Func<ChromeProfile, string, Task>? launchUrl = null,
-        Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>>? launchManagedChrome = null)
+        Func<ChromeInstallation, ChromeProfile, Uri, CancellationToken, Task<ChromeManagedSession>>? launchManagedChrome = null,
+        IProfileManager? profileManager = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
@@ -164,6 +164,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 cancellationToken,
                 useOriginalProfile: true));
         _profileDeleter = profileDeleter ?? new ChromeProfileDeleter();
+        _profileManager = profileManager ?? new ProfileManager(_chromeLocator, _profileReader);
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _updateService = updateService ?? new SelfUpdateService(_httpClient, ApplicationInfo.CurrentVersion);
         _linkLauncher = linkLauncher ?? new ShellLinkLauncher();
@@ -1044,7 +1045,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             AppendLog("INFO", "Auto-detect: searching for Chrome installations...");
-            var installations = _chromeLocator.FindAll();
+            var installations = _profileManager.FindAllInstallations();
             AppendLog("INFO", $"Auto-detect: found {installations.Count} installation(s).");
 
             foreach (var inst in installations)
@@ -1531,10 +1532,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 settings.WindowTop,
                 settings.WindowWidth,
                 settings.WindowHeight);
-            _managedProfiles.Clear();
-            _managedProfiles.AddRange(settings.ManagedProfiles ?? []);
-            _recentProfiles.Clear();
-            _recentProfiles.AddRange(settings.RecentProfiles ?? []);
+            _profileManager.LoadManaged(settings.ManagedProfiles);
+            _profileManager.LoadRecent(settings.RecentProfiles);
 
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Info,
@@ -1545,8 +1544,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 {
                     chrome_path = ChromeExecutablePath,
                     user_data_dir = ChromeUserDataDirectory,
-                    managed_profiles = _managedProfiles.Count,
-                    recent_profiles = _recentProfiles.Count,
+                    managed_profiles = _profileManager.ManagedProfiles.Count,
+                    recent_profiles = _profileManager.RecentProfiles.Count,
                     font_scale = FontScale,
                     light_theme = UseLightTheme
                 });
@@ -2015,9 +2014,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             RefreshHarnessProfiles(previousProfileId);
             return;
         }
-        _installation = _chromeLocator.Find(
+        var discovery = _profileManager.DiscoverProfiles(
             string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath,
             string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory);
+        _installation = discovery.Installation;
 
         if (_installation is null)
         {
@@ -2032,16 +2032,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         ChromeExecutablePath = _installation.ExecutablePath;
         ChromeUserDataDirectory = _installation.UserDataDirectory;
-        var discoveredProfiles = _profileReader.Read(_installation.UserDataDirectory)
-            .Where(profile => Directory.Exists(profile.ProfilePath))
-            .ToArray();
-        var managedProfiles = _managedProfiles
+        var managedProfiles = _profileManager.ManagedProfiles
             .Where(profile => Directory.Exists(Path.Combine(profile.UserDataDirectory, profile.DirectoryName)))
             .ToArray();
-        var profiles = ChromeProfileCatalog.Merge(
-            discoveredProfiles,
-            managedProfiles,
-            _installation.UserDataDirectory);
+        var profiles = discovery.Profiles;
 
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Info,
@@ -2051,7 +2045,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             new
             {
                 total_profiles = profiles.Count,
-                discovered_profiles = discoveredProfiles.Length,
                 managed_profiles = managedProfiles.Length,
                 user_data_dir = _installation.UserDataDirectory
             });
@@ -2131,15 +2124,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 _installation.UserDataDirectory,
                 ProfileSearchText,
                 Profiles,
-                _managedProfiles);
-            _managedProfiles.Add(createdProfile);
+                _profileManager.ManagedProfiles);
+            _profileManager.AddManaged(createdProfile);
             try
             {
                 await _settingsStore.SaveAsync(BuildSettings());
             }
             catch
             {
-                _managedProfiles.Remove(createdProfile);
+                _profileManager.RemoveManaged(new ChromeProfile(
+                    ChromeProfile.CreateId(createdProfile.UserDataDirectory, createdProfile.DirectoryName),
+                    createdProfile.Name,
+                    createdProfile.DirectoryName,
+                    createdProfile.UserDataDirectory,
+                    false));
                 throw;
             }
 
@@ -4718,22 +4716,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        var removedManagedProfiles = _managedProfiles
+        var removedManagedProfiles = _profileManager.ManagedProfiles
             .Where(managedProfile => IsManagedProfileFor(managedProfile, profile))
             .ToArray();
 
+        if (removedManagedProfiles.Length == 0)
+        {
+            StatusText = "Profile này không phải profile được quản lý.";
+            return;
+        }
+
         try
         {
-            _profileDeleter.Delete(profile, ChromeUserDataDirectory, ChromeExecutablePath);
-            _managedProfiles.RemoveAll(managedProfile => IsManagedProfileFor(managedProfile, profile));
+            _profileDeleter.Validate(profile, ChromeUserDataDirectory);
+
+            var previousManaged = _profileManager.ManagedProfiles.ToArray();
+            _profileManager.RemoveManaged(profile);
             try
             {
                 await _settingsStore.SaveAsync(BuildSettings());
             }
             catch
             {
-                _managedProfiles.AddRange(removedManagedProfiles);
+                _profileManager.LoadManaged(previousManaged);
                 throw;
+            }
+
+            try
+            {
+                _profileDeleter.Delete(profile, ChromeUserDataDirectory, ChromeExecutablePath);
+            }
+            catch (Exception deleteException)
+            {
+                AppendLog("ERROR", $"Profile deletion failed: {SafeError(deleteException)}");
+                StatusText = $"Xóa profile thất bại: {deleteException.Message}";
+                RefreshProfiles();
+                return;
             }
 
             RefreshProfiles();
@@ -4747,36 +4765,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void TrackProfileLaunch(ChromeProfile profile)
     {
-        var existing = _recentProfiles.FirstOrDefault(r =>
-            r.ProfileId == profile.Id &&
-            r.UserDataDirectory.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
-
-        if (existing != null)
-        {
-            _recentProfiles.Remove(existing);
-            _recentProfiles.Insert(0, existing with
-            {
-                LastUsedUtc = DateTime.UtcNow,
-                LaunchCount = existing.LaunchCount + 1
-            });
-        }
-        else
-        {
-            _recentProfiles.Insert(0, new RecentProfile(
-                profile.Id,
-                profile.Name,
-                profile.UserDataDirectory,
-                DateTime.UtcNow,
-                1,
-                false));
-        }
-
-        // Keep only top MaxRecentSlots recent profiles
-        while (_recentProfiles.Count > MaxRecentSlots)
-        {
-            _recentProfiles.RemoveAt(_recentProfiles.Count - 1);
-        }
-
+        _profileManager.TrackLaunch(profile);
         UpdateRecentProfilesList();
     }
 
@@ -4786,23 +4775,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         if (profile is null) return;
 
-        var recent = _recentProfiles.FirstOrDefault(r =>
+        var recent = _profileManager.RecentProfiles.FirstOrDefault(r =>
             r.ProfileId == profile.Id &&
             r.UserDataDirectory.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase));
 
         if (recent != null)
         {
-            var index = _recentProfiles.IndexOf(recent);
-            _recentProfiles[index] = recent with { IsPinned = !recent.IsPinned };
-
-            // Sort: pinned first, then by last used
-            var sorted = _recentProfiles
-                .OrderByDescending(r => r.IsPinned)
-                .ThenByDescending(r => r.LastUsedUtc)
-                .ToList();
-            _recentProfiles.Clear();
-            _recentProfiles.AddRange(sorted);
-
+            _profileManager.PinRecent(profile, !recent.IsPinned);
             UpdateRecentProfilesList();
             await SaveSettingsAsync();
         }
@@ -4812,7 +4791,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         RecentProfileRows.Clear();
         var slot = 0;
-        foreach (var recent in _recentProfiles.Take(MaxRecentSlots))
+        foreach (var recent in _profileManager.RecentProfiles.Take(MaxRecentSlots))
         {
             var profile = Profiles.FirstOrDefault(p =>
                 p.Id == recent.ProfileId &&
@@ -4830,8 +4809,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     internal async Task ClearRecentProfilesAsync()
     {
-        if (_recentProfiles.Count == 0) return;
-        _recentProfiles.Clear();
+        if (_profileManager.RecentProfiles.Count == 0) return;
+        _profileManager.ClearRecent();
         UpdateRecentProfilesList();
         StatusText = "Đã xoá danh sách profile dùng gần đây.";
         await SaveSettingsAsync();
@@ -5321,12 +5300,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         FontScale,
         UseLightTheme,
         UseOriginalProfileForAutoLogin,
-        _managedProfiles.ToArray(),
+        _profileManager.ManagedProfiles.ToArray(),
         placement?.Left,
         placement?.Top,
         placement?.Width,
         placement?.Height,
-        _recentProfiles.ToArray(),
+        _profileManager.RecentProfiles.ToArray(),
         _quotaAutoDisableMarkers);    }
 
     private static WindowPlacement? TryCreateWindowPlacement(

@@ -1,4 +1,5 @@
 using System.Reflection;
+using RouterPlus.App.Services;
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Storage;
@@ -121,23 +122,23 @@ public sealed class MainViewModelRecentProfilesTests
         MainViewModel viewModel,
         IReadOnlyList<(string id, string path, int count, bool pinned)> recents)
     {
-        var list = (System.Collections.IList?)typeof(MainViewModel)
-            .GetField("_recentProfiles", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?.GetValue(viewModel);
-        Assert.NotNull(list);
+        var manager = typeof(MainViewModel)
+            .GetField("_profileManager", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.GetValue(viewModel) as RouterPlus.App.Services.IProfileManager;
+        Assert.NotNull(manager);
 
-        list!.Clear();
-        foreach (var r in recents)
+        var recentsList = recents.Select(r =>
         {
             var profile = viewModel.Profiles.First(p => p.Name == r.id);
-            list.Add(new RecentProfile(
+            return new RecentProfile(
                 ProfileId: profile.Id,
                 ProfileName: profile.Name,
                 UserDataDirectory: r.path,
                 LastUsedUtc: DateTime.UtcNow.AddMinutes(-30),
                 LaunchCount: r.count,
-                IsPinned: r.pinned));
-        }
+                IsPinned: r.pinned);
+        }).ToList();
+        manager!.LoadRecent(recentsList);
 
         typeof(MainViewModel)
             .GetMethod("UpdateRecentProfilesList", BindingFlags.Instance | BindingFlags.NonPublic)
