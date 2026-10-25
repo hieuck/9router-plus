@@ -3772,6 +3772,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 .Where(c => !_workflowExistingConnections.ContainsKey(c.Id))
                 .OrderByDescending(c => c.CreatedAt)
                 .FirstOrDefault();
+            if (match is null)
+            {
+                // If no new-ID match, accept any profile-named connection (may be reused ID renamed by 9Router)
+                match = all
+                    .Where(c => string.Equals(c.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(c => c.CreatedAt)
+                    .FirstOrDefault();
+            }
             if (match is not null)
             {
                 connection = match;
@@ -3780,7 +3788,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     "OAuthWorkflow",
                     "ConnectionFoundAfterWaitTimeout",
                     "Found matching connection after WaitForNewConnectionAsync timeout",
-                    new { provider = provider.ToString(), connectionId = connection.Id, profileName = profile.Name });
+                    new { provider = provider.ToString(), connectionId = connection.Id, profileName = profile.Name, reusedId = _workflowExistingConnections.ContainsKey(connection.Id) });
             }
             else
             {
