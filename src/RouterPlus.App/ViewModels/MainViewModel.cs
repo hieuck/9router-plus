@@ -3749,12 +3749,45 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         var profile = SelectedProfile ?? throw new InvalidOperationException("Hãy chọn Chrome profile trước.");
 
-        var connection = await api.WaitForNewConnectionAsync(
-            provider,
-            _workflowExistingConnections,
-            TimeSpan.FromMinutes(2),
-            TimeSpan.FromSeconds(2),
-            cancellationToken);
+        StatusText = $"Đã xác nhận {ProviderCatalog.Get(provider).DisplayName}. Đang chờ 9Router tạo connection (có thể mất 1-2 phút)…";
+
+        ProviderConnection connection;
+        try
+        {
+            connection = await api.WaitForNewConnectionAsync(
+                provider,
+                _workflowExistingConnections,
+                TimeSpan.FromMinutes(5),
+                TimeSpan.FromSeconds(2),
+                cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            // Fallback: 9Router may have created the connection but we missed it in polling.
+            // List all connections and find one matching the profile name (case-insensitive),
+            // preferring a connection not already in _workflowExistingConnections.
+            var all = await api.ListConnectionsAsync(provider, cancellationToken);
+            var match = all
+                .Where(c => string.Equals(c.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
+                .Where(c => !_workflowExistingConnections.ContainsKey(c.Id))
+                .OrderByDescending(c => c.CreatedAt)
+                .FirstOrDefault();
+            if (match is not null)
+            {
+                connection = match;
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "OAuthWorkflow",
+                    "ConnectionFoundAfterWaitTimeout",
+                    "Found matching connection after WaitForNewConnectionAsync timeout",
+                    new { provider = provider.ToString(), connectionId = connection.Id, profileName = profile.Name });
+            }
+            else
+            {
+                throw;
+            }
+        }
+
         await api.UpdateConnectionAsync(
             connection.Id,
             name: profile.Name,

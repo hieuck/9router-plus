@@ -301,6 +301,15 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
                 double y = yProp.GetDouble();
 
                 // Step 2: Dispatch trusted mouse events via CDP
+                // First dispatch mouseMoved to ensure element is hovered (helps with some sites)
+                await _client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseMoved",
+                    x,
+                    y,
+                    button = "none"
+                }, cancellationToken, _sessionId);
+
                 await _client.CallAsync("Input.dispatchMouseEvent", new
                 {
                     type = "mousePressed",
@@ -331,8 +340,14 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
 
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "NousOAuth",
+                "TrustedClickFailed",
+                "CDP trusted click failed",
+                new { eventName, error = ex.Message });
             return false;
         }
     }
@@ -360,6 +375,7 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
     });
     if (buttons.length > 0) {
         const btn = buttons[0];
+        btn.scrollIntoView({ block: 'center' });
         const rect = btn.getBoundingClientRect();
         return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }
@@ -414,6 +430,7 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         if (id === {emailLowerJson} || em === {emailLowerJson}) {{
             // Click a clickable descendant if present, else the element itself
             const clickable = el.querySelector('a, button, [role=\""link\""], [role=\""button\""]) || el;
+            clickable.scrollIntoView({{ block: 'center' }});
             const rect = clickable.getBoundingClientRect();
             return {{ found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }};
         }}
@@ -425,6 +442,7 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         if (!isVisible(el)) continue;
         const text = (el.innerText || '').toLowerCase();
         if (text.includes({emailLowerJson})) {{
+            el.scrollIntoView({{ block: 'center' }});
             const rect = el.getBoundingClientRect();
             return {{ found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }};
         }}
@@ -439,13 +457,41 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
 
             if (clicked)
             {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "NousOAuth",
-                    "AccountPickerClicked",
-                    "Account picker row clicked",
-                    new { email, attempt });
-                return true;
+                // Wait briefly and verify navigation away from accountchooser
+                await Task.Delay(1000, cancellationToken);
+                var urlCheck = await _client.CallAsync("Runtime.evaluate", new
+                {
+                    expression = "location.pathname",
+                    returnByValue = true
+                }, cancellationToken, _sessionId);
+
+                string pathname = "";
+                if (urlCheck.TryGetProperty("result", out var rp) &&
+                    rp.TryGetProperty("value", out var vp) &&
+                    vp.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    pathname = vp.GetString() ?? "";
+                }
+
+                if (pathname.Contains("accountchooser", StringComparison.OrdinalIgnoreCase))
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Debug,
+                        "NousOAuth",
+                        "AccountPickerClickDidNotNavigate",
+                        "Trusted click did not navigate away from accountchooser, continuing retry",
+                        new { email, attempt, pathname });
+                }
+                else
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "NousOAuth",
+                        "AccountPickerClicked",
+                        "Account picker row clicked and navigated",
+                        new { email, attempt, pathname });
+                    return true;
+                }
             }
 
             await Task.Delay(delayMs, cancellationToken);
