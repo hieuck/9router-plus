@@ -164,6 +164,61 @@ public sealed class ProfileManagerTests
         Assert.Contains(result.Profiles, p => p.Name == "WorkRenamed" && p.DirectoryName == "Profile 1");
     }
 
+    [Fact]
+    public void FindInstallation_returns_installation_when_chrome_exists()
+    {
+        using var temp = new TemporaryDirectory();
+        var userData = temp.Path;
+        Directory.CreateDirectory(Path.Combine(userData, "Default"));
+        File.WriteAllText(Path.Combine(userData, "Local State"), "{}");
+        var chromeExe = Path.Combine(temp.Path, "chrome.exe");
+        File.WriteAllText(chromeExe, string.Empty);
+
+        var locator = new ChromeLocator(Environment.GetFolderPath, File.Exists, Directory.Exists, _ => null, new[] { "C:" });
+        var manager = new ProfileManager(locator, new ChromeProfileReader());
+
+        var installation = manager.FindInstallation(chromeExe, userData);
+
+        Assert.NotNull(installation);
+        Assert.Equal(Path.GetFullPath(chromeExe), installation!.ExecutablePath);
+        Assert.Equal(userData, installation.UserDataDirectory);
+    }
+
+    [Fact]
+    public void ManagedProfiles_and_RecentProfiles_are_snapshots()
+    {
+        var manager = new ProfileManager();
+        manager.LoadManaged(new[] { new ManagedChromeProfile("A", "P1", @"C:\ud") });
+        manager.LoadRecent(new[] { new RecentProfile("id", "name", @"C:\ud", DateTime.UtcNow) });
+
+        var managedSnapshot = manager.ManagedProfiles;
+        var recentSnapshot = manager.RecentProfiles;
+
+        manager.LoadManaged(Array.Empty<ManagedChromeProfile>());
+        manager.ClearRecent();
+
+        Assert.Single(managedSnapshot);
+        Assert.Single(recentSnapshot);
+    }
+
+    [Fact]
+    public void Enumerating_snapshot_while_mutating_does_not_throw()
+    {
+        var manager = new ProfileManager();
+        manager.LoadManaged(new[] { new ManagedChromeProfile("A", "P1", @"C:\ud") });
+
+        var snapshot = manager.ManagedProfiles;
+        manager.LoadManaged(Array.Empty<ManagedChromeProfile>());
+
+        var count = 0;
+        foreach (var _ in snapshot)
+        {
+            count++;
+        }
+
+        Assert.Equal(1, count);
+    }
+
     private sealed class TemporaryDirectory : IDisposable
     {
         public TemporaryDirectory()

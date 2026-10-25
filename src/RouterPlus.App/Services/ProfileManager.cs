@@ -22,15 +22,18 @@ public sealed class ProfileManager : IProfileManager
         _profileReader = profileReader ?? new ChromeProfileReader();
     }
 
-    public IReadOnlyList<ManagedChromeProfile> ManagedProfiles => _managedProfiles;
+    public IReadOnlyList<ManagedChromeProfile> ManagedProfiles => _managedProfiles.ToArray();
 
-    public IReadOnlyList<RecentProfile> RecentProfiles => _recentProfiles;
+    public IReadOnlyList<RecentProfile> RecentProfiles => _recentProfiles.ToArray();
+
+    public ChromeInstallation? FindInstallation(string? chromeExecutablePath, string? userDataDirectory) =>
+        _chromeLocator.Find(
+            string.IsNullOrWhiteSpace(chromeExecutablePath) ? null : chromeExecutablePath,
+            string.IsNullOrWhiteSpace(userDataDirectory) ? null : userDataDirectory);
 
     public ProfileDiscoveryResult DiscoverProfiles(string? chromeExecutablePath, string? userDataDirectory)
     {
-        var installation = _chromeLocator.Find(
-            string.IsNullOrWhiteSpace(chromeExecutablePath) ? null : chromeExecutablePath,
-            string.IsNullOrWhiteSpace(userDataDirectory) ? null : userDataDirectory);
+        var installation = FindInstallation(chromeExecutablePath, userDataDirectory);
 
         if (installation is null)
         {
@@ -85,6 +88,15 @@ public sealed class ProfileManager : IProfileManager
         ArgumentNullException.ThrowIfNull(profile);
         _managedProfiles.RemoveAll(managedProfile =>
             string.Equals(managedProfile.DirectoryName.Trim(), profile.DirectoryName.Trim(), StringComparison.OrdinalIgnoreCase)
+            && PathsEqual(managedProfile.UserDataDirectory, profile.UserDataDirectory));
+    }
+
+    public void RemoveManaged(ManagedChromeProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        _managedProfiles.RemoveAll(managedProfile =>
+            string.Equals(managedProfile.Name.Trim(), profile.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(managedProfile.DirectoryName.Trim(), profile.DirectoryName.Trim(), StringComparison.OrdinalIgnoreCase)
             && PathsEqual(managedProfile.UserDataDirectory, profile.UserDataDirectory));
     }
 

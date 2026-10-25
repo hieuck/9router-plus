@@ -2112,7 +2112,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            _installation = _chromeLocator.Find(
+            _installation = _profileManager.FindInstallation(
                 string.IsNullOrWhiteSpace(ChromeExecutablePath) ? null : ChromeExecutablePath,
                 string.IsNullOrWhiteSpace(ChromeUserDataDirectory) ? null : ChromeUserDataDirectory);
             if (_installation is null)
@@ -2132,12 +2132,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             catch
             {
-                _profileManager.RemoveManaged(new ChromeProfile(
-                    ChromeProfile.CreateId(createdProfile.UserDataDirectory, createdProfile.DirectoryName),
-                    createdProfile.Name,
-                    createdProfile.DirectoryName,
-                    createdProfile.UserDataDirectory,
-                    false));
+                _profileManager.RemoveManaged(createdProfile);
+                try
+                {
+                    var createdPath = Path.Combine(createdProfile.UserDataDirectory, createdProfile.DirectoryName);
+                    if (Directory.Exists(createdPath))
+                    {
+                        Directory.Delete(createdPath, recursive: true);
+                    }
+                }
+                catch
+                {
+                    // Best-effort cleanup; managed state is already restored.
+                }
                 throw;
             }
 
@@ -4720,6 +4727,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             .Where(managedProfile => IsManagedProfileFor(managedProfile, profile))
             .ToArray();
 
+        // Managed-only guard: delete is only offered for managed profiles in the UI.
+        // Non-managed profiles are intentionally rejected here to avoid deleting
+        // Chrome directories that the app did not provision.
         if (removedManagedProfiles.Length == 0)
         {
             StatusText = "Profile này không phải profile được quản lý.";
@@ -4728,7 +4738,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            _profileDeleter.Validate(profile, ChromeUserDataDirectory);
+            // Use the discovered installation root so a stale VM setting cannot
+            // redirect deletion outside the real Chrome User Data directory.
+            var deletionRoot = _installation?.UserDataDirectory ?? ChromeUserDataDirectory;
+            _profileDeleter.Validate(profile, deletionRoot);
 
             var previousManaged = _profileManager.ManagedProfiles.ToArray();
             _profileManager.RemoveManaged(profile);
@@ -4744,10 +4757,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             try
             {
-                _profileDeleter.Delete(profile, ChromeUserDataDirectory, ChromeExecutablePath);
+                _profileDeleter.Delete(profile, deletionRoot, ChromeExecutablePath);
             }
             catch (Exception deleteException)
             {
+                // Restore managed state and best-effort persist it again so the
+                // profile can be retried; the orphan directory remains on disk.
+                _profileManager.LoadManaged(previousManaged);
+                try
+                {
+                    await _settingsStore.SaveAsync(BuildSettings());
+                }
+                catch
+                {
+                    // Best-effort; in-memory state is already restored.
+                }
                 AppendLog("ERROR", $"Profile deletion failed: {SafeError(deleteException)}");
                 StatusText = $"Xóa profile thất bại: {deleteException.Message}";
                 RefreshProfiles();

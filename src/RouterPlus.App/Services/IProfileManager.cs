@@ -12,6 +12,8 @@ public interface IProfileManager
 {
     ProfileDiscoveryResult DiscoverProfiles(string? chromeExecutablePath, string? userDataDirectory);
 
+    ChromeInstallation? FindInstallation(string? chromeExecutablePath, string? userDataDirectory);
+
     IReadOnlyList<ChromeInstallation> FindAllInstallations();
 
     IReadOnlyList<ManagedChromeProfile> ManagedProfiles { get; }
@@ -25,6 +27,8 @@ public interface IProfileManager
     void AddManaged(ManagedChromeProfile profile);
 
     void RemoveManaged(ChromeProfile profile);
+
+    void RemoveManaged(ManagedChromeProfile profile);
 
     void TrackLaunch(ChromeProfile profile);
 
