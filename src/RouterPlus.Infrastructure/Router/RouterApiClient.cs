@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using RouterPlus.Core.Observability;
 using RouterPlus.Core.Providers;
 
 namespace RouterPlus.Infrastructure.Router;
@@ -23,7 +24,8 @@ public sealed class RouterApiClient : IRouterApiClient
     }
 
     public async Task<IReadOnlyList<ProviderConnection>> ListAllConnectionsAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeQuotas = true)
     {
         using var response = await _httpClient.GetAsync(CreateUri("api/providers"), cancellationToken);
         using var document = await ReadDocumentAsync(response, cancellationToken);
@@ -34,7 +36,9 @@ public sealed class RouterApiClient : IRouterApiClient
         }
 
         // Fetch real quota data from 9Router API (same as Quota Tracker dashboard)
-        var quotaByConnection = await FetchAllQuotasAsync(connections, cancellationToken);
+        Dictionary<string, QuotaData> quotaByConnection = includeQuotas
+            ? await FetchAllQuotasAsync(connections, cancellationToken)
+            : new Dictionary<string, QuotaData>();
 
         return connections.EnumerateArray()
             .Select(element => ParseConnection(element, quotaByConnection))
@@ -48,9 +52,10 @@ public sealed class RouterApiClient : IRouterApiClient
 
     public async Task<IReadOnlyList<ProviderConnection>> ListConnectionsAsync(
         ProviderKind provider,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeQuotas = true)
     {
-        var connections = await ListAllConnectionsAsync(cancellationToken);
+        var connections = await ListAllConnectionsAsync(cancellationToken, includeQuotas);
         return connections
             .Where(connection => connection.Provider == provider)
             .OrderBy(connection => connection.Priority)
@@ -580,19 +585,68 @@ public sealed class RouterApiClient : IRouterApiClient
         JsonElement connections, CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, QuotaData>();
-        var fetchTasks = new List<(string Id, Task<QuotaData?> Task)>();
+        var connectionIds = new List<string>();
         foreach (var element in connections.EnumerateArray())
         {
             if (!element.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.String) continue;
             var id = idEl.GetString()!;
-            fetchTasks.Add((id, FetchQuotaAsync(id, cancellationToken)));
+            connectionIds.Add(id);
         }
-        var tasks = fetchTasks.Select(t => t.Task).ToArray();
-        await Task.WhenAll(tasks);
-        for (int i = 0; i < fetchTasks.Count; i++)
+
+        if (connectionIds.Count == 0)
         {
-            if (tasks[i].Result is QuotaData quota) result[fetchTasks[i].Id] = quota;
+            return result;
         }
+
+        const int maxConcurrency = 16;
+        using var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+
+        // Create throttled tasks: each task acquires the semaphore BEFORE starting the HTTP call
+        var tasks = connectionIds.Select(async id =>
+        {
+            await semaphore.WaitAsync(cancellationToken);
+            try
+            {
+                var quota = await FetchQuotaAsync(id, cancellationToken);
+                return (id, quota);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        var completed = await Task.WhenAll(tasks);
+        int failedCount = 0;
+        foreach (var (id, quota) in completed)
+        {
+            if (quota is not null)
+            {
+                result[id] = quota;
+            }
+            else
+            {
+                failedCount++;
+            }
+        }
+
+        if (failedCount > 0)
+        {
+            try
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "RouterApi",
+                    "QuotaFetchAggregateFailed",
+                    "One or more quota fetches failed during connection list load",
+                    new { failed = failedCount, total = connectionIds.Count });
+            }
+            catch
+            {
+                // Observability must not affect quota fetching
+            }
+        }
+
         return result;
     }
 

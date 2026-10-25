@@ -5,11 +5,13 @@ namespace RouterPlus.Infrastructure.Router;
 public interface IRouterApiClient
 {
     Task<IReadOnlyList<ProviderConnection>> ListAllConnectionsAsync(
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool includeQuotas = true);
 
     Task<IReadOnlyList<ProviderConnection>> ListConnectionsAsync(
         ProviderKind provider,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool includeQuotas = true);
 
     Task<ProviderConnectionTestResult> TestConnectionAsync(
         string connectionId,

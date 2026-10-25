@@ -474,4 +474,306 @@ public class RouterApiClientQuotaTests
         var task = (Task<RouterApiClient.QuotaData?>)method!.Invoke(_client, new object[] { connectionId, cancellationToken })!;
         return await task;
     }
+
+    [Fact]
+    public async Task ListAllConnectionsAsync_WithIncludeQuotasFalse_DoesNotCallUsageEndpoint()
+    {
+        // Arrange
+        var connectionsJson = """
+            {
+                "connections": [
+                    {
+                        "id": "conn-1",
+                        "provider": "codex",
+                        "name": "Test Connection",
+                        "priority": 1
+                    },
+                    {
+                        "id": "conn-2",
+                        "provider": "kiro",
+                        "name": "Test Connection 2",
+                        "priority": 2
+                    }
+                ]
+            }
+            """;
+
+        var requestPaths = new List<string>();
+        _httpHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                requestPaths.Add(request.RequestUri!.AbsolutePath);
+                if (request.RequestUri!.AbsolutePath == "/api/providers")
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(connectionsJson, Encoding.UTF8, "application/json")
+                    };
+                }
+                // Should not be called when includeQuotas=false
+                return new HttpResponseMessage(HttpStatusCode.NotFound)
+                {
+                    Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                };
+            });
+
+        // Act
+        var connections = await _client.ListAllConnectionsAsync(CancellationToken.None, includeQuotas: false);
+
+        // Assert
+        Assert.Equal(2, connections.Count);
+        Assert.DoesNotContain(requestPaths, path => path.StartsWith("/api/usage/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ListAllConnectionsAsync_WithIncludeQuotasTrue_CallsUsageEndpoint()
+    {
+        // Arrange
+        var connectionsJson = """
+            {
+                "connections": [
+                    {
+                        "id": "conn-1",
+                        "provider": "codex",
+                        "name": "Test Connection",
+                        "priority": 1
+                    }
+                ]
+            }
+            """;
+
+        var quotaJson = """
+            {
+                "quotas": {
+                    "requests": {
+                        "used": 100,
+                        "total": 1000,
+                        "remaining": 900
+                    }
+                }
+            }
+            """;
+
+        var requestPaths = new List<string>();
+        var responseQueue = new Queue<(HttpStatusCode, string)>();
+        responseQueue.Enqueue((HttpStatusCode.OK, connectionsJson));
+        responseQueue.Enqueue((HttpStatusCode.OK, quotaJson));
+
+        _httpHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                requestPaths.Add(request.RequestUri!.AbsolutePath);
+                var response = responseQueue.Dequeue();
+                return new HttpResponseMessage(response.Item1)
+                {
+                    Content = new StringContent(response.Item2, Encoding.UTF8, "application/json")
+                };
+            });
+
+        // Act
+        var connections = await _client.ListAllConnectionsAsync(CancellationToken.None, includeQuotas: true);
+
+        // Assert
+        Assert.Single(connections);
+        Assert.Contains(requestPaths, path => path == "/api/usage/conn-1");
+    }
+
+    [Fact]
+    public async Task FetchAllQuotasAsync_ConcurrencyIsBoundedTo16()
+    {
+        // Arrange - use a custom handler that supports true async concurrency
+        var connectionCount = 50;
+        var connectionElements = Enumerable.Range(1, connectionCount)
+            .Select(i => $"{{\"id\":\"conn-{i}\",\"provider\":\"codex\",\"name\":\"Test {i}\",\"priority\":1}}");
+        var connectionsJson = $$"""
+            {
+                "connections": [
+                    {{string.Join(",", connectionElements)}}
+                ]
+            }
+            """;
+
+        var quotaJson = """
+            {
+                "quotas": {
+                    "requests": {
+                        "used": 100,
+                        "total": 1000,
+                        "remaining": 900
+                    }
+                }
+            }
+            """;
+
+        var requestStarted = new SemaphoreSlim(0, connectionCount);
+        var allowCompletion = new SemaphoreSlim(0, connectionCount);
+        var peakConcurrency = 0;
+
+        var handler = new ConcurrencyTrackingHandler(
+            connectionsJson,
+            quotaJson,
+            requestStarted,
+            allowCompletion,
+            peak => { if (peak > peakConcurrency) peakConcurrency = peak; });
+
+        using var httpClient = new HttpClient(handler);
+        var client = new RouterApiClient(httpClient, "https://api.example.com");
+
+        // Act
+        var listTask = client.ListAllConnectionsAsync(CancellationToken.None, includeQuotas: true);
+
+        // Wait for all quota requests to start, releasing completions as we go to avoid deadlock
+        // (semaphore limits to 16 concurrent, so we must allow completions to free up slots)
+        var startedCount = 0;
+        while (startedCount < connectionCount)
+        {
+            await requestStarted.WaitAsync(TimeSpan.FromSeconds(10));
+            startedCount++;
+            // Release one completion to allow the next batch to start
+            allowCompletion.Release();
+        }
+
+        var connections = await listTask;
+
+        // Assert
+        Assert.Equal(connectionCount, connections.Count);
+        // Concurrency should be bounded to 16 (not serialized = 1, not unbounded = 50)
+        Assert.True(peakConcurrency > 1, $"Expected concurrency > 1, got {peakConcurrency}");
+        Assert.True(peakConcurrency <= 16, $"Expected concurrency <= 16, got {peakConcurrency}");
+    }
+
+    private sealed class ConcurrencyTrackingHandler(
+        string connectionsJson,
+        string quotaJson,
+        SemaphoreSlim requestStarted,
+        SemaphoreSlim allowCompletion,
+        Action<int> updatePeak) : HttpMessageHandler
+    {
+        public int GetCurrentConcurrency()
+        {
+            // Thread-safe read without locking
+            return _concurrentCount;
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/providers")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(connectionsJson, Encoding.UTF8, "application/json")
+                };
+            }
+
+            var threadId = Environment.CurrentManagedThreadId;
+            Console.WriteLine($"[Handler:{threadId}] Enter SendAsync for {path}");
+
+            // Track concurrency - no gate, use Interlocked for thread-safe increments
+            var current = Interlocked.Increment(ref _concurrentCount);
+            updatePeak(current);
+            Console.WriteLine($"[Handler:{threadId}] Concurrency now: {current}");
+
+            // Signal that this request has started
+            requestStarted.Release();
+
+            // Wait for test to allow completion (this allows other requests to start concurrently)
+            await allowCompletion.WaitAsync(cancellationToken);
+            Console.WriteLine($"[Handler:{threadId}] Completing request");
+
+            Interlocked.Decrement(ref _concurrentCount);
+            Console.WriteLine($"[Handler:{threadId}] Concurrency decremented to: {_concurrentCount}");
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(quotaJson, Encoding.UTF8, "application/json")
+            };
+        }
+
+        private int _concurrentCount;
+    }
+
+    [Fact]
+    public async Task FetchAllQuotasAsync_OneFailedQuotaDoesNotFailList_LogsAggregateWarning()
+    {
+        // Arrange
+        var connectionsJson = """
+            {
+                "connections": [
+                    {"id":"conn-1","provider":"codex","name":"Test 1","priority":1},
+                    {"id":"conn-2","provider":"codex","name":"Test 2","priority":2},
+                    {"id":"conn-3","provider":"codex","name":"Test 3","priority":3}
+                ]
+            }
+            """;
+
+        var quotaSuccessJson = """
+            {
+                "quotas": {
+                    "requests": {
+                        "used": 100,
+                        "total": 1000,
+                        "remaining": 900
+                    }
+                }
+            }
+            """;
+
+        var requestCount = 0;
+        _httpHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                var path = request.RequestUri!.AbsolutePath;
+                if (path == "/api/providers")
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(connectionsJson, Encoding.UTF8, "application/json")
+                    };
+                }
+
+                requestCount++;
+                // Fail the second request (conn-2)
+                if (path == "/api/usage/conn-2")
+                {
+                    return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                    {
+                        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                    };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(quotaSuccessJson, Encoding.UTF8, "application/json")
+                };
+            });
+
+        // Act - should not throw
+        var connections = await _client.ListAllConnectionsAsync(CancellationToken.None, includeQuotas: true);
+
+        // Assert
+        Assert.Equal(3, connections.Count);
+        // conn-1 and conn-3 should have quota data, conn-2 should not
+        var conn1 = connections.First(c => c.Id == "conn-1");
+        var conn2 = connections.First(c => c.Id == "conn-2");
+        var conn3 = connections.First(c => c.Id == "conn-3");
+
+        Assert.NotEmpty(conn1.QuotaRows);
+        Assert.Empty(conn2.QuotaRows); // Failed quota fetch results in empty quota rows
+        Assert.NotEmpty(conn3.QuotaRows);
+    }
 }

@@ -1164,7 +1164,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var api = await CreateApiClientAsync();
-            var current = (await api.ListAllConnectionsAsync(cancellationToken))
+            var current = (await api.ListAllConnectionsAsync(cancellationToken, includeQuotas: true))
                 .FirstOrDefault(connection => string.Equals(connection.Id, connectionId, StringComparison.Ordinal));
             if (current is null || current.Provider != marker.Provider || current.IsActive)
             {
@@ -2683,8 +2683,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
             "Providers",
             "ConnectionRefreshRequested",
             "Provider sync requested",
-            new { profile_count = ProfileRows.Count });
-        await _connectionRefreshGate.WaitAsync(cancellationToken);
+            new { profile_count = ProfileRows.Count, forceLog });
+
+        // Coalesce duplicate background refreshes: skip non-forced if another refresh is running
+        if (!forceLog)
+        {
+            if (!_connectionRefreshGate.WaitAsync(0, cancellationToken).Result)
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Debug,
+                    "Providers",
+                    "ConnectionRefreshCoalesced",
+                    "Skipped duplicate background refresh (another refresh in progress)",
+                    new { profile_count = ProfileRows.Count });
+                return;
+            }
+        }
+        else
+        {
+            await _connectionRefreshGate.WaitAsync(cancellationToken);
+        }
+
         try
         {
             await RefreshConnectionStatusesCoreAsync(showStatus, forceLog, cancellationToken);
@@ -2782,7 +2801,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 "LoadingConnections",
                 "Loading provider connections",
                 new { });
-            var connections = await api.ListAllConnectionsAsync(cancellationToken);
+            var connections = await api.ListAllConnectionsAsync(cancellationToken, includeQuotas: true);
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Info,
                 "Providers",
@@ -3126,7 +3145,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var api = await CreateApiClientAsync();
-            var existing = await api.ListConnectionsAsync(provider);
+            var existing = await api.ListConnectionsAsync(provider, CancellationToken.None, includeQuotas: false);
             var existingConnection = existing.FirstOrDefault(connection =>
                 string.Equals(connection.Name?.Trim(), profile.Name.Trim(), StringComparison.OrdinalIgnoreCase));
             if (existingConnection is not null)
@@ -3234,11 +3253,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CheckForUpdatesCommand.RaiseCanExecuteChanged();
         InstallUpdateCommand.RaiseCanExecuteChanged();
 
+        bool quotaPollingPaused = false;
         try
         {
             var cancellationToken = workflowCancellation.Token;
             WaitForConnectionCommand.RaiseCanExecuteChanged();
             var api = await CreateApiClientAsync();
+            // Pause quota polling only for OAuth/DeviceCode workflows (long-running interactive flows)
+            if (definition.Workflow is WorkflowKind.OAuth or WorkflowKind.DeviceCode)
+            {
+                PauseQuotaPolling();
+                quotaPollingPaused = true;
+            }
             switch (definition.Workflow)
             {
                 case WorkflowKind.ApiKey:
@@ -3294,6 +3320,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
+            // Resume quota polling if it was paused (safe to call even if not paused)
+            if (quotaPollingPaused)
+            {
+                try
+                {
+                    await ResumeQuotaPollingAsync();
+                }
+                catch
+                {
+                    // Resume must not hide workflow exceptions or deadlock
+                }
+            }
+
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Info,
                 "Providers",
@@ -3697,7 +3736,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProviderKind provider,
         CancellationToken cancellationToken = default)
     {
-        var existing = await api.ListConnectionsAsync(provider, cancellationToken);
+        var existing = await api.ListConnectionsAsync(provider, cancellationToken, includeQuotas: false);
         _workflowExistingConnections = existing.ToDictionary(connection => connection.Id, StringComparer.Ordinal);
         _currentWorkflowProvider = provider;
         WaitForConnectionCommand.RaiseCanExecuteChanged();
@@ -3754,7 +3793,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             // Fallback: 9Router may have created the connection but we missed it in polling.
             // List all connections and find one matching the profile name (case-insensitive),
             // preferring a connection not already in _workflowExistingConnections.
-            var all = await api.ListConnectionsAsync(provider, cancellationToken);
+            var all = await api.ListConnectionsAsync(provider, cancellationToken, includeQuotas: false);
             var match = all
                 .Where(c => string.Equals(c.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
                 .Where(c => !_workflowExistingConnections.ContainsKey(c.Id))
@@ -3790,10 +3829,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             cancellationToken: cancellationToken);
         _workflowExistingConnections[connection.Id] = connection;
         _currentWorkflowProvider = null;
-        await RefreshConnectionStatusesAsync(showStatus: false);
         StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.";
         ShowToast(StatusText, ToastType.Success, 5);
         WaitForConnectionCommand.RaiseCanExecuteChanged();
+        // Background refresh - awaited to observe exceptions, but UI already updated
+        await RefreshConnectionStatusesAsync(showStatus: false);
     }
 
     private int GetDashboardPort()
@@ -4914,7 +4954,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var definition = ProviderCatalog.Get(provider);
             var api = await CreateApiClientAsync();
-            var matchingConnections = (await api.ListConnectionsAsync(provider))
+            var matchingConnections = (await api.ListConnectionsAsync(provider, CancellationToken.None, includeQuotas: false))
                 .Where(connection => string.Equals(
                     connection.Name?.Trim(),
                     profile.Name.Trim(),
@@ -4969,7 +5009,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var definition = ProviderCatalog.Get(provider);
             var api = await CreateApiClientAsync();
-            var matchingConnections = (await api.ListConnectionsAsync(provider))
+            var matchingConnections = (await api.ListConnectionsAsync(provider, CancellationToken.None, includeQuotas: false))
                 .Where(connection => string.Equals(
                     connection.Name?.Trim(),
                     profile.Name.Trim(),
