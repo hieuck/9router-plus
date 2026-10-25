@@ -287,6 +287,59 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
     }
 
     /// <summary>
+    /// Override to only click account picker on actual accountchooser pages.
+    /// Prevents clicking "Developer info" or other links on consent pages.
+    /// </summary>
+    protected override bool ShouldClickAccountPicker(CombinedOAuthPageState state) =>
+        state.CurrentUrl.Contains("accountchooser", StringComparison.OrdinalIgnoreCase)
+        && base.ShouldClickAccountPicker(state);
+
+    /// <summary>
+    /// Checks if the exact account row for the profile email exists and is visible.
+    /// </summary>
+    private async Task<bool> HasExactAccountRowAsync(string email, CancellationToken ct)
+    {
+        const string script = @"
+(function() {
+    const targetEmail = arguments[0].toLowerCase();
+    const rows = Array.from(document.querySelectorAll('[data-identifier], [data-email]'));
+    for (const row of rows) {
+        const identifier = (row.getAttribute('data-identifier') || '').toLowerCase();
+        const emailAttr = (row.getAttribute('data-email') || '').toLowerCase();
+        if (identifier === targetEmail || emailAttr === targetEmail) {
+            const rect = row.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+})()
+";
+        try
+        {
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = script,
+                arguments = new[] { new { value = email } },
+                returnByValue = true
+            }, ct, _sessionId);
+
+            if (result.TryGetProperty("result", out var resultProp) &&
+                resultProp.TryGetProperty("value", out var valueProp) &&
+                valueProp.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                return true;
+            }
+        }
+        catch
+        {
+            // Ignore errors, treat as not found
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Override account picker for Nous: dedicated retry that polls for the account row to appear,
     /// using the shared Google detector (base.TryClickAccountPickerAsync) with JS click and exact data-identifier.
     /// </summary>
@@ -312,6 +365,15 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
                     "AccountPickerWait",
                     $"Waiting for account picker row (attempt {attempt}/{maxAttempts})",
                     new { email, attempt, maxAttempts });
+            }
+
+            // Pre-check: exact account row must exist and be visible before calling base detector.
+            // This prevents the shared detector's fallback from clicking "Developer info" or other links.
+            var hasExactRow = await HasExactAccountRowAsync(email, cancellationToken);
+            if (!hasExactRow)
+            {
+                await Task.Delay(delayMs, cancellationToken);
+                continue;
             }
 
             var clicked = await base.TryClickAccountPickerAsync(state, cancellationToken);

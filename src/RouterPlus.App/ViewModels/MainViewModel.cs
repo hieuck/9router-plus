@@ -3488,6 +3488,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        // Attempt auto Google login before provider OAuth flow.
+        // Runs once; Google cookies persist in the real profile.
+        // Never blocks the provider flow on failure.
+        await TryAutoGoogleLoginAsync(SelectedProfile, cancellationToken);
+
         ChromeManagedSession? chromeSession = null;
         var definition = ProviderCatalog.Get(provider);
         try
@@ -4453,6 +4458,91 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             return vaultSession.Vault.Records.FirstOrDefault(c =>
                 string.Equals(c.ProfileId, profile.Id, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
+    /// Attempts to auto-login Google for the given profile before the provider OAuth flow.
+    /// Runs once before the Nous Chrome session; Google cookies persist in the real profile.
+    /// Never throws; if vault is locked/no credential/unsupported page, just continues.
+    /// </summary>
+    private async Task TryAutoGoogleLoginAsync(ChromeProfile profile, CancellationToken ct)
+    {
+        if (_installation is null) return;
+        GoogleLoginCredential? credential = null;
+        try
+        {
+            credential = await LoadGoogleCredentialForProfileAsync(profile, ct);
+        }
+        catch (Exception ex)
+        {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Providers",
+                "AutoGoogleLoginCredentialLoadFailed",
+                "Failed to load Google credential for auto-login",
+                new { profile = profile.Name, error = ex.Message });
+            return;
+        }
+        if (credential is null || string.IsNullOrWhiteSpace(credential.Email) || string.IsNullOrWhiteSpace(credential.Password)) return;
+
+        ChromeManagedSession? session = null;
+        try
+        {
+            StatusText = $"Đang đăng nhập Google cho {profile.Name}…";
+            session = await _chromeLauncher.LaunchManagedAsync(_installation, profile,
+                new Uri("https://accounts.google.com/"), ct, useOriginalProfile: true);
+            var browser = await session.ConnectGoogleLoginAsync(ct);
+            await using (browser)
+            {
+                var state = await browser.ReadStateAsync(ct);
+                if (state.HasCompletionSignal && state.PageUri.Host == "myaccount.google.com")
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Providers",
+                        "AutoGoogleLoginAlreadySignedIn",
+                        "Already signed in via session cookies",
+                        new { profile = profile.Name });
+                    return;
+                }
+                var service = new GoogleAuthenticationService();
+                var result = await service.AuthenticateAsync(new GoogleAuthenticationRequest(credential, browser), ct);
+                if (result.Category == GoogleLoginResultCategory.Success)
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "Providers",
+                        "AutoGoogleLoginSuccess",
+                        "Auto Google login completed",
+                        new { profile = profile.Name });
+                }
+                else
+                {
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Warning,
+                        "Providers",
+                        "AutoGoogleLoginIncomplete",
+                        "Auto Google login did not complete",
+                        new { profile = profile.Name, category = result.Category.ToString(), message = result.Message });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Providers",
+                "AutoGoogleLoginFailed",
+                "Auto Google login failed, continuing with provider flow",
+                new { profile = profile.Name, error = ex.Message });
+        }
+        finally
+        {
+            if (session is not null)
+            {
+                try { await session.DisposeAsync(); } catch { /* best effort */ }
+            }
         }
     }
 
