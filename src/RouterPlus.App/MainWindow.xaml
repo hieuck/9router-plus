@@ -823,7 +823,7 @@
                                 <TextBlock Text="Thêm hoặc kiểm tra connection theo profile đang chọn." Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                             </StackPanel>
                             <Border Grid.Column="1" Style="{StaticResource InfoPillStyle}" VerticalAlignment="Center">
-                                <TextBlock Text="5 providers" FontSize="10" />
+                                <TextBlock Text="{Binding ProviderCount, StringFormat={}{0} providers}" FontSize="10" />
                             </Border>
                         </Grid>
 

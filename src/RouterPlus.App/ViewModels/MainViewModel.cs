@@ -334,6 +334,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public IReadOnlyList<ProviderCardViewModel> ProviderCards { get; }
 
+    public int ProviderCount => ProviderCards.Count;
+
     public IReadOnlyList<ProviderDefinition> ApiKeyProviders { get; }
 
     public string ConnectionStatusText

@@ -1,3 +1,4 @@
+using System.Linq;
 using RouterPlus.App.Tests.TestHelpers;
 using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
@@ -265,6 +266,15 @@ public sealed class MainViewModelBehaviorTests
 
         Assert.Equal(expected, viewModel.FontScale);
         Assert.Equal(expectedLabel, viewModel.FontScaleLabel);
+    }
+
+    [Fact]
+    public void ProviderCount_matches_ProviderCards_count()
+    {
+        var viewModel = new MainViewModel(secretVault: new NoOpSecretVault());
+
+        Assert.Equal(viewModel.ProviderCards.Count, viewModel.ProviderCount);
+        Assert.Contains(viewModel.ProviderCards, card => card.Kind == ProviderKind.GitHub);
     }
 
     private static ChromeProfile CreateProfile(string name, string directoryName, string? userDataDirectory = null) =>

@@ -74,7 +74,19 @@ public static class ProviderCatalog
                 "Nous",
                 "🔭",
                 "NS",
-                "https://portal.nousresearch.com/")
+                "https://portal.nousresearch.com/"),
+            [ProviderKind.GitHub] = new(
+                ProviderKind.GitHub,
+                "GitHub",
+                "/dashboard/providers/github",
+                "https://github.com",
+                WorkflowKind.OAuth,
+                true,
+                "github",
+                "GitHub",
+                "🐙",
+                "GH",
+                "https://github.com/login")
         };
 
     private static readonly IReadOnlyDictionary<string, ProviderKind> ApiAliases =
@@ -82,12 +94,6 @@ public static class ProviderCatalog
             definition => definition.Value.ApiAlias,
             definition => definition.Value.Kind,
             StringComparer.OrdinalIgnoreCase);
-
-    private static readonly IReadOnlyDictionary<ProviderKind, Uri> DirectLoginOnlyUrls =
-        new Dictionary<ProviderKind, Uri>
-        {
-            [ProviderKind.GitHub] = new Uri("https://github.com/login")
-        };
 
     public static IReadOnlyList<ProviderDefinition> All { get; } =
         Definitions.Values.OrderBy(definition => definition.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -115,11 +121,6 @@ public static class ProviderCatalog
             Uri.TryCreate(definition.DirectLoginStartUrl, UriKind.Absolute, out var uri))
         {
             return uri;
-        }
-
-        if (DirectLoginOnlyUrls.TryGetValue(kind, out var directUri))
-        {
-            return directUri;
         }
 
         return null;

@@ -11,6 +11,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Ollama, "/dashboard/providers/ollama", "https://ollama.com/settings/keys")]
     [InlineData(ProviderKind.Kimchi, "/dashboard/providers/kimchi", "https://app.kimchi.dev/")]
     [InlineData(ProviderKind.Nous, "/dashboard/providers/nous", "https://portal.nousresearch.com")]
+    [InlineData(ProviderKind.GitHub, "/dashboard/providers/github", "https://github.com")]
     public void Catalog_exposes_dashboard_and_quick_link_urls(
         ProviderKind kind,
         string dashboardPath,
@@ -40,6 +41,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Ollama, "Ollama", "🦙")]
     [InlineData(ProviderKind.Kimchi, "Kimchi", "🌿")]
     [InlineData(ProviderKind.Nous, "Nous", "🔭")]
+    [InlineData(ProviderKind.GitHub, "GitHub", "🐙")]
     public void Catalog_exposes_provider_short_names_and_glyphs(
         ProviderKind kind,
         string expectedShortName,
@@ -161,6 +163,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Ollama, "ollama", "Ollama", "🦙", "OL")]
     [InlineData(ProviderKind.Kimchi, "kimchi", "Kimchi", "🌿", "KM")]
     [InlineData(ProviderKind.Nous, "nous", "Nous", "🔭", "NS")]
+    [InlineData(ProviderKind.GitHub, "github", "GitHub", "🐙", "GH")]
     public void Catalog_exposes_exact_provider_metadata(
         ProviderKind kind,
         string expectedApiAlias,
@@ -216,14 +219,15 @@ public sealed class ProviderCatalogTests
     }
 
     [Fact]
-    public void All_does_not_contain_GitHub()
+    public void All_contains_GitHub()
     {
-        Assert.DoesNotContain(ProviderCatalog.All, definition => definition.Kind == ProviderKind.GitHub);
+        Assert.Contains(ProviderCatalog.All, definition => definition.Kind == ProviderKind.GitHub);
     }
 
     [Fact]
-    public void TryGetByApiAlias_returns_false_for_github()
+    public void TryGetByApiAlias_returns_GitHub_for_github()
     {
-        Assert.False(ProviderCatalog.TryGetByApiAlias("github", out _));
+        Assert.True(ProviderCatalog.TryGetByApiAlias("github", out var kind));
+        Assert.Equal(ProviderKind.GitHub, kind);
     }
 }
