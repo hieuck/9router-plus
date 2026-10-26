@@ -7,3 +7,4 @@
 - Do not push. Commit only when the user asks.
 - Any probe or diagnostic script used more than once must be saved under `tools/live-verify/` and reused instead of rewritten ad hoc.
 - Live OAuth verification must use a profile with no existing provider connection; a connected profile can reuse the session/connection and skip the target step.
+- Agentic workflow: agentic/WORKFLOW.md; model policy: agentic/MODEL_POLICY.md; question policy: agentic/QUESTION_POLICY.md; script at agentic/scripts/model-eval.mjs (exception: not under tools/live-verify/).
