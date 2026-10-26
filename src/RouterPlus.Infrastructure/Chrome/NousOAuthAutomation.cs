@@ -354,6 +354,20 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            // If a prior click (or external navigation) already moved off the account chooser,
+            // stop polling so the main OAuth loop can handle consent/TOTP instead of waiting ~60s.
+            var currentPath = await GetPathnameAsync(cancellationToken);
+            if (HasLeftAccountChooser(currentPath))
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "NousOAuth",
+                    "AccountPickerNavigated",
+                    "Left account chooser; continuing to next OAuth step",
+                    new { email, attempt, pathname = currentPath });
+                return true;
+            }
+
             // Log only every 10th attempt (1, 10, 20, ..., 120) to avoid log spam
             if (attempt == 1 || attempt % 10 == 0)
             {
@@ -414,6 +428,10 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
 
         return true;
     }
+
+    internal static bool HasLeftAccountChooser(string pathname) =>
+        pathname.Length > 0
+        && !pathname.Contains("accountchooser", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Gets the current page pathname via CDP Runtime.evaluate.

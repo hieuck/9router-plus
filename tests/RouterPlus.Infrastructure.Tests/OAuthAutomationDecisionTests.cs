@@ -530,6 +530,32 @@ public sealed class OAuthAutomationDecisionTests
         Assert.False(result);
     }
 
+    // ========== HasLeftAccountChooser tests ==========
+
+    [Fact]
+    public void HasLeftAccountChooser_returns_true_for_consent_path()
+    {
+        Assert.True(NousOAuthAutomation.HasLeftAccountChooser("/signin/oauth/v3/consent"));
+    }
+
+    [Fact]
+    public void HasLeftAccountChooser_returns_false_for_accountchooser_path()
+    {
+        Assert.False(NousOAuthAutomation.HasLeftAccountChooser("/v3/signin/accountchooser"));
+    }
+
+    [Fact]
+    public void HasLeftAccountChooser_returns_false_for_empty_path()
+    {
+        Assert.False(NousOAuthAutomation.HasLeftAccountChooser(""));
+    }
+
+    [Fact]
+    public void HasLeftAccountChooser_is_case_insensitive()
+    {
+        Assert.False(NousOAuthAutomation.HasLeftAccountChooser("/V3/SIGNIN/ACCOUNTCHOOSER"));
+    }
+
     private static ChromeCdpClient CreateClient() =>
         new(new Uri("http://127.0.0.1:9222"));
 
