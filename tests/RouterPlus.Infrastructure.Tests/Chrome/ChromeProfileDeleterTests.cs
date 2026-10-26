@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Chrome;
@@ -216,6 +217,115 @@ public sealed class ChromeProfileDeleterTests
         {
             DeleteTempDirectory(userDataDirectory);
         }
+    }
+
+    [Fact]
+    public async Task CloseBrowserProcesses_no_matching_processes_does_not_delay_or_kill()
+    {
+        var processes = Array.Empty<Process>();
+        var delayCalls = 0;
+        var killed = new List<Process>();
+
+        await ChromeProfileDeleter.CloseBrowserProcesses(
+            "chrome.exe",
+            "C:\\data",
+            CancellationToken.None,
+            getProcesses: (_, _) => processes,
+            hasExited: _ => false,
+            killProcess: p => killed.Add(p),
+            clock: () => DateTimeOffset.UtcNow,
+            delay: _ => { delayCalls++; return Task.CompletedTask; });
+
+        Assert.Equal(0, delayCalls);
+        Assert.Empty(killed);
+    }
+
+    [Fact]
+    public async Task CloseBrowserProcesses_processes_exit_during_wait_do_not_force_kill()
+    {
+        var process = new Process();
+        var processes = new[] { process };
+        var start = DateTimeOffset.UtcNow;
+        var now = start;
+        var killed = new List<Process>();
+        var delayCalls = 0;
+
+        Func<Process, bool> hasExited = _ => now >= start.AddMilliseconds(100);
+
+        await ChromeProfileDeleter.CloseBrowserProcesses(
+            "chrome.exe",
+            "C:\\data",
+            CancellationToken.None,
+            getProcesses: (_, _) => processes,
+            hasExited: hasExited,
+            killProcess: p => killed.Add(p),
+            clock: () => now,
+            delay: _ =>
+            {
+                delayCalls++;
+                now = now.AddMilliseconds(100);
+                return Task.CompletedTask;
+            });
+
+        Assert.True(delayCalls >= 1);
+        Assert.Empty(killed);
+    }
+
+    [Fact]
+    public async Task CloseBrowserProcesses_processes_remain_are_force_killed_after_bounded_wait()
+    {
+        var process = new Process();
+        var processes = new[] { process };
+        var start = DateTimeOffset.UtcNow;
+        var now = start;
+        var killed = new List<Process>();
+        var delayCalls = 0;
+
+        await ChromeProfileDeleter.CloseBrowserProcesses(
+            "chrome.exe",
+            "C:\\data",
+            CancellationToken.None,
+            getProcesses: (_, _) => processes,
+            hasExited: _ => false,
+            killProcess: p => killed.Add(p),
+            clock: () => now,
+            delay: _ =>
+            {
+                delayCalls++;
+                now = now.AddMilliseconds(100);
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(15, delayCalls);
+        Assert.Single(killed);
+        Assert.Same(process, killed[0]);
+    }
+
+    [Fact]
+    public async Task CloseBrowserProcesses_honors_cancellation_during_wait()
+    {
+        var process = new Process();
+        var processes = new[] { process };
+        var now = DateTimeOffset.UtcNow;
+        using var cts = new CancellationTokenSource();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        {
+            await ChromeProfileDeleter.CloseBrowserProcesses(
+                "chrome.exe",
+                "C:\\data",
+                cts.Token,
+                getProcesses: (_, _) => processes,
+                hasExited: _ => false,
+                killProcess: _ => { },
+                clock: () => now,
+                delay: token =>
+                {
+                    cts.Cancel();
+                    token.ThrowIfCancellationRequested();
+                    return Task.CompletedTask;
+                });
+        });
     }
 
     private static ChromeProfile CreateProfile(string userDataDirectory, string directoryName)

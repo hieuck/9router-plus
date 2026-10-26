@@ -8,10 +8,44 @@ namespace RouterPlus.Infrastructure.Chrome;
 public sealed class ChromeProfileDeleter
 {
     private readonly Func<string, string, CancellationToken, Task> _closeBrowserProcesses;
+    private readonly Func<string, string, Process[]> _getProcesses;
+    private readonly Func<Process, bool> _hasExited;
+    private readonly Action<Process> _closeMainWindow;
+    private readonly Action<Process> _killProcess;
+    private readonly Func<DateTimeOffset> _clock;
+    private readonly Func<CancellationToken, Task> _delay;
 
     public ChromeProfileDeleter(Func<string, string, CancellationToken, Task>? closeBrowserProcesses = null)
+        : this(closeBrowserProcesses, null, null, null, null, null, null)
     {
-        _closeBrowserProcesses = closeBrowserProcesses ?? CloseBrowserProcesses;
+    }
+
+    internal ChromeProfileDeleter(
+        Func<string, string, CancellationToken, Task>? closeBrowserProcesses,
+        Func<string, string, Process[]>? getProcesses,
+        Func<Process, bool>? hasExited,
+        Action<Process>? closeMainWindow,
+        Action<Process>? killProcess,
+        Func<DateTimeOffset>? clock,
+        Func<CancellationToken, Task>? delay)
+    {
+        _getProcesses = getProcesses ?? ((executable, _) => DefaultGetProcesses(executable));
+        _hasExited = hasExited ?? DefaultHasExited;
+        _closeMainWindow = closeMainWindow ?? DefaultCloseMainWindow;
+        _killProcess = killProcess ?? DefaultKillProcess;
+        _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        _delay = delay ?? (cancellationToken => Task.Delay(100, cancellationToken));
+
+        if (closeBrowserProcesses is not null)
+        {
+            _closeBrowserProcesses = closeBrowserProcesses;
+        }
+        else
+        {
+            _closeBrowserProcesses = (executable, userDataDirectory, cancellationToken) =>
+                CloseBrowserProcesses(executable, userDataDirectory, cancellationToken,
+                    _getProcesses, _hasExited, _closeMainWindow, _killProcess, _clock, _delay);
+        }
     }
 
     public Task DeleteAsync(ChromeProfile profile, string userDataDirectory, CancellationToken cancellationToken = default) =>
@@ -70,21 +104,31 @@ public sealed class ChromeProfileDeleter
         }
     }
 
-    private static async Task CloseBrowserProcesses(string chromeExecutablePath, string userDataDirectory, CancellationToken cancellationToken)
+    internal static async Task CloseBrowserProcesses(
+        string chromeExecutablePath,
+        string userDataDirectory,
+        CancellationToken cancellationToken = default,
+        Func<string, string, Process[]>? getProcesses = null,
+        Func<Process, bool>? hasExited = null,
+        Action<Process>? closeMainWindow = null,
+        Action<Process>? killProcess = null,
+        Func<DateTimeOffset>? clock = null,
+        Func<CancellationToken, Task>? delay = null)
     {
-        var expectedExecutablePath = NormalizePath(chromeExecutablePath);
-        var processes = Process.GetProcessesByName("chrome")
-            .Where(process => IsMatchingBrowserProcess(process, expectedExecutablePath))
-            .ToArray();
+        var resolvedGetProcesses = getProcesses ?? ((executable, _) => DefaultGetProcesses(executable));
+        var resolvedHasExited = hasExited ?? DefaultHasExited;
+        var resolvedCloseMainWindow = closeMainWindow ?? DefaultCloseMainWindow;
+        var resolvedKillProcess = killProcess ?? DefaultKillProcess;
+        var resolvedClock = clock ?? (() => DateTimeOffset.UtcNow);
+        var resolvedDelay = delay ?? (token => Task.Delay(100, token));
+
+        var processes = resolvedGetProcesses(chromeExecutablePath, userDataDirectory) ?? Array.Empty<Process>();
 
         foreach (var process in processes)
         {
             try
             {
-                if (process.MainWindowHandle != IntPtr.Zero)
-                {
-                    process.CloseMainWindow();
-                }
+                resolvedCloseMainWindow(process);
             }
             catch
             {
@@ -94,16 +138,27 @@ public sealed class ChromeProfileDeleter
 
         if (processes.Length > 0)
         {
-            await Task.Delay(1500, cancellationToken).ConfigureAwait(false);
+            var deadline = resolvedClock() + TimeSpan.FromMilliseconds(1500);
+            while (processes.Any(process => !SafeHasExited(resolvedHasExited, process)) && resolvedClock() < deadline)
+            {
+                await resolvedDelay(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         foreach (var process in processes)
         {
             try
             {
-                if (!process.HasExited)
+                if (!SafeHasExited(resolvedHasExited, process))
                 {
-                    process.Kill(entireProcessTree: true);
+                    try
+                    {
+                        resolvedKillProcess(process);
+                    }
+                    catch
+                    {
+                        // Process may have exited or denied termination.
+                    }
                 }
             }
             catch
@@ -112,8 +167,60 @@ public sealed class ChromeProfileDeleter
             }
             finally
             {
-                process.Dispose();
+                try
+                {
+                    process.Dispose();
+                }
+                catch
+                {
+                    // Best effort cleanup.
+                }
             }
+        }
+    }
+
+    private static Process[] DefaultGetProcesses(string chromeExecutablePath)
+    {
+        var expectedExecutablePath = NormalizePath(chromeExecutablePath);
+        return Process.GetProcessesByName("chrome")
+            .Where(process => IsMatchingBrowserProcess(process, expectedExecutablePath))
+            .ToArray();
+    }
+
+    private static bool DefaultHasExited(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static void DefaultCloseMainWindow(Process process)
+    {
+        if (process.MainWindowHandle != IntPtr.Zero)
+        {
+            process.CloseMainWindow();
+        }
+    }
+
+    private static void DefaultKillProcess(Process process)
+    {
+        process.Kill(entireProcessTree: true);
+    }
+
+    private static bool SafeHasExited(Func<Process, bool> hasExited, Process process)
+    {
+        try
+        {
+            return hasExited(process);
+        }
+        catch
+        {
+            return true;
         }
     }
 
