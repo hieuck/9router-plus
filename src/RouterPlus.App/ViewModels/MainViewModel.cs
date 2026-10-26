@@ -69,11 +69,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _updateStatusText = "Chưa kiểm tra bản cập nhật.";
     private DateTimeOffset _lastAutomaticUpdateCheck = DateTimeOffset.MinValue;
     private ChromeInstallation? _installation;
-    private CancellationTokenSource? _workflowCancellation;
-    private Dictionary<string, ProviderConnection> _workflowExistingConnections = new(StringComparer.Ordinal);
-    private DateTimeOffset _workflowStartedAt = DateTimeOffset.MinValue;
-    private ProviderKind? _currentWorkflowProvider;
-    private bool _workflowInProgress;
+    // Workflow state now owned by _providerWorkflowService.
     private readonly IProfileManager _profileManager;
     private ChromeProfile? _selectedProfile;
     // Auto-Get-Key seam (mirrors _googleLoginAutomation): runs the Chrome-based
@@ -121,6 +117,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IProviderConnectionService _connectionService;
     private readonly IProviderApiKeyService _providerApiKeyService;
     private readonly IProviderConnectionRenameService _renameService;
+    private IProviderWorkflowService _providerWorkflowService = null!;
     private readonly List<(ChromeManagedSession Session, IGoogleLoginBrowser Browser)> _googleLoginSessions = new();
     private bool _isMultiSelectMode;
     private CancellationTokenSource? _batchLoginCts;
@@ -151,7 +148,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IProfileManager? profileManager = null,
         IProviderConnectionService? connectionService = null,
         IProviderApiKeyService? providerApiKeyService = null,
-        IProviderConnectionRenameService? renameService = null)
+        IProviderConnectionRenameService? renameService = null,
+        IProviderWorkflowService? providerWorkflowService = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
         _secretVault = secretVault ?? new DpapiSecretVault();
@@ -247,9 +245,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _ => SelectedProfile is not null);
         ConnectOpenRouterOAuthCommand = new AsyncRelayCommand(
             () => ConnectOpenRouterOAuthAsync(),
-            () => SelectedProfile is not null && !_workflowInProgress);
+            () => SelectedProfile is not null && !_providerWorkflowService.IsInProgress);
         CancelWorkflowCommand = new AsyncRelayCommand(CancelWorkflowAsync, () => IsWorkflowInProgress);
-        WaitForConnectionCommand = new AsyncRelayCommand(WaitForConnectionAsync, () => !_workflowInProgress && _currentWorkflowProvider is not null && SelectedProfile is not null);
+        WaitForConnectionCommand = new AsyncRelayCommand(WaitForConnectionAsync, () => !_providerWorkflowService.IsInProgress && _providerWorkflowService.CurrentProvider is not null && SelectedProfile is not null);
         OpenHelpCommand = new AsyncRelayCommand(OpenHelpAsync);
         OpenSecurityCommand = new AsyncRelayCommand(OpenSecurityAsync);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsUpdateChecking && !IsWorkflowInProgress);
@@ -269,6 +267,51 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CheckProfileHealthCommand = new AsyncRelayCommand<ProfileRowViewModel>(
             CheckProfileHealthAsync,
             row => row != null);
+
+        if (providerWorkflowService is not null)
+        {
+            _providerWorkflowService = providerWorkflowService;
+        }
+        else
+        {
+            _providerWorkflowService = new ProviderWorkflowService(
+                renameService: _renameService,
+                apiKeyService: _providerApiKeyService,
+                selectedProfileGetter: () => SelectedProfile,
+                installationGetter: () => _installation,
+                launchManagedChrome: _launchManagedChrome,
+                launchUrl: _launchUrl,
+                launchUrlAsync: url => LaunchUrlAsync(url),
+                createApiClient: () => CreateApiClientAsync(),
+                tryAutoGoogleLogin: TryAutoGoogleLoginAsync,
+                pauseQuotaPolling: () => { PauseQuotaPolling(); return Task.CompletedTask; },
+                resumeQuotaPolling: ResumeQuotaPollingAsync,
+                refreshConnections: (showStatus, forceLog, ct) => RefreshConnectionStatusesAsync(showStatus, forceLog, ct),
+                statusCallback: value => StatusText = value,
+                showToast: (msg, type, sec) => ShowToast(msg, type, sec),
+                setCardWorkflowInProgress: (kind, value) => GetProviderCard(kind).SetWorkflowInProgress(value),
+                setSelectedApiKeyProvider: value => SelectedApiKeyProvider = value,
+                onApiKeySaved: (kind, key) =>
+                {
+                    var card = GetProviderCard(kind);
+                    card.ApiKeyValue = key;
+                    card.MarkApiKeySaved();
+                },
+                openRouterPkceFlow: ct => _openRouterPkceFlow(ct),
+                getDashboardPort: GetDashboardPort,
+                getDashboardBaseUrl: () => DashboardBaseUrl,
+                getTotpGenerator: (profile, ct) => CreateTotpGeneratorAsync(profile, ct),
+                setError: ex => SetError(ex),
+                stateChanged: () =>
+                {
+                    OnPropertyChanged(nameof(IsWorkflowInProgress));
+                    CancelWorkflowCommand.RaiseCanExecuteChanged();
+                    WaitForConnectionCommand.RaiseCanExecuteChanged();
+                    CheckForUpdatesCommand.RaiseCanExecuteChanged();
+                    InstallUpdateCommand.RaiseCanExecuteChanged();
+                    ConnectOpenRouterOAuthCommand.RaiseCanExecuteChanged();
+                });
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -710,7 +753,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool IsWorkflowInProgress => _workflowInProgress;
+    public bool IsWorkflowInProgress => _providerWorkflowService.IsInProgress;
 
     public bool IsUpdateChecking
     {
@@ -3051,80 +3094,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public async Task<bool> ConnectOpenRouterOAuthAsync(CancellationToken cancellationToken = default)
-    {
-        if (SelectedProfile is null)
-        {
-            StatusText = "Hãy chọn Chrome profile trước.";
-            ShowToast(StatusText, ToastType.Warning);
-            return false;
-        }
-
-        if (_workflowInProgress)
-        {
-            return false;
-        }
-
-        using var workflowCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _workflowCancellation = workflowCancellation;
-        _workflowInProgress = true;
-        var card = GetProviderCard(ProviderKind.OpenRouter);
-        card.SetWorkflowInProgress(true);
-        OnPropertyChanged(nameof(IsWorkflowInProgress));
-        CancelWorkflowCommand.RaiseCanExecuteChanged();
-        ConnectOpenRouterOAuthCommand.RaiseCanExecuteChanged();
-
-        try
-        {
-            StatusText = "Đang mở OpenRouter OAuth…";
-            OpenRouterPkceResult flowResult;
-            try
-            {
-                flowResult = await _openRouterPkceFlow(workflowCancellation.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                StatusText = "Đã hủy OpenRouter OAuth.";
-                ShowToast(StatusText, ToastType.Warning);
-                return false;
-            }
-            catch (TimeoutException)
-            {
-                StatusText = "Hết thời gian chờ OpenRouter OAuth. Thử lại.";
-                ShowToast(StatusText, ToastType.Error);
-                return false;
-            }
-            catch (Exception exception)
-            {
-                StatusText = $"OpenRouter OAuth thất bại: {exception.Message}";
-                ShowToast(StatusText, ToastType.Error);
-                return false;
-            }
-
-            if (!flowResult.Success)
-            {
-                StatusText = $"OpenRouter OAuth thất bại: {flowResult.ErrorMessage}";
-                ShowToast(StatusText, ToastType.Error);
-                return false;
-            }
-
-            SelectedApiKeyProvider = ProviderKind.OpenRouter;
-            return await AddApiKeyAsync(ProviderKind.OpenRouter, flowResult.ApiKey!);
-        }
-        finally
-        {
-            if (ReferenceEquals(_workflowCancellation, workflowCancellation))
-            {
-                _workflowCancellation = null;
-            }
-
-            _workflowInProgress = false;
-            card.SetWorkflowInProgress(false);
-            OnPropertyChanged(nameof(IsWorkflowInProgress));
-            CancelWorkflowCommand.RaiseCanExecuteChanged();
-            ConnectOpenRouterOAuthCommand.RaiseCanExecuteChanged();
-        }
-    }
+    public Task<bool> ConnectOpenRouterOAuthAsync(CancellationToken cancellationToken = default) =>
+        _providerWorkflowService.ConnectOpenRouterOAuthAsync(cancellationToken);
 
     public Task<bool> AddApiKeyAsync(string apiKey) =>
         AddApiKeyAsync(SelectedApiKeyProvider, apiKey);
@@ -3213,614 +3184,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    internal Task OpenProviderForTestAsync(ProviderKind provider) => OpenProviderAsync(provider);
+    internal Task OpenProviderForTestAsync(ProviderKind provider) => _providerWorkflowService.OpenProviderForTestAsync(provider);
 
-    private async Task OpenProviderAsync(ProviderKind provider)
-    {
-        // Prevent race condition from double-click
-        if (_workflowInProgress)
-        {
-            return;
-        }
-
-        var definition = ProviderCatalog.Get(provider);
-        using var trace = TraceScope.Begin("Providers", "OpenProvider", new { provider = provider.ToString(), workflow = definition.Workflow.ToString() });
-
-        ObservabilityHub.Instance.LogEvent(
-            LogLevel.Info,
-            "Providers",
-            "ProviderWorkflowStarted",
-            "User starting provider connection workflow",
-            new
-            {
-                provider = provider.ToString(),
-                workflow = definition.Workflow.ToString(),
-                profile_name = SelectedProfile?.Name,
-                profile_id = SelectedProfile?.Id
-            });
-
-        if (SelectedProfile is null)
-        {
-            StatusText = "Hãy chọn Chrome profile trước.";
-            ShowToast(StatusText, ToastType.Warning);
-            return;
-        }
-
-        using var workflowCancellation = new CancellationTokenSource();
-        _workflowCancellation = workflowCancellation;
-        _workflowInProgress = true;
-        GetProviderCard(provider).SetWorkflowInProgress(true);
-        OnPropertyChanged(nameof(IsWorkflowInProgress));
-        CancelWorkflowCommand.RaiseCanExecuteChanged();
-        WaitForConnectionCommand.RaiseCanExecuteChanged();
-        CheckForUpdatesCommand.RaiseCanExecuteChanged();
-        InstallUpdateCommand.RaiseCanExecuteChanged();
-
-        bool quotaPollingPaused = false;
-        try
-        {
-            var cancellationToken = workflowCancellation.Token;
-            WaitForConnectionCommand.RaiseCanExecuteChanged();
-            var api = await CreateApiClientAsync();
-            // Pause quota polling only for OAuth/DeviceCode workflows (long-running interactive flows)
-            if (definition.Workflow is WorkflowKind.OAuth or WorkflowKind.DeviceCode)
-            {
-                PauseQuotaPolling();
-                quotaPollingPaused = true;
-            }
-            switch (definition.Workflow)
-            {
-                case WorkflowKind.ApiKey:
-                    SelectedApiKeyProvider = provider;
-                    _currentWorkflowProvider = null;
-                    await LaunchUrlAsync(definition.QuickLink);
-                    StatusText = $"Đã mở {definition.DisplayName}. Lấy key rồi dán vào ô bảo mật bên dưới và bấm Lưu API key.";
-                    ShowToast(StatusText, ToastType.Info, 5);
-                    break;
-                case WorkflowKind.DeviceCode:
-                    await RunDeviceCodeWorkflowAsync(api, provider, cancellationToken);
-                    break;
-                case WorkflowKind.OAuth:
-                    await RunOAuthWorkflowAsync(api, provider, cancellationToken);
-                    break;
-            }
-        }
-        catch (OperationCanceledException) when (workflowCancellation.IsCancellationRequested)
-        {
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Info,
-                "Providers",
-                "ProviderWorkflowCancelled",
-                "Provider workflow cancelled by user",
-                new { provider = provider.ToString() });
-
-            ObservabilityHub.Instance.IncrementCounter("provider.workflow.cancelled", tags: new Dictionary<string, string>
-            {
-                ["provider"] = provider.ToString()
-            });
-
-            _currentWorkflowProvider = null;
-            _workflowExistingConnections.Clear();
-            StatusText = $"Đã hủy thao tác thêm {definition.DisplayName}. Bạn có thể thử lại.";
-            ShowToast(StatusText, ToastType.Warning, 5);
-        }
-        catch (Exception exception)
-        {
-            ObservabilityHub.Instance.IncrementCounter("provider.workflow.failed", tags: new Dictionary<string, string>
-            {
-                ["provider"] = provider.ToString()
-            });
-
-            ObservabilityHub.Instance.LogError(
-                "Providers",
-                "ProviderWorkflowFailed",
-                exception,
-                new { provider = provider.ToString(), workflow = definition.Workflow.ToString() });
-
-            _currentWorkflowProvider = null;
-            _workflowExistingConnections.Clear();
-            SetError(exception);
-        }
-        finally
-        {
-            // Resume quota polling if it was paused (safe to call even if not paused)
-            if (quotaPollingPaused)
-            {
-                try
-                {
-                    await ResumeQuotaPollingAsync();
-                }
-                catch (Exception ex)
-                {
-                    // Resume must not hide workflow exceptions or deadlock, but log for diagnostics
-                    ObservabilityHub.Instance.LogEvent(
-                        LogLevel.Warning,
-                        "Providers",
-                        "QuotaPollingResumeFailed",
-                        "Failed to resume quota polling after workflow",
-                        new { provider = provider.ToString(), error = ex.Message });
-                }
-            }
-
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Info,
-                "Providers",
-                "ProviderWorkflowFinished",
-                "Provider workflow completed",
-                new { provider = provider.ToString() });
-
-            if (ReferenceEquals(_workflowCancellation, workflowCancellation))
-            {
-                _workflowCancellation = null;
-            }
-
-            _workflowInProgress = false;
-            GetProviderCard(provider).SetWorkflowInProgress(false);
-            OnPropertyChanged(nameof(IsWorkflowInProgress));
-            CancelWorkflowCommand.RaiseCanExecuteChanged();
-            WaitForConnectionCommand.RaiseCanExecuteChanged();
-            CheckForUpdatesCommand.RaiseCanExecuteChanged();
-            InstallUpdateCommand.RaiseCanExecuteChanged();
-        }
-    }
-
+    private Task OpenProviderAsync(ProviderKind provider) => _providerWorkflowService.OpenProviderAsync(provider);
     private Task CancelWorkflowAsync()
     {
-        if (_workflowCancellation is { IsCancellationRequested: false } cancellation)
+        if (_providerWorkflowService.WorkflowCancellation is { IsCancellationRequested: false })
         {
             StatusText = "Đang hủy thao tác thêm provider…";
-            cancellation.Cancel();
+            _providerWorkflowService.Cancel();
         }
 
         return Task.CompletedTask;
-    }
-
-    private async Task RunOAuthWorkflowAsync(
-        RouterApiClient api,
-        ProviderKind provider,
-        CancellationToken cancellationToken)
-    {
-        _workflowStartedAt = DateTimeOffset.UtcNow;
-        await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
-        var definition = ProviderCatalog.Get(provider);
-        if (provider == ProviderKind.Codex)
-        {
-            var session = await api.StartOAuthAuthorizationAsync(
-                provider,
-                "http://localhost:1455/auth/callback",
-                cancellationToken);
-            OAuthProxyStartResult proxy;
-            try
-            {
-                proxy = await api.StartOAuthProxyAsync(
-                    provider,
-                    GetDashboardPort(),
-                    session,
-                    cancellationToken);
-            }
-            catch (RouterApiException)
-            {
-                _currentWorkflowProvider = null;
-                await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
-                StatusText = "9Router không bật được OAuth proxy tự động. Trong dashboard, bấm Thêm Codex rồi quay lại bấm Chờ connection thủ công.";
-                return;
-            }
-
-            if (!proxy.ServerSide)
-            {
-                _currentWorkflowProvider = null;
-                await LaunchUrlAsync(definition.BuildDashboardUrl(DashboardBaseUrl));
-                StatusText = "OAuth proxy chưa sẵn sàng. Trong dashboard, bấm Thêm Codex rồi quay lại bấm Chờ connection thủ công.";
-                return;
-            }
-
-            StatusText = "Đang mở đăng nhập Codex và tự động xác nhận OAuth…";
-            await RunOAuthAutoLoginAsync(provider, session.AuthUrl, new Uri("https://chatgpt.com"), cancellationToken);
-            await WaitForOAuthProxyAsync(
-                api,
-                provider,
-                session.State,
-                TimeSpan.FromMinutes(10),
-                cancellationToken);
-        }
-        else
-        {
-            await using var callbackListener = await OAuthCallbackListener.StartAsync();
-            var session = await api.StartOAuthAuthorizationAsync(
-                provider,
-                callbackListener.RedirectUri.ToString(),
-                cancellationToken);
-            StatusText = $"Đang mở đăng nhập {definition.DisplayName} và tự động xác nhận OAuth…";
-            var targetUri = definition.QuickLink is { } ql ? new Uri(ql) : null;
-            if (targetUri is not null)
-            {
-                await RunOAuthAutoLoginAsync(provider, session.AuthUrl, targetUri, cancellationToken);
-            }
-            var callback = await callbackListener.WaitForCallbackAsync(
-                TimeSpan.FromMinutes(10),
-                cancellationToken);
-            if (!string.IsNullOrWhiteSpace(callback.Error))
-            {
-                throw new InvalidOperationException(callback.ErrorDescription ?? callback.Error);
-            }
-
-            if (string.IsNullOrWhiteSpace(callback.Value))
-            {
-                throw new InvalidOperationException("OAuth callback không có code hoặc token.");
-            }
-
-            if (!callback.MatchesState(session.State))
-            {
-                throw new InvalidOperationException("OAuth callback state không khớp phiên đăng nhập.");
-            }
-
-            await api.ExchangeOAuthCodeAsync(
-                provider,
-                callback.Value,
-                session.RedirectUri,
-                session.CodeVerifier,
-                callback.State,
-                cancellationToken);
-        }
-
-        await RenameNewConnectionAsync(api, provider, cancellationToken);
-    }
-
-    private async Task RunDeviceCodeWorkflowAsync(
-        RouterApiClient api,
-        ProviderKind provider,
-        CancellationToken cancellationToken)
-    {
-        _workflowStartedAt = DateTimeOffset.UtcNow;
-        await CaptureExistingConnectionsAsync(api, provider, cancellationToken);
-        var definition = ProviderCatalog.Get(provider);
-        var session = await api.StartDeviceCodeAsync(provider, provider == ProviderKind.Kiro ? "idc" : null, cancellationToken);
-
-        // Try automation for Kiro and Nous
-        if (provider is ProviderKind.Kiro or ProviderKind.Nous)
-        {
-            StatusText = $"Đang mở Chrome và tự động xác nhận {definition.DisplayName}…";
-            await RunDeviceCodeWithAutomationAsync(
-                api,
-                provider,
-                session.VerificationUriComplete ?? session.VerificationUri,
-                session,
-                cancellationToken);
-        }
-        else
-        {
-            // Fallback for other providers
-            await LaunchUrlAsync(session.VerificationUriComplete ?? session.VerificationUri);
-            StatusText = $"Đã mở trang xác nhận cho {definition.DisplayName}. Hoàn tất xác nhận; tool đang tự chờ connection…";
-
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(session.ExpiresIn, 60));
-            var intervalSeconds = Math.Clamp(session.Interval, 1, 30);
-            while (DateTimeOffset.UtcNow < deadline)
-            {
-                var result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);
-                if (result.Success)
-                {
-                    await RenameNewConnectionAsync(api, provider, cancellationToken);
-                    return;
-                }
-
-                if (!string.Equals(result.Error, "authorization_pending", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(result.Error, "slow_down", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException(result.ErrorDescription ?? result.Error ?? "Device-code authorization failed.");
-                }
-
-                if (string.Equals(result.Error, "slow_down", StringComparison.OrdinalIgnoreCase))
-                {
-                    intervalSeconds = Math.Min(intervalSeconds + 5, 30);
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
-            }
-
-            throw new TimeoutException($"Hết thời gian chờ đăng nhập {definition.DisplayName}.");
-        }
-    }
-
-    private async Task RunDeviceCodeWithAutomationAsync(
-        RouterApiClient api,
-        ProviderKind provider,
-        string verificationUri,
-        DeviceCodeSession session,
-        CancellationToken cancellationToken)
-    {
-        if (SelectedProfile is null || _installation is null)
-        {
-            // Fallback to manual flow
-            await LaunchUrlAsync(verificationUri);
-            StatusText = "Không thể tự động hóa. Vui lòng hoàn tất thủ công.";
-            await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
-            return;
-        }
-
-        // Attempt auto Google login before provider OAuth flow.
-        // Runs once; Google cookies persist in the real profile.
-        // Never blocks the provider flow on failure.
-        await TryAutoGoogleLoginAsync(SelectedProfile, cancellationToken);
-
-        ChromeManagedSession? chromeSession = null;
-        var definition = ProviderCatalog.Get(provider);
-        try
-        {
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Info,
-                "Providers",
-                "DeviceCodeAutomationStarted",
-                "Device code automation start",
-                new { profile_name = SelectedProfile.Name });
-
-            chromeSession = await _launchManagedChrome(
-                _installation,
-                SelectedProfile,
-                new Uri(verificationUri),
-                cancellationToken);
-
-            StatusText = $"Đã mở Chrome với profile {SelectedProfile.Name}. Đang tự động xác nhận…";
-
-            var cdp = await chromeSession.ConnectAnyTargetAsync(cancellationToken);
-
-            // Create TOTP generator from vault if available
-            Func<Task<string?>>? totpGenerator = null;
-            var vaultSession = await _googleLoginVaultStore.TryOpenRememberedAsync(
-                _googleLoginVaultPaths.VaultPath,
-                cancellationToken);
-
-            if (vaultSession is not null)
-            {
-                await using (vaultSession)
-                {
-                    var credential = vaultSession.Vault.Records.FirstOrDefault(c =>
-                        string.Equals(c.Email, SelectedProfile.Name, StringComparison.OrdinalIgnoreCase));
-
-                    if (credential is not null && !string.IsNullOrWhiteSpace(credential.TotpSecret))
-                    {
-                        var totpSecret = credential.TotpSecret;
-                        totpGenerator = () => Task.FromResult<string?>(
-                            GoogleTotpGenerator.Generate(totpSecret, DateTimeOffset.UtcNow));
-                        ObservabilityHub.Instance.LogEvent(
-                            LogLevel.Info,
-                            "Providers",
-                            "TotpGeneratorCreated",
-                            "TOTP generator created from vault",
-                            new { });
-                    }
-                }
-            }
-            GoogleOAuthFlowAutomation automation = provider switch
-            {
-                ProviderKind.Kiro => new AwsBuilderIdOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator),
-                ProviderKind.Nous => new NousOAuthAutomation(cdp.Client, cdp.SessionId, cdp.TargetId, SelectedProfile.Name, totpGenerator),
-                _ => throw new NotSupportedException($"Automation not supported for provider {provider}")
-            };
-
-            // Run automation in background
-            var automationTask = automation.WaitAndConsentAsync(
-                new Uri(verificationUri),
-                TimeSpan.FromMinutes(10), // Longer timeout
-                cancellationToken);
-
-            // Polling is the source of truth - wait for connection to be detected
-            StatusText = $"Đang chờ xác nhận từ {definition.DisplayName}… Nếu Google yêu cầu TOTP/chọn tài khoản, hãy hoàn tất trong Chrome; app sẽ tự tiếp tục.";
-
-            // Polling is the source of truth. Do NOT cancel this: the 9Router poll
-            // request is what finalizes and creates the provider connection.
-            var pollTask = PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
-
-            // Observe automation task without canceling the poll
-            var completed = await Task.WhenAny(automationTask, pollTask);
-            if (completed == automationTask)
-            {
-                var result = await automationTask;
-                if (!result.Success)
-                {
-                    StatusText = $"Không thể tự động chọn tài khoản Google. Hãy chọn/đăng nhập tài khoản trong Chrome; app vẫn đang chờ {definition.DisplayName}…";
-                    ObservabilityHub.Instance.LogEvent(
-                        LogLevel.Warning,
-                        "Providers",
-                        "DeviceCodeAutomationIncomplete",
-                        "Automation incomplete, continuing to wait for poll",
-                        new { message = result.Message });
-                }
-            }
-
-            await pollTask;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ObservabilityHub.Instance.LogError(
-                "Providers",
-                "DeviceCodeAutomationFailed",
-                ex,
-                new { });
-            StatusText = $"Tự động hóa lỗi: {ex.Message}. Đang chờ hoàn tất thủ công…";
-
-            // Continue polling even if automation fails
-            await PollDeviceCodeUntilSuccessAsync(api, provider, session, cancellationToken);
-        }
-        finally
-        {
-            if (chromeSession is not null)
-            {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None);
-                    await chromeSession.DisposeAsync();
-                }
-                catch
-                {
-                    // Best effort
-                }
-            }
-        }
-    }
-
-    private async Task PollDeviceCodeUntilSuccessAsync(
-        RouterApiClient api,
-        ProviderKind provider,
-        DeviceCodeSession session,
-        CancellationToken cancellationToken)
-    {
-        var definition = ProviderCatalog.Get(provider);
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(session.ExpiresIn, 60));
-        var intervalSeconds = Math.Clamp(session.Interval, 1, 30);
-        int consecutiveTransientFailures = 0;
-        const int maxConsecutiveTransientFailures = 10;
-
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            DeviceCodePollResult result;
-            try
-            {
-                result = await api.PollDeviceCodeAsync(provider, session, cancellationToken);
-                consecutiveTransientFailures = 0; // Reset on successful HTTP response
-            }
-            catch (Exception ex) when (IsTransientPollException(ex, cancellationToken))
-            {
-                consecutiveTransientFailures++;
-                if (consecutiveTransientFailures >= maxConsecutiveTransientFailures)
-                {
-                    throw;
-                }
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Warning,
-                    "Providers",
-                    "DeviceCodePollTransientFailure",
-                    "Transient failure during device code poll, will retry",
-                    new { attempt = consecutiveTransientFailures, maxAttempts = maxConsecutiveTransientFailures, error = ex.Message });
-                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
-                continue;
-            }
-
-            if (result.Success)
-            {
-                await RenameNewConnectionAsync(api, provider, cancellationToken);
-                return;
-            }
-
-            if (!string.Equals(result.Error, "authorization_pending", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(result.Error, "slow_down", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(result.ErrorDescription ?? result.Error ?? "Device-code authorization failed.");
-            }
-
-            if (string.Equals(result.Error, "slow_down", StringComparison.OrdinalIgnoreCase))
-            {
-                intervalSeconds = Math.Min(intervalSeconds + 5, 30);
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
-        }
-
-        throw new TimeoutException($"Hết thời gian chờ đăng nhập {definition.DisplayName}.");
-    }
-
-    private static bool IsTransientPollException(Exception ex, CancellationToken cancellationToken)
-    {
-        if (ex is RouterApiException apiEx)
-        {
-            var status = (int)apiEx.StatusCode;
-            // 408 Request Timeout, 429 Too Many Requests, 5xx Server Errors
-            return status == 408 || status == 429 || status >= 500;
-        }
-        if (ex is HttpRequestException)
-        {
-            return true;
-        }
-        if (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested)
-        {
-            return true;
-        }
-        return false;
-    }
-
-    private async Task CaptureExistingConnectionsAsync(
-        RouterApiClient api,
-        ProviderKind provider,
-        CancellationToken cancellationToken = default)
-    {
-        _workflowStartedAt = DateTimeOffset.UtcNow;
-        var existing = await api.ListConnectionsAsync(provider, cancellationToken, includeQuotas: false);
-        _workflowExistingConnections = existing.ToDictionary(connection => connection.Id, StringComparer.Ordinal);
-        _currentWorkflowProvider = provider;
-        WaitForConnectionCommand.RaiseCanExecuteChanged();
-    }
-
-    private async Task WaitForOAuthProxyAsync(
-        RouterApiClient api,
-        ProviderKind provider,
-        string state,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        var deadline = DateTimeOffset.UtcNow + timeout;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var status = await api.GetOAuthProxyStatusAsync(provider, state, cancellationToken);
-            if (string.Equals(status.Status, "done", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            if (string.Equals(status.Status, "error", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(status.Error ?? "OAuth authorization failed.");
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-        }
-
-        throw new TimeoutException($"Hết thời gian chờ đăng nhập {ProviderCatalog.Get(provider).DisplayName}.");
-    }
-
-    private async Task RenameNewConnectionAsync(
-        RouterApiClient api,
-        ProviderKind provider,
-        CancellationToken cancellationToken = default)
-    {
-        var profile = SelectedProfile ?? throw new InvalidOperationException("Hãy chọn Chrome profile trước.");
-        if (_workflowStartedAt == default)
-        {
-            throw new InvalidOperationException("Workflow start time has not been captured.");
-        }
-
-        StatusText = $"Đã xác nhận {ProviderCatalog.Get(provider).DisplayName}. Đang chờ 9Router tạo connection (có thể mất 1-2 phút)…";
-
-        var result = await _renameService.RenameAsync(
-            api,
-            provider,
-            profile,
-            _workflowExistingConnections,
-            _workflowStartedAt,
-            TimeSpan.FromMinutes(5),
-            cancellationToken);
-
-        var connection = result.Connection;
-        if (result.FoundAfterTimeout)
-        {
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Info,
-                "OAuthWorkflow",
-                "ConnectionFoundAfterWaitTimeout",
-                "Found matching connection after WaitForNewConnectionAsync timeout",
-                new { provider = provider.ToString(), connectionId = connection.Id, profileName = profile.Name, reusedId = result.ReusedExistingId });
-        }
-
-        _workflowExistingConnections[connection.Id] = connection;
-        _currentWorkflowProvider = null;
-        StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.";
-        ShowToast(StatusText, ToastType.Success, 5);
-        WaitForConnectionCommand.RaiseCanExecuteChanged();
-        // Background refresh - awaited to observe exceptions, but UI already updated
-        await RefreshConnectionStatusesAsync(showStatus: false);
     }
 
     private int GetDashboardPort()
@@ -3834,6 +3209,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? dashboardUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? 443 : 80
             : dashboardUri.Port;
     }
+
+    private async Task<Func<Task<string?>>?> CreateTotpGeneratorAsync(ChromeProfile profile, CancellationToken cancellationToken)
+    {
+        Func<Task<string?>>? totpGenerator = null;
+        var vaultSession = await _googleLoginVaultStore.TryOpenRememberedAsync(_googleLoginVaultPaths.VaultPath, cancellationToken);
+        if (vaultSession is not null)
+        {
+            await using (vaultSession)
+            {
+                var credential = vaultSession.Vault.Records.FirstOrDefault(c =>
+                    string.Equals(c.Email, profile.Name, StringComparison.OrdinalIgnoreCase));
+                if (credential is not null && !string.IsNullOrWhiteSpace(credential.TotpSecret))
+                {
+                    var totpSecret = credential.TotpSecret;
+                    totpGenerator = () => Task.FromResult<string?>(GoogleTotpGenerator.Generate(totpSecret, DateTimeOffset.UtcNow));
+                }
+            }
+        }
+        return totpGenerator;
+    }
+
 
     private async Task OpenQuickLinkAsync(ProviderKind provider)
     {
@@ -3861,83 +3257,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task WaitForConnectionAsync()
-    {
-        if (_currentWorkflowProvider is null || SelectedProfile is null)
-        {
-            StatusText = "Chưa có workflow OAuth đang chờ.";
-            ShowToast(StatusText, ToastType.Warning);
-            return;
-        }
-
-        using var cancellation = new CancellationTokenSource();
-        _workflowCancellation = cancellation;
-        _workflowInProgress = true;
-        OnPropertyChanged(nameof(IsWorkflowInProgress));
-        CancelWorkflowCommand.RaiseCanExecuteChanged();
-        WaitForConnectionCommand.RaiseCanExecuteChanged();
-        try
-        {
-            var cancellationToken = cancellation.Token;
-            var provider = _currentWorkflowProvider.Value;
-            var profile = SelectedProfile ?? throw new InvalidOperationException("Hãy chọn Chrome profile trước.");
-            if (_workflowStartedAt == default)
-            {
-                throw new InvalidOperationException("Workflow start time has not been captured.");
-            }
-            var api = await CreateApiClientAsync();
-            StatusText = $"Đang chờ {ProviderCatalog.Get(provider).DisplayName} báo connection mới…";
-            var result = await _renameService.RenameAsync(
-                api,
-                provider,
-                profile,
-                _workflowExistingConnections,
-                _workflowStartedAt,
-                TimeSpan.FromMinutes(10),
-                cancellationToken);
-            var connection = result.Connection;
-            if (result.FoundAfterTimeout)
-            {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "OAuthWorkflow",
-                    "ConnectionFoundAfterWaitTimeout",
-                    "Found matching connection after WaitForNewConnectionAsync timeout",
-                    new { provider = provider.ToString(), connectionId = connection.Id, profileName = profile.Name, reusedId = result.ReusedExistingId });
-            }
-            _workflowExistingConnections[connection.Id] = connection;
-            _currentWorkflowProvider = null;
-            StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.";
-            ShowToast(StatusText, ToastType.Success, 5);
-            WaitForConnectionCommand.RaiseCanExecuteChanged();
-            // Background refresh after UI feedback
-            await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true, cancellationToken: cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-            _currentWorkflowProvider = null;
-            _workflowExistingConnections.Clear();
-            StatusText = "Đã hủy thao tác chờ connection.";
-            ShowToast(StatusText, ToastType.Warning, 5);
-        }
-        catch (Exception exception)
-        {
-            SetError(exception);
-        }
-        finally
-        {
-            if (ReferenceEquals(_workflowCancellation, cancellation))
-            {
-                _workflowCancellation = null;
-            }
-
-            _workflowInProgress = false;
-            OnPropertyChanged(nameof(IsWorkflowInProgress));
-            CancelWorkflowCommand.RaiseCanExecuteChanged();
-            WaitForConnectionCommand.RaiseCanExecuteChanged();
-        }
-    }
-
+    private Task WaitForConnectionAsync() => _providerWorkflowService.WaitForConnectionAsync();
     public async Task OpenSelectedGoogleLoginAsync()
     {
         var profile = SelectedProfile;
@@ -5080,112 +4400,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         return _launchUrl(SelectedProfile, url);
     }
-
-    /// <summary>
-    /// Best-effort OAuth auto-login: launches Chrome with the selected profile, navigates
-    /// to the auth URL, and clicks Google account picker / consent automatically.
-    /// Never throws — failures fall back to the user-completed flow already in progress.
-    /// </summary>
-    private async Task RunOAuthAutoLoginAsync(
-        ProviderKind provider,
-        string authUrl,
-        Uri targetServiceUri,
-        CancellationToken cancellationToken)
-    {
-        if (SelectedProfile is null || _installation is null)
-        {
-            return;
-        }
-
-        ChromeManagedSession? chromeSession = null;
-        try
-        {
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Info,
-                "Providers",
-                "OAuthAutoLoginStarted",
-                "OAuth auto-login start",
-                new { profile_name = SelectedProfile.Name });
-
-            chromeSession = await _chromeLauncher.LaunchManagedAsync(
-                _installation,
-                SelectedProfile,
-                new Uri(authUrl),
-                cancellationToken,
-                useOriginalProfile: true);
-
-            StatusText = $"Đã mở Chrome với profile {SelectedProfile.Name}. Đang chờ Google account picker…";
-
-            var cdp = await chromeSession.ConnectAnyTargetAsync(cancellationToken);
-            await using var orchestrator = new OAuthAutoLoginOrchestrator(
-                chromeSession,
-                cdp,
-                provider);
-
-            var result = await orchestrator.RunAsync(
-                new Uri(authUrl),
-                targetServiceUri,
-                SelectedProfile.Name, // Profile email to match exactly
-                provider == ProviderKind.Codex ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(2),
-                cancellationToken);
-
-            switch (result.Outcome)
-            {
-                case OAuthAutoLoginOutcome.Success:
-                    StatusText = result.AlreadyAuthorized
-                        ? "Đã đăng nhập sẵn. Đang lưu connection…"
-                        : "Đã hoàn tất OAuth consent. Đang lưu connection…";
-                    ObservabilityHub.Instance.LogEvent(
-                        LogLevel.Info,
-                        "Providers",
-                        "OAuthAutoLoginSuccess",
-                        "OAuth auto-login success",
-                        new { message = result.Message });
-                    break;
-                default:
-                    StatusText = "Auto-login chưa hoàn tất. Vui lòng click cho phép trong cửa sổ Chrome…";
-                    ObservabilityHub.Instance.LogEvent(
-                        LogLevel.Info,
-                        "Providers",
-                        "OAuthAutoLoginFallback",
-                        "OAuth auto-login fallback",
-                        new { message = result.Message });
-                    break;
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Workflow cancelled; outer handler will surface the message.
-        }
-        catch (Exception ex)
-        {
-            ObservabilityHub.Instance.LogError(
-                "Providers",
-                "OAuthAutoLoginFailed",
-                ex,
-                new { });
-            StatusText = $"Auto-login lỗi: {ex.Message}. Vui lòng hoàn tất thủ công.";
-            // Do not rethrow — manual flow / OAuth proxy continues.
-        }
-        finally
-        {
-            if (chromeSession is not null)
-            {
-                try
-                {
-                    // Leave Chrome open briefly so the user sees the result if automation
-                    // failed and they need to complete manually.
-                    await Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None);
-                    await chromeSession.DisposeAsync();
-                }
-                catch
-                {
-                    // Best effort
-                }
-            }
-        }
-    }
-
     /// <summary>
     /// Phase 6 Step 6.2: Helper method demonstrating AutoLoginOrchestrator usage.
     /// This method shows how to integrate the orchestrator for unified auto-login with fallback support.
@@ -5235,7 +4449,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task<RouterApiClient> CreateApiClientAsync()
+    private async Task<IRouterApiClient> CreateApiClientAsync()
     {
         // 9Router uses JWT cookie authentication, not Basic Auth
         // If password is provided, we need to login to get the JWT token cookie
