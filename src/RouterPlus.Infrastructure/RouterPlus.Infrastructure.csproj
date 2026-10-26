@@ -7,6 +7,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="RouterPlus.Core.Tests" />
     <InternalsVisibleTo Include="RouterPlus.Infrastructure.Tests" />
+    <InternalsVisibleTo Include="RouterPlus" />
+    <InternalsVisibleTo Include="RouterPlus.App.Tests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RouterPlus.Core\RouterPlus.Core.csproj" />

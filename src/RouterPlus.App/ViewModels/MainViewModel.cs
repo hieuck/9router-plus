@@ -48,6 +48,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     internal IProviderConnectionVaultStore ProviderConnectionVaultStore => _providerConnectionVaultStore;
     internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginAutomation => _googleLoginAutomation;
     internal Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> GoogleLoginHealthCheckAutomation => _googleLoginHealthCheckAutomation;
+    internal async Task<IProviderLoginChromeSession> LaunchManagedChromeForProviderAsync(ChromeProfile profile, Uri uri, CancellationToken cancellationToken)
+    {
+        var installation = _installation ?? throw new InvalidOperationException("Chrome installation not configured.");
+        var session = await _launchManagedChrome(installation, profile, uri, cancellationToken);
+        return new ProviderLoginChromeSession(session);
+    }
     internal Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> CodexLoginAutomation => _codexLoginAutomation;
 
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _googleLoginAutomation;

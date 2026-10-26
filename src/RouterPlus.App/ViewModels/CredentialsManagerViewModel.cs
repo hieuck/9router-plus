@@ -11,6 +11,8 @@ using RouterPlus.Core.Observability;
 using RouterPlus.App.Services;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.Infrastructure.Security;
+using RouterPlus.Infrastructure.Chrome;
+using RouterPlus.Infrastructure.Services;
 
 namespace RouterPlus.App.ViewModels;
 
@@ -31,6 +33,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _runGoogleAuthentication;
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _runGoogleHealthCheck;
     private readonly Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> _runCodexAuthentication;
+    private readonly ICredentialsProviderLoginService _credentialsProviderLoginService;
+    private CancellationTokenSource? _providerLoginCts;
 
     private int _selectedTabIndex;
     private string _statusMessage = string.Empty;
@@ -57,7 +61,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleAuthenticationRunner,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> googleHealthCheckRunner,
         Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>> codexAuthenticationRunner,
-        IProviderConnectionRowService? providerConnectionRowService = null)
+        IProviderConnectionRowService? providerConnectionRowService = null,
+        ICredentialsProviderLoginService? credentialsProviderLoginService = null)
     {
         _mainViewModel = mainViewModel ?? throw new ArgumentNullException(nameof(mainViewModel));
         _googleAccountVaultStore = googleAccountVaultStore ?? throw new ArgumentNullException(nameof(googleAccountVaultStore));
@@ -67,7 +72,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         _runGoogleAuthentication = googleAuthenticationRunner ?? throw new ArgumentNullException(nameof(googleAuthenticationRunner));
         _runGoogleHealthCheck = googleHealthCheckRunner ?? throw new ArgumentNullException(nameof(googleHealthCheckRunner));
         _runCodexAuthentication = codexAuthenticationRunner ?? throw new ArgumentNullException(nameof(codexAuthenticationRunner));
-
+        _credentialsProviderLoginService = credentialsProviderLoginService ?? new CredentialsProviderLoginService(
+            (profile, uri, ct) => _mainViewModel.LaunchManagedChromeForProviderAsync(profile, uri, ct));
         // Initialize commands
         SaveRowCommand = new AsyncRelayCommand<GoogleAccountRowViewModel>(
             SaveRowAsync,
@@ -1772,12 +1778,48 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
 
         SetStatus($"🚀 Logging in {provider} for {row.ProfileName}...");
 
+        _providerLoginCts?.Cancel();
+        _providerLoginCts?.Dispose();
+        _providerLoginCts = new CancellationTokenSource();
+        var cancellationToken = _providerLoginCts.Token;
+
         try
         {
-            // Direct login automation is implemented per-provider in their respective automation classes
-            // (e.g., CodexDirectLoginAutomation). This stub exists for future provider integrations.
-            SetStatus($"⚠ {provider} direct login not yet integrated for {row.ProfileName}");
-            await Task.Delay(100);
+            if (string.IsNullOrWhiteSpace(row.Email) || string.IsNullOrWhiteSpace(row.Password))
+            {
+                SetStatus($"❌ {row.ProfileName}: Email and password required for Direct login");
+                return;
+            }
+
+            var credential = new ProviderCredential
+            {
+                Email = row.Email.Trim(),
+                Password = row.Password,
+                TotpSecret = string.IsNullOrWhiteSpace(row.TotpSecret) ? null : row.TotpSecret.Trim()
+            };
+
+            Func<Task<string?>>? totpGenerator = null;
+            if (!string.IsNullOrWhiteSpace(credential.TotpSecret))
+            {
+                var totpSecret = credential.TotpSecret!;
+                totpGenerator = () => Task.FromResult<string?>(GoogleTotpGenerator.Generate(totpSecret, DateTimeOffset.UtcNow));
+            }
+
+            var result = await _credentialsProviderLoginService.LoginAsync(
+                provider,
+                profile,
+                credential,
+                totpGenerator,
+                cancellationToken);
+
+            if (result.Success)
+            {
+                SetStatus($"✓ {row.ProfileName}: {result.Message}");
+            }
+            else
+            {
+                SetStatus($"❌ {row.ProfileName}: {result.Message}");
+            }
         }
         catch (Exception ex)
         {
@@ -1828,6 +1870,8 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
+    // Launching is now delegated to MainViewModel; no local helper needed.
+
     public void SetStatus(string message)
     {
         StatusMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
@@ -1846,6 +1890,9 @@ public sealed class CredentialsManagerViewModel : INotifyPropertyChanged, IAsync
     public async ValueTask DisposeAsync()
     {
         await CancelBatchLoginAsync();
+        _providerLoginCts?.Cancel();
+        _providerLoginCts?.Dispose();
+        _providerLoginCts = null;
 
         if (_vaultSession != null)
         {

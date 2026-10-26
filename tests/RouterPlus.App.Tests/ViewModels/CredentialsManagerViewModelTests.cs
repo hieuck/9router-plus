@@ -5,6 +5,7 @@ using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.App.ViewModels;
+using RouterPlus.App.Services;
 
 namespace RouterPlus.App.Tests.ViewModels;
 
@@ -300,7 +301,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Provider_login_commands_report_the_provider_specific_unintegrated_flow()
+    public async Task Provider_login_commands_delegate_to_provider_login_service()
     {
         foreach (var provider in new[] { ProviderKind.Kiro, ProviderKind.GitHub, ProviderKind.OpenRouter })
         {
@@ -317,19 +318,81 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             });
         }
 
-        var viewModel = CreateViewModel();
+        var fakeService = new FakeCredentialsProviderLoginService((_, _, _, _, _) =>
+            Task.FromResult(new CredentialsProviderLoginResult(true, "Login completed successfully.")));
+        var viewModel = CreateViewModel(credentialsProviderLoginService: fakeService);
         await WaitForAsync(() => viewModel.KiroConnections.Count == 1);
 
-        foreach (var (command, row, provider) in new[]
+        foreach (var (command, row) in new[]
         {
-            (viewModel.LoginKiroRowCommand, Assert.Single(viewModel.KiroConnections), "Kiro"),
-            (viewModel.LoginGitHubRowCommand, Assert.Single(viewModel.GitHubConnections), "GitHub"),
-            (viewModel.LoginOpenRouterRowCommand, Assert.Single(viewModel.OpenRouterConnections), "OpenRouter")
+            (viewModel.LoginKiroRowCommand, Assert.Single(viewModel.KiroConnections)),
+            (viewModel.LoginGitHubRowCommand, Assert.Single(viewModel.GitHubConnections)),
+            (viewModel.LoginOpenRouterRowCommand, Assert.Single(viewModel.OpenRouterConnections))
         })
         {
             command.Execute(row);
-            await WaitForAsync(() => viewModel.StatusMessage.Contains($"{provider} direct login", StringComparison.Ordinal));
+            await WaitForAsync(() => viewModel.StatusMessage.Contains("Login completed successfully.", StringComparison.Ordinal));
         }
+
+        Assert.Equal(3, fakeService.CallCount);
+    }
+
+    [Fact]
+    public async Task Provider_login_commands_report_service_failure()
+    {
+        await _providerVaultStore.SaveConnectionAsync(new ProviderAuthConnection
+        {
+            ProfileName = _profile.Name,
+            Provider = ProviderKind.GitHub,
+            PreferredMethod = AuthMethod.Direct,
+            DirectCredential = new ProviderCredential
+            {
+                Email = "github@example.test",
+                Password = "synthetic-provider-password"
+            }
+        });
+
+        var fakeService = new FakeCredentialsProviderLoginService((_, _, _, _, _) =>
+            Task.FromResult(new CredentialsProviderLoginResult(false, "boom")));
+        var viewModel = CreateViewModel(credentialsProviderLoginService: fakeService);
+        await WaitForAsync(() => viewModel.GitHubConnections.Count == 1);
+
+        var row = Assert.Single(viewModel.GitHubConnections);
+        viewModel.LoginGitHubRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("boom", StringComparison.Ordinal));
+
+        Assert.Equal(1, fakeService.CallCount);
+    }
+
+    [Fact]
+    public async Task Provider_login_commands_pass_a_real_cancellation_token()
+    {
+        await _providerVaultStore.SaveConnectionAsync(new ProviderAuthConnection
+        {
+            ProfileName = _profile.Name,
+            Provider = ProviderKind.GitHub,
+            PreferredMethod = AuthMethod.Direct,
+            DirectCredential = new ProviderCredential
+            {
+                Email = "github@example.test",
+                Password = "synthetic-provider-password"
+            }
+        });
+
+        CancellationToken captured = default;
+        var fakeService = new FakeCredentialsProviderLoginService((_, _, _, _, ct) =>
+        {
+            captured = ct;
+            return Task.FromResult(new CredentialsProviderLoginResult(true, "Login completed successfully."));
+        });
+        var viewModel = CreateViewModel(credentialsProviderLoginService: fakeService);
+        await WaitForAsync(() => viewModel.GitHubConnections.Count == 1);
+
+        var row = Assert.Single(viewModel.GitHubConnections);
+        viewModel.LoginGitHubRowCommand.Execute(row);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Login completed successfully.", StringComparison.Ordinal));
+
+        Assert.NotEqual(CancellationToken.None, captured);
     }
 
     [Fact]
@@ -1655,8 +1718,7 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             CancellationToken.None));
 
         viewModel.LoginKiroRowCommand.Execute(row);
-        await WaitForAsync(() => viewModel.StatusMessage.Contains("not yet integrated", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("Kiro", viewModel.StatusMessage, StringComparison.Ordinal);
+        await WaitForAsync(() => viewModel.StatusMessage.Contains("Chrome installation not configured", StringComparison.OrdinalIgnoreCase));
 
         viewModel.SelectedKiroConnection = row;
         viewModel.RemoveKiroConnectionCommand.Execute(null);
@@ -3794,7 +3856,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? automation = null,
         Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>>? healthCheck = null,
         Func<ChromeProfile, CodexLoginCredential, CancellationToken, Task<CodexLoginResult>>? codexAuthentication = null,
-        IGoogleAccountVaultStore? googleVaultStore = null)
+        IGoogleAccountVaultStore? googleVaultStore = null,
+        ICredentialsProviderLoginService? credentialsProviderLoginService = null)
     {
         var viewModel = new CredentialsManagerViewModel(
             _mainViewModel,
@@ -3803,7 +3866,8 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             _vaultPaths,
             automation ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
             healthCheck ?? ((_, _, _) => Task.FromResult(GoogleLoginResult.Success())),
-            codexAuthentication ?? ((_, _, _) => Task.FromResult(CodexLoginResult.Success())));
+            codexAuthentication ?? ((_, _, _) => Task.FromResult(CodexLoginResult.Success())),
+            credentialsProviderLoginService: credentialsProviderLoginService);
         _viewModels.Add(viewModel);
         return viewModel;
     }
@@ -3830,6 +3894,22 @@ public sealed class CredentialsManagerViewModelTests : IAsyncLifetime
             inner.ExportAsync(session, destinationPath, exportPassword, cancellationToken);
         public Task ImportAsync(string currentPath, string sourcePath, string sourcePassword, CancellationToken cancellationToken = default) =>
             inner.ImportAsync(currentPath, sourcePath, sourcePassword, cancellationToken);
+    }
+
+    private sealed class FakeCredentialsProviderLoginService(
+        Func<ProviderKind, ChromeProfile, ProviderCredential, Func<Task<string?>>?, CancellationToken, Task<CredentialsProviderLoginResult>> handler) : ICredentialsProviderLoginService
+    {
+        public int CallCount { get; private set; }
+        public Task<CredentialsProviderLoginResult> LoginAsync(
+            ProviderKind provider,
+            ChromeProfile profile,
+            ProviderCredential credential,
+            Func<Task<string?>>? totpGenerator = null,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return handler(provider, profile, credential, totpGenerator, cancellationToken);
+        }
     }
 
     private sealed class ThrowingGoogleVaultStore(Exception exception) : IGoogleAccountVaultStore
