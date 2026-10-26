@@ -330,33 +330,68 @@ public static class GoogleOAuthPageDetector
     const isVisible = el => {
         if (!el) return false;
         const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
+        return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+    };
+    const isEnabled = el => {
+        if (!el) return false;
+        if (el.disabled) return false;
+        const ariaDisabled = (el.getAttribute('aria-disabled') || '').toLowerCase();
+        return ariaDisabled !== 'true';
     };
     const inputs = Array.from(document.querySelectorAll('input[type=""tel""], input[name*=""otp""], input[id*=""otp""], input[name*=""totpPin""]'));
-    for (const input of inputs) {
-        if (isVisible(input)) {
-            input.value = code;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
+    let input = null;
+    for (const i of inputs) {
+        if (isVisible(i)) { input = i; break; }
+    }
+    if (!input) return false;
 
-            // Find and click submit button
-            const form = input.closest('form');
-            if (form) {
-                const submitBtn = form.querySelector('button[type=""submit""]') ||
-                                  Array.from(form.querySelectorAll('button')).find(b =>
-                                      (b.innerText || '').toLowerCase().includes('next') ||
-                                      (b.innerText || '').toLowerCase().includes('tiếp') ||
-                                      (b.innerText || '').toLowerCase().includes('verify')
-                                  );
-                if (submitBtn) {
-                    submitBtn.click();
-                    return true;
-                }
-            }
-            return true;
+    input.value = code;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const norm = s => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const textOf = el => norm((el.innerText || el.textContent || '') + ' ' + (el.getAttribute('aria-label') || ''));
+    const textOnly = el => norm(el.innerText || el.textContent || '');
+    const ariaOnly = el => norm(el.getAttribute('aria-label') || '');
+    const excluded = t => {
+        const l = (t || '').toLowerCase();
+        return l.includes('try another') || l.includes('thử cách khác') ||
+               l.includes('back') || l.includes('quay lại');
+    };
+    const exactLabels = new Set(['next', 'tiếp', 'tiếp tục', 'tiếp theo', 'verify', 'xác minh', 'continue']);
+    const isExact = el => exactLabels.has(textOnly(el)) || exactLabels.has(ariaOnly(el));
+
+    let btn = null;
+    const c1 = document.querySelector('#totpNext');
+    if (c1 && isVisible(c1) && isEnabled(c1) && !excluded(textOf(c1))) btn = c1;
+    if (!btn) {
+        const c2 = document.querySelector('button[jsname=""LgbsSe""]');
+        if (c2 && isVisible(c2) && isEnabled(c2) && !excluded(textOf(c2)) && isExact(c2)) btn = c2;
+    }
+    if (!btn) {
+        const cand = Array.from(document.querySelectorAll('button, [role=""button""]'))
+            .filter(b => isVisible(b) && isEnabled(b) && !excluded(textOf(b)) && isExact(b));
+        if (cand.length > 0) btn = cand[0];
+    }
+    if (!btn) {
+        const form = input.closest('form');
+        if (form) {
+            const subs = Array.from(form.querySelectorAll('button[type=""submit""], input[type=""submit""]'))
+                .filter(b => isVisible(b) && isEnabled(b) && !excluded(textOf(b)) && isExact(b));
+            if (subs.length > 0) btn = subs[0];
         }
     }
-    return false;
+
+    if (!btn) {
+        return { filled: true, found: false };
+    }
+
+    btn.scrollIntoView({ block: 'center' });
+    const rect = btn.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    return { filled: true, found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+             width: rect.width, height: rect.height, viewportWidth: viewportWidth, viewportHeight: viewportHeight };
 })()
 ";
 
@@ -368,23 +403,137 @@ public static class GoogleOAuthPageDetector
                 returnByValue = true
             }, cancellationToken, sessionId);
 
-            if (result.TryGetProperty("result", out var resultProp) &&
-                resultProp.TryGetProperty("value", out var filledProp) &&
-                filledProp.GetBoolean())
+            if (result.TryGetProperty("exceptionDetails", out _))
             {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "GoogleOAuthDetector",
-                    "TotpFilled",
-                    "TOTP filled and submitted",
-                    null);
-                return true;
+                return false;
             }
 
-            return false;
+            if (!result.TryGetProperty("result", out var resultProp))
+            {
+                return false;
+            }
+
+            if (resultProp.TryGetProperty("exceptionDetails", out _))
+            {
+                return false;
+            }
+
+            if (!resultProp.TryGetProperty("value", out var valueProp))
+            {
+                return false;
+            }
+
+            if (valueProp.ValueKind == JsonValueKind.False ||
+                valueProp.ValueKind == JsonValueKind.Null ||
+                valueProp.ValueKind == JsonValueKind.Undefined ||
+                valueProp.ValueKind == JsonValueKind.True)
+            {
+                return false;
+            }
+
+            bool found = valueProp.ValueKind == JsonValueKind.Object &&
+                         valueProp.TryGetProperty("found", out var foundProp) &&
+                         foundProp.ValueKind == JsonValueKind.True;
+
+            if (!found)
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "GoogleOAuthDetector",
+                    "TotpFilledSubmitNotFound",
+                    "TOTP filled but submit button not found",
+                    null);
+                return false;
+            }
+
+            if (!valueProp.TryGetProperty("x", out var xProp) ||
+                !valueProp.TryGetProperty("y", out var yProp))
+            {
+                return false;
+            }
+
+            if (xProp.ValueKind != JsonValueKind.Number || yProp.ValueKind != JsonValueKind.Number)
+            {
+                return false;
+            }
+
+            double x = xProp.GetDouble();
+            double y = yProp.GetDouble();
+
+            double viewportWidth = valueProp.TryGetProperty("viewportWidth", out var vwProp) && vwProp.ValueKind == JsonValueKind.Number
+                ? vwProp.GetDouble() : 0;
+            double viewportHeight = valueProp.TryGetProperty("viewportHeight", out var vhProp) && vhProp.ValueKind == JsonValueKind.Number
+                ? vhProp.GetDouble() : 0;
+
+            if (!double.IsFinite(x) || !double.IsFinite(y) || x <= 0 || y <= 0)
+            {
+                return false;
+            }
+            if (viewportWidth > 0 && x > viewportWidth)
+            {
+                return false;
+            }
+            if (viewportHeight > 0 && y > viewportHeight)
+            {
+                return false;
+            }
+
+            if (valueProp.TryGetProperty("width", out var wProp) && wProp.ValueKind == JsonValueKind.Number && (!double.IsFinite(wProp.GetDouble()) || wProp.GetDouble() <= 0))
+            {
+                return false;
+            }
+            if (valueProp.TryGetProperty("height", out var hProp) && hProp.ValueKind == JsonValueKind.Number && (!double.IsFinite(hProp.GetDouble()) || hProp.GetDouble() <= 0))
+            {
+                return false;
+            }
+
+            await client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mouseMoved",
+                x,
+                y,
+                button = "none",
+                buttons = 0
+            }, cancellationToken, sessionId);
+
+            await client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mousePressed",
+                x,
+                y,
+                button = "left",
+                buttons = 1,
+                clickCount = 1
+            }, cancellationToken, sessionId);
+
+            await Task.Delay(50, cancellationToken);
+
+            await client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mouseReleased",
+                x,
+                y,
+                button = "left",
+                buttons = 0,
+                clickCount = 1
+            }, cancellationToken, sessionId);
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "GoogleOAuthDetector",
+                "TotpFilled",
+                "TOTP filled and Next clicked",
+                new { trusted = true, x, y });
+            return true;
         }
-        catch
+        catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "GoogleOAuthDetector",
+                "TotpFillError",
+                "TOTP fill error",
+                new { error = ex.Message });
             return false;
         }
     }

@@ -187,19 +187,84 @@ public sealed class GoogleOAuthPageDetectorTests
         Assert.Equal("1", GetProperty(released.Parameters, "clickCount"));
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task TryFillTotpAsync_returns_cdp_boolean(bool filled)
+    [Fact]
+    public async Task TryFillTotpAsync_returns_true_and_dispatches_trusted_click_when_coords_found()
     {
-        await using var server = await FakeCdpServer.StartAsync(
-            $"{{\"result\":{{\"value\":{filled.ToString().ToLowerInvariant()}}}}}");
-        await using var client = await CreateConnectedClientAsync(server);
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                ResultTotpCoords(42, 84),
+                EmptyResult(),
+                EmptyResult(),
+                EmptyResult()
+            ]
+        };
 
         var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
             client, "session-totp", "123456", CancellationToken.None);
 
-        Assert.Equal(filled, result);
+        Assert.True(result);
+        Assert.Equal(4, client.Calls.Count);
+        Assert.Equal("Runtime.evaluate", client.Calls[0].Method);
+        Assert.Equal(3, client.Calls.Count(c => c.Method == "Input.dispatchMouseEvent"));
+        var moved = client.Calls[1];
+        var pressed = client.Calls[2];
+        var released = client.Calls[3];
+        Assert.Equal("mouseMoved", GetProperty(moved.Parameters, "type"));
+        Assert.Equal("0", GetProperty(moved.Parameters, "buttons"));
+        Assert.Equal("left", GetProperty(pressed.Parameters, "button"));
+        Assert.Equal("1", GetProperty(pressed.Parameters, "buttons"));
+        Assert.Equal("1", GetProperty(pressed.Parameters, "clickCount"));
+        Assert.Equal("mouseReleased", GetProperty(released.Parameters, "type"));
+        Assert.Equal("left", GetProperty(released.Parameters, "button"));
+        Assert.Equal("0", GetProperty(released.Parameters, "buttons"));
+        Assert.Equal("1", GetProperty(released.Parameters, "clickCount"));
+    }
+
+    [Fact]
+    public async Task TryFillTotpAsync_returns_false_when_filled_but_no_button()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultTotpFilledNoFound()]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
+            client, "session-totp", "123456", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryFillTotpAsync_returns_false_when_script_returns_false()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [JsonSerializer.SerializeToDocument(new { result = new { value = false } }).RootElement.Clone()]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
+            client, "session-totp", "123456", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+    }
+
+    [Fact]
+    public async Task TryFillTotpAsync_returns_false_for_cdp_error()
+    {
+        var client = new FakeCdpClient
+        {
+            Exceptions = [new InvalidOperationException("synthetic failure")]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
+            client, "session-totp", "123456", CancellationToken.None);
+
+        Assert.False(result);
     }
 
     [Fact]
@@ -508,6 +573,92 @@ public sealed class GoogleOAuthPageDetectorTests
         Assert.False(result);
         Assert.Single(client.Calls);
     }
+
+
+    [Fact]
+    public async Task TryFillTotpAsync_returns_false_for_offscreen_coords()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultTotpCoords(150, 20, 100, 100)]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
+            client, "session-totp", "123456", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryFillTotpAsync_returns_false_for_negative_coords()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultTotpCoords(-5, -5, 100, 100)]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
+            client, "session-totp", "123456", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryFillTotpAsync_returns_false_on_exceptionDetails_top_level()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultExceptionTopLevel()]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
+            client, "session-totp", "123456", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryFillTotpAsync_returns_false_on_exceptionDetails_nested()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultExceptionNested()]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
+            client, "session-totp", "123456", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryFillTotpAsync_returns_false_when_result_value_is_missing()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [JsonSerializer.SerializeToDocument(new { result = new { } }).RootElement.Clone()]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryFillTotpAsync(
+            client, "session-totp", "123456", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+    }
+
+    private static JsonElement ResultTotpCoords(double x, double y, double viewportWidth = 100, double viewportHeight = 100, double width = 10, double height = 10) =>
+        JsonSerializer.SerializeToDocument(new { result = new { value = new { filled = true, found = true, x, y, viewportWidth, viewportHeight, width, height } } }).RootElement.Clone();
+
+    private static JsonElement ResultTotpFilledNoFound() =>
+        JsonSerializer.SerializeToDocument(new { result = new { value = new { filled = true, found = false } } }).RootElement.Clone();
 
     private static JsonElement ResultCoords(double x, double y, double viewportWidth = 100, double viewportHeight = 100, double width = 10, double height = 10) =>
         JsonSerializer.SerializeToDocument(new { result = new { value = new { found = true, x, y, viewportWidth, viewportHeight, width, height } } }).RootElement.Clone();
