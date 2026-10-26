@@ -195,6 +195,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
     private IReadOnlyList<ProviderConnection> _connections = Array.Empty<ProviderConnection>();
     private bool _hasAutoLoginCredentials;
     private bool _hasLostConnection;
+    private bool _pendingLostConnection;
 
     public ProfileProviderStatusViewModel(ProviderDefinition definition)
     {
@@ -290,7 +291,32 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _errorCode = errorCode;
         _lastError = SanitizeLastError(lastError);
         _connections = connections ?? Array.Empty<ProviderConnection>();
-        _hasLostConnection = hadPreviousConnections && _connections.Count == 0;
+
+        if (_connections.Count > 0)
+        {
+            _pendingLostConnection = false;
+            _hasLostConnection = false;
+        }
+        else if (_hasLostConnection)
+        {
+            // Keep lost state while the connection stays missing.
+        }
+        else if (_pendingLostConnection)
+        {
+            _hasLostConnection = true;
+            _pendingLostConnection = false;
+        }
+        else if (hadPreviousConnections)
+        {
+            _pendingLostConnection = true;
+            _hasLostConnection = false;
+        }
+        else
+        {
+            _pendingLostConnection = false;
+            _hasLostConnection = false;
+        }
+
         RaiseStatusChanged();
     }
 
@@ -316,6 +342,7 @@ public sealed class ProfileProviderStatusViewModel : INotifyPropertyChanged
         _lastError = null;
         _connections = Array.Empty<ProviderConnection>();
         _hasLostConnection = false;
+        _pendingLostConnection = false;
         RaiseStatusChanged();
     }
 

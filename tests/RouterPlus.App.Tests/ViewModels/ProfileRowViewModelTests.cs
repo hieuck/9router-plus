@@ -277,6 +277,59 @@ public sealed class ProfileRowViewModelTests
     }
 
     [Fact]
+    public void HasLostConnection_FirstEmptyAfterConnection_IsPendingNotLost()
+    {
+        var viewModel = new ProfileRowViewModel(_testProfile, _providers);
+        var connections = new[] { TestData.CreateConnection(ProviderKind.Codex) };
+        viewModel.UpdateConnections(connections);
+        viewModel.UpdateConnections(Array.Empty<ProviderConnection>());
+
+        var status = viewModel.ProviderStatuses.First(s => s.Definition.Kind == ProviderKind.Codex);
+        Assert.False(status.HasLostConnection);
+    }
+
+    [Fact]
+    public void HasLostConnection_SecondConsecutiveEmpty_IsLost()
+    {
+        var viewModel = new ProfileRowViewModel(_testProfile, _providers);
+        var connections = new[] { TestData.CreateConnection(ProviderKind.Codex) };
+        viewModel.UpdateConnections(connections);
+        viewModel.UpdateConnections(Array.Empty<ProviderConnection>());
+        viewModel.UpdateConnections(Array.Empty<ProviderConnection>());
+
+        var status = viewModel.ProviderStatuses.First(s => s.Definition.Kind == ProviderKind.Codex);
+        Assert.True(status.HasLostConnection);
+        Assert.Contains("Mất", viewModel.ConnectionSummary);
+    }
+
+    [Fact]
+    public void HasLostConnection_ReAddClears()
+    {
+        var viewModel = new ProfileRowViewModel(_testProfile, _providers);
+        var connections = new[] { TestData.CreateConnection(ProviderKind.Codex) };
+        viewModel.UpdateConnections(connections);
+        viewModel.UpdateConnections(Array.Empty<ProviderConnection>());
+        viewModel.UpdateConnections(Array.Empty<ProviderConnection>());
+        viewModel.UpdateConnections(connections);
+
+        var status = viewModel.ProviderStatuses.First(s => s.Definition.Kind == ProviderKind.Codex);
+        Assert.False(status.HasLostConnection);
+    }
+
+    [Fact]
+    public void HasLostConnection_TransientEmptyThenConnection_NoLost()
+    {
+        var viewModel = new ProfileRowViewModel(_testProfile, _providers);
+        var connections = new[] { TestData.CreateConnection(ProviderKind.Codex) };
+        viewModel.UpdateConnections(connections);
+        viewModel.UpdateConnections(Array.Empty<ProviderConnection>());
+        viewModel.UpdateConnections(connections);
+
+        var status = viewModel.ProviderStatuses.First(s => s.Definition.Kind == ProviderKind.Codex);
+        Assert.False(status.HasLostConnection);
+    }
+
+    [Fact]
     public void HasHealthIssues_InitiallyFalse()
     {
         // Arrange & Act

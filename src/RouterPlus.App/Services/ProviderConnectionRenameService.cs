@@ -11,8 +11,8 @@ public sealed class ProviderConnectionRenameService : IProviderConnectionRenameS
         ProviderKind provider,
         ChromeProfile profile,
         IReadOnlyDictionary<string, ProviderConnection> existingConnections,
-        TimeSpan timeout,
         DateTimeOffset workflowStartedAt,
+        TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         if (api is null)
@@ -26,6 +26,10 @@ public sealed class ProviderConnectionRenameService : IProviderConnectionRenameS
         if (existingConnections is null)
         {
             throw new ArgumentNullException(nameof(existingConnections));
+        }
+        if (workflowStartedAt == default)
+        {
+            throw new ArgumentException("Workflow start time must be captured before waiting for a connection.", nameof(workflowStartedAt));
         }
 
         var foundAfterTimeout = false;

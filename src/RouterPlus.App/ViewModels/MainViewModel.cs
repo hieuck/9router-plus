@@ -3745,6 +3745,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProviderKind provider,
         CancellationToken cancellationToken = default)
     {
+        _workflowStartedAt = DateTimeOffset.UtcNow;
         var existing = await api.ListConnectionsAsync(provider, cancellationToken, includeQuotas: false);
         _workflowExistingConnections = existing.ToDictionary(connection => connection.Id, StringComparer.Ordinal);
         _currentWorkflowProvider = provider;
@@ -3784,6 +3785,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CancellationToken cancellationToken = default)
     {
         var profile = SelectedProfile ?? throw new InvalidOperationException("Hãy chọn Chrome profile trước.");
+        if (_workflowStartedAt == default)
+        {
+            throw new InvalidOperationException("Workflow start time has not been captured.");
+        }
 
         StatusText = $"Đã xác nhận {ProviderCatalog.Get(provider).DisplayName}. Đang chờ 9Router tạo connection (có thể mất 1-2 phút)…";
 
@@ -3792,8 +3797,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             provider,
             profile,
             _workflowExistingConnections,
-            TimeSpan.FromMinutes(5),
             _workflowStartedAt,
+            TimeSpan.FromMinutes(5),
             cancellationToken);
 
         var connection = result.Connection;
@@ -3873,22 +3878,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var cancellationToken = cancellation.Token;
             var provider = _currentWorkflowProvider.Value;
+            var profile = SelectedProfile ?? throw new InvalidOperationException("Hãy chọn Chrome profile trước.");
+            if (_workflowStartedAt == default)
+            {
+                throw new InvalidOperationException("Workflow start time has not been captured.");
+            }
             var api = await CreateApiClientAsync();
             StatusText = $"Đang chờ {ProviderCatalog.Get(provider).DisplayName} báo connection mới…";
-            var connection = await api.WaitForNewConnectionAsync(
+            var result = await _renameService.RenameAsync(
+                api,
                 provider,
+                profile,
                 _workflowExistingConnections,
+                _workflowStartedAt,
                 TimeSpan.FromMinutes(10),
-                TimeSpan.FromSeconds(2),
                 cancellationToken);
-            await api.UpdateConnectionAsync(
-                connection.Id,
-                name: SelectedProfile.Name,
-                cancellationToken: cancellationToken);
+            var connection = result.Connection;
+            if (result.FoundAfterTimeout)
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "OAuthWorkflow",
+                    "ConnectionFoundAfterWaitTimeout",
+                    "Found matching connection after WaitForNewConnectionAsync timeout",
+                    new { provider = provider.ToString(), connectionId = connection.Id, profileName = profile.Name, reusedId = result.ReusedExistingId });
+            }
             _workflowExistingConnections[connection.Id] = connection;
             _currentWorkflowProvider = null;
-            StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {SelectedProfile.Name}.";
+            StatusText = $"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.";
             ShowToast(StatusText, ToastType.Success, 5);
+            WaitForConnectionCommand.RaiseCanExecuteChanged();
             // Background refresh after UI feedback
             await RefreshConnectionStatusesAsync(showStatus: false, forceLog: true, cancellationToken: cancellationToken);
         }

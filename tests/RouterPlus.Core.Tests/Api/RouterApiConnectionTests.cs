@@ -149,7 +149,7 @@ public sealed class RouterApiConnectionTests
     }
 
     [Fact]
-    public async Task WaitForNewConnection_accepts_refresh_when_previous_timestamp_is_missing()
+    public async Task WaitForNewConnection_times_out_when_only_last_refresh_changes()
     {
         var snapshot = new ProviderConnection(
             "codex-1",
