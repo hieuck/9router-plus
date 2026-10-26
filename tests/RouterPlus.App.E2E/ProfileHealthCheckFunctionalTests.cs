@@ -18,7 +18,7 @@ public class ProfileHealthCheckFunctionalTests
         _output = output;
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Health_check_via_context_menu_updates_status()
     {
         // Arrange - Use synthetic data (2 profiles, fast)
@@ -131,7 +131,7 @@ public class ProfileHealthCheckFunctionalTests
         app.MainWindow.Focus();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Health_dot_exists_for_all_profiles()
     {
         // Arrange
@@ -158,3 +158,4 @@ public class ProfileHealthCheckFunctionalTests
         _output.WriteLine($"Verified {profiles.Length} profiles are properly structured");
     }
 }
+

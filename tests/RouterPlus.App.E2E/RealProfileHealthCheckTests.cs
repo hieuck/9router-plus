@@ -17,7 +17,7 @@ public class RealProfileHealthCheckTests
         _output = output;
     }
 
-    [Fact]
+    [E2EFact]
     public async Task User_can_check_health_of_real_chrome_profile()
     {
         // Live-only: needs ROUTERPLUS_LIVE_E2E=1 with real Chrome profiles.
@@ -77,7 +77,7 @@ public class RealProfileHealthCheckTests
         app.MainWindow.Focus();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Health_status_dot_is_visible_for_real_profiles()
     {
         // Live-only: needs ROUTERPLUS_LIVE_E2E=1 with real Chrome profiles.
@@ -116,3 +116,4 @@ public class RealProfileHealthCheckTests
         _output.WriteLine($"Verified {checkedCount} profiles have proper row structure for health display");
     }
 }
+

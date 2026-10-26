@@ -14,7 +14,7 @@ public class ProfileContextMenuPerformanceTests
         _output = output;
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Profile_right_click_should_be_fast()
     {
         // Arrange
@@ -68,3 +68,4 @@ public class ProfileContextMenuPerformanceTests
         await Task.Delay(100);
     }
 }
+

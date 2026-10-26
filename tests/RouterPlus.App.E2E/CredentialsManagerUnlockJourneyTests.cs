@@ -11,7 +11,7 @@ namespace RouterPlus.App.E2E;
 /// </summary>
 public sealed class CredentialsManagerUnlockJourneyTests
 {
-    [Fact]
+    [E2EFact]
     public async Task User_can_unlock_vault_and_see_credentials_loaded()
     {
         await using var environment = await TestEnvironment.CreateAsync(rememberVault: false);
@@ -91,7 +91,7 @@ public sealed class CredentialsManagerUnlockJourneyTests
         }
     }
 
-    [Fact]
+    [E2EFact]
     public async Task User_can_remember_vault_unlock_on_device()
     {
         await using var environment = await TestEnvironment.CreateAsync(rememberVault: false);
@@ -144,7 +144,7 @@ public sealed class CredentialsManagerUnlockJourneyTests
         }
     }
 
-    [Fact]
+    [E2EFact]
     public async Task User_can_login_one_profile_from_its_row()
     {
         await using var environment = await TestEnvironment.CreateAsync();
@@ -349,3 +349,4 @@ public sealed class CredentialsManagerUnlockJourneyTests
             snapshot);
     }
 }
+

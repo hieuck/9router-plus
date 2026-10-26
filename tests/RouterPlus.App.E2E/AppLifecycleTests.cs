@@ -5,7 +5,7 @@ namespace RouterPlus.App.E2E;
 /// </summary>
 public sealed class AppLifecycleTests
 {
-    [Fact]
+    [E2EFact]
     public async Task App_starts_with_harness_environment()
     {
         await using var env = await TestEnvironment.CreateAsync();
@@ -14,7 +14,7 @@ public sealed class AppLifecycleTests
         Assert.Equal("9Router Profile Tool", app.MainWindow.Title);
     }
 
-    [Fact]
+    [E2EFact]
     public async Task App_loads_synthetic_profiles()
     {
         await using var env = await TestEnvironment.CreateAsync();
@@ -28,3 +28,4 @@ public sealed class AppLifecycleTests
         Assert.NotNull(profile2);
     }
 }
+

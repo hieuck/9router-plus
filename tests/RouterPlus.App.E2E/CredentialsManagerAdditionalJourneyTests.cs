@@ -9,7 +9,7 @@ namespace RouterPlus.App.E2E;
 /// </summary>
 public sealed class CredentialsManagerAdditionalJourneyTests
 {
-    [Fact]
+    [E2EFact]
     public async Task User_can_switch_through_provider_tabs_and_see_profile_rows()
     {
         await using var environment = await TestEnvironment.CreateAsync();
@@ -52,7 +52,7 @@ public sealed class CredentialsManagerAdditionalJourneyTests
         }
     }
 
-    [Fact]
+    [E2EFact]
     public async Task User_can_cancel_google_credential_removal()
     {
         await using var environment = await TestEnvironment.CreateAsync();
@@ -94,7 +94,7 @@ public sealed class CredentialsManagerAdditionalJourneyTests
         }
     }
 
-    [Fact]
+    [E2EFact]
     public async Task User_can_remove_a_google_credential_from_credentials_manager()
     {
         await using var environment = await TestEnvironment.CreateAsync();
@@ -301,3 +301,4 @@ public sealed class CredentialsManagerAdditionalJourneyTests
             snapshot);
     }
 }
+

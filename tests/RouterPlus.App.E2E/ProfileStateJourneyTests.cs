@@ -4,7 +4,7 @@ namespace RouterPlus.App.E2E;
 
 public sealed class ProfileStateJourneyTests
 {
-    [Fact]
+    [E2EFact]
     public async Task Selecting_profile_updates_visible_selected_state()
     {
         await using var environment = await TestEnvironment.CreateAsync();
@@ -26,7 +26,7 @@ public sealed class ProfileStateJourneyTests
         }
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Searching_profile_updates_visible_profile_list()
     {
         await using var environment = await TestEnvironment.CreateAsync();
@@ -57,7 +57,7 @@ public sealed class ProfileStateJourneyTests
         }
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Select_all_button_toggles_profile_checkbox_state()
     {
         await using var environment = await TestEnvironment.CreateAsync();
@@ -86,3 +86,4 @@ public sealed class ProfileStateJourneyTests
         }
     }
 }
+

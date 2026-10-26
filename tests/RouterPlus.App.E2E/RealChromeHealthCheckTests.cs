@@ -19,7 +19,7 @@ public class RealChromeHealthCheckTests
         _output = output;
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Health_check_with_real_chrome_profiles_produces_actual_results()
     {
         // Live-only: needs ROUTERPLUS_LIVE_E2E=1 with real Chrome profiles.
@@ -179,3 +179,4 @@ public class RealChromeHealthCheckTests
         app.MainWindow.Focus();
     }
 }
+

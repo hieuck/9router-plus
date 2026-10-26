@@ -5,7 +5,7 @@ namespace RouterPlus.App.E2E;
 /// </summary>
 public sealed class ProfileManagementTests
 {
-    [Fact]
+    [E2EFact]
     public async Task Can_select_profile()
     {
         await using var env = await TestEnvironment.CreateAsync();
@@ -18,7 +18,7 @@ public sealed class ProfileManagementTests
         Assert.NotNull(selected);
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Can_switch_between_profiles()
     {
         await using var env = await TestEnvironment.CreateAsync();
@@ -34,3 +34,4 @@ public sealed class ProfileManagementTests
         Assert.NotNull(profile2);
     }
 }
+

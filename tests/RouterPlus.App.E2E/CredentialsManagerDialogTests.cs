@@ -9,7 +9,7 @@ namespace RouterPlus.App.E2E;
 /// </summary>
 public sealed class CredentialsManagerDialogTests
 {
-    [Fact]
+    [E2EFact]
     public async Task User_can_open_credentials_manager_and_see_inline_profile_controls()
     {
         await using var environment = await TestEnvironment.CreateAsync();
@@ -321,3 +321,4 @@ public sealed class CredentialsManagerDialogTests
             snapshot);
     }
 }
+

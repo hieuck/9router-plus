@@ -9,7 +9,7 @@ namespace RouterPlus.App.E2E;
 /// </summary>
 public sealed class VaultVisibilityTests
 {
-    [Fact]
+    [E2EFact]
     public async Task Vault_unlock_button_visible_when_locked()
     {
         await using var environment = await TestEnvironment.CreateAsync(rememberVault: false);
@@ -45,7 +45,7 @@ public sealed class VaultVisibilityTests
         Assert.Contains("locked", status!.Text, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Vault_unlock_button_hidden_after_successful_unlock()
     {
         await using var environment = await TestEnvironment.CreateAsync(rememberVault: false);
@@ -136,3 +136,4 @@ public sealed class VaultVisibilityTests
             });
     }
 }
+
