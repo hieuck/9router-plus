@@ -123,18 +123,18 @@ public sealed class UsageInferenceIntegrationTests
     }
 
     [Fact]
-    public void ParseConnection_infers_usage_from_kimchi_credits_exhausted()
+    public void ParseConnection_does_not_infer_usage_for_unsupported_provider_github()
     {
         var json = """
 {
     "id": "984fceab-2e3c-41c3-a907-e927af01cf6d",
-    "provider": "kimchi",
+    "provider": "github",
     "name": "demo.user2@example.com",
     "priority": 1,
     "isActive": true,
     "testStatus": "unavailable",
     "errorCode": 402,
-    "lastError": "[402]: {\"error\": \"the provider for model kimi-k2.7 has exhausted its credits and cannot process requ\"}",
+    "lastError": "[402]: Rate limit exceeded",
     "lastErrorAt": "2026-08-22T08:00:00.000Z"
 }
 """;
@@ -143,9 +143,9 @@ public sealed class UsageInferenceIntegrationTests
         var connection = ParseConnectionViaReflection(element);
 
         Assert.NotNull(connection);
-        Assert.Equal("kimchi", connection.Provider.ToString().ToLowerInvariant());
-        Assert.True(connection.HasUsageData);
-        Assert.True(connection.IsOverLimit);
+        Assert.Equal("github", connection.Provider.ToString().ToLowerInvariant());
+        // GitHub is not a supported provider for usage inference
+        Assert.False(connection.HasUsageData);
     }
 
     [Fact]

@@ -105,7 +105,7 @@ public sealed class ProviderAuthConnectionTests
     [InlineData(ProviderKind.OpenRouter)]
     [InlineData(ProviderKind.GitHub)]
     [InlineData(ProviderKind.Ollama)]
-    [InlineData(ProviderKind.Kimchi)]
+    [InlineData(ProviderKind.Nous)]
     public void Provider_CanBeAnyProviderKind(ProviderKind provider)
     {
         // Arrange & Act

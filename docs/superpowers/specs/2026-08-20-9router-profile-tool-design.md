@@ -4,7 +4,7 @@
 
 ## Goal
 
-Build a Windows desktop assistant that discovers Chrome profiles, opens a selected profile, and guides the user through adding Codex, Kiro, OpenRouter, Ollama Cloud, and Kimchi connections to a local 9Router dashboard.
+Build a Windows desktop assistant that discovers Chrome profiles, opens a selected profile, and guides the user through adding Codex, Kiro, OpenRouter, Ollama Cloud connections to a local 9Router dashboard.
 
 ## Scope
 
@@ -13,8 +13,8 @@ The first release supports:
 - Detecting `chrome.exe` and the Chrome User Data directory, with manual path overrides.
 - Listing Chrome profiles from `Local State` and launching a selected profile by double-click.
 - Configuring the 9Router dashboard base URL, defaulting to `http://localhost:20128`.
-- Quick actions for `Add Codex`, `Add Kiro`, `Add OpenRouter`, `Add Ollama`, and `Add Kimchi`.
-- Quick links to OpenRouter API keys, Ollama API keys, and Kimchi login.
+- Quick actions for `Add Codex`, `Add Kiro`, `Add OpenRouter`, `Add Ollama`.
+- Quick links to OpenRouter API keys, Ollama API keys.
 - OAuth-assisted flows that open the correct dashboard/provider page and wait for the user to finish Google/OAuth authorization.
 - API-key-assisted flows that accept a key in a protected input, append the connection at the end of the provider priority list, and save the connection under the selected Chrome profile name.
 - Persisting a profile/provider mapping and storing API keys in Windows DPAPI-protected local storage.
@@ -35,10 +35,6 @@ Open the Kiro provider page, start the add flow, choose AWS Builder ID, open the
 ### OpenRouter and Ollama Cloud
 
 Open the provider's external API-key page using the selected Chrome profile. The user completes login, consent, key creation, and copy. The user pastes the key into the tool's protected field. The tool validates the key, chooses `max(existing priority) + 1`, creates the local 9Router connection, names it after the selected Chrome profile, and stores the key in the encrypted vault.
-
-### Kimchi
-
-Open the Kimchi provider page, start the OAuth flow, and wait for the user to complete Google authorization. Detect the new connection, associate it with the selected profile, and expose a quick link to `https://app.kimchi.dev/` for manual login or account preparation.
 
 ## Architecture
 

@@ -52,17 +52,6 @@ public static class ProviderCatalog
                 "Ollama",
                 "🦙",
                 "OL"),
-            [ProviderKind.Kimchi] = new(
-                ProviderKind.Kimchi,
-                "Kimchi",
-                "/dashboard/providers/kimchi",
-                "https://app.kimchi.dev/",
-                WorkflowKind.OAuth,
-                true,
-                "kimchi",
-                "Kimchi",
-                "🌿",
-                "KM"),
             [ProviderKind.Nous] = new(
                 ProviderKind.Nous,
                 "Nous",

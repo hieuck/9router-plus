@@ -15,7 +15,7 @@
 
 ## Global Constraints
 - Must not break existing auto‑disable/recover logic for the original rate‑limit message.  
-- Must not affect other providers (Codex, Ollama, Kiro, GitHub, Kimchi).  
+- Must not affect other providers (Codex, Ollama, Kiro, GitHub).  
 - All new logic must be covered by unit tests.  
 - No changes to public interfaces beyond the two private methods.
 

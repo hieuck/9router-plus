@@ -65,12 +65,6 @@ Error: "[429]: you have reached your session usage limit"
 → Inferred: 100/100 (100%), reset tomorrow
 ```
 
-**Kimchi:**
-```
-Error: "[402]: the provider has exhausted its credits"
-→ Inferred: 100/100 (100%), reset on 1st of next month
-```
-
 ## What Users See
 
 ### Before (No Usage Data)
@@ -170,7 +164,6 @@ if (!usageCount.HasValue && !limitCount.HasValue)
 - OpenRouter 402 errors → infers credits
 - OpenRouter with parsed amounts
 - Ollama weekly/session limits
-- Kimchi credits exhausted
 - Reset time calculations
 
 ### Integration Tests (7 total)
@@ -184,7 +177,6 @@ if (!usageCount.HasValue && !limitCount.HasValue)
 - Kiro: `[402]: MONTHLY_REQUEST_COUNT`
 - Ollama: `[429]: session usage limit`
 - OpenRouter: `[402]: requires more credits`
-- Kimchi: `[402]: credits exhausted`
 - Active connections → no inference
 - Non-limit errors → no inference
 
@@ -214,7 +206,7 @@ A: This provides immediate value. Users can see when limits are reached NOW, wit
 A: Percentage is accurate (100% when limit reached). Absolute numbers are placeholders. Reset times are best estimates.
 
 **Q: Does this work for all providers?**  
-A: Yes, tested with real errors from Codex, Kiro, OpenRouter, Ollama, and Kimchi.
+A: Yes, tested with real errors from Codex, Kiro, OpenRouter, and Ollama.
 
 **Q: What if I'm at 80% usage?**  
 A: Inference can't detect this. You'll only see usage when you hit the limit. Backend API needed for sub-limit tracking.

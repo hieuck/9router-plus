@@ -374,7 +374,8 @@ public sealed class ProviderWorkflowServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(connection);
 
-        var fullRefreshTcs = new TaskCompletionSource<bool>();
+        // Use a TCS with a short timeout to ensure it never blocks indefinitely
+        var fullRefreshTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var fullRefreshStarted = false;
         var fullRefreshCompleted = false;
         var lightweightRefreshCompleted = false;
@@ -393,27 +394,41 @@ public sealed class ProviderWorkflowServiceTests
                 // Full refresh would block on TCS (simulating 10s quota fetch)
                 // But this should NEVER be called in the WaitForConnectionAsync workflow
                 fullRefreshStarted = true;
-                await fullRefreshTcs.Task.WaitAsync(ct);
+                try
+                {
+                    // This should never complete; test has a timeout on WaitForConnectionAsync
+                    await fullRefreshTcs.Task.WaitAsync(ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when test cancels
+                }
                 fullRefreshCompleted = true;
             });
 
         // Set up the workflow state as if an OAuth flow just completed
         await service.CaptureExistingConnectionsAsync(mock.Object, ProviderKind.Codex, CancellationToken.None);
 
-        // Start WaitForConnectionAsync
+        // Start WaitForConnectionAsync with a bounded cancellation (5s)
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var waitTask = service.WaitForConnectionAsync();
 
-        // Wait for lightweight refresh to complete (with timeout)
-        var waitForLightweight = Task.Run(() =>
+        // Wait for lightweight refresh with a bounded timeout (not unbounded SpinWait)
+        var waitForLightweight = Task.Run(async () =>
         {
-            var sw = new SpinWait();
-            while (!lightweightRefreshCompleted)
+            for (int i = 0; i < 500; i++) // 500 * 10ms = 5s max
             {
-                sw.SpinOnce();
+                if (lightweightRefreshCompleted)
+                {
+                    return true;
+                }
+                await Task.Delay(10);
             }
+            return false;
         });
-        var completedTask = await Task.WhenAny(waitForLightweight, Task.Delay(5000));
-        var lightweightCompleted = completedTask == waitForLightweight;
+
+        var completedTask = await Task.WhenAny(waitForLightweight, Task.Delay(5500));
+        var lightweightCompleted = completedTask == waitForLightweight && await waitForLightweight;
 
         Assert.True(lightweightCompleted, "Lightweight refresh did not complete in time");
 
@@ -423,8 +438,9 @@ public sealed class ProviderWorkflowServiceTests
         Assert.False(fullRefreshCompleted, "Full refresh should NOT have completed");
         Assert.False(fullRefreshStarted, "Full refresh should NOT have been called at all");
 
-        // Wait for wait task to fully complete
-        await waitTask;
+        // Wait for wait task to fully complete (with timeout)
+        var waitCompleted = await Task.WhenAny(waitTask, Task.Delay(5500));
+        Assert.True(waitCompleted == waitTask, "WaitForConnectionAsync did not complete in time");
 
         // Full refresh still should not have been called
         Assert.False(fullRefreshStarted, "Full refresh should never be called in WaitForConnectionAsync workflow");

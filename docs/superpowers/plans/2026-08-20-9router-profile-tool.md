@@ -33,7 +33,7 @@
 - Create: `tests/RouterPlus.Core.Tests/ProfileSecretKeyTests.cs`
 
 - [ ] Test parsing Chrome `profile.info_cache` into stable profile records without exposing unrelated JSON values.
-- [ ] Test provider buttons map to dashboard paths and quick-link URLs for OpenRouter, Ollama, and Kimchi.
+- [ ] Test provider buttons map to dashboard paths and quick-link URLs for OpenRouter, Ollama.
 - [ ] Test the next priority is one greater than the largest existing priority, including an empty list.
 - [ ] Test the secret key is stable for the same Chrome profile/provider and differs for another provider.
 - [ ] Run the focused tests and confirm they fail because the production types do not exist yet.
@@ -49,7 +49,7 @@
 - Create: `src/RouterPlus.Core/PriorityCalculator.cs`
 - Create: `src/RouterPlus.Core/ProfileSecretKey.cs`
 
-- [ ] Implement immutable records and provider definitions for Codex, Kiro, OpenRouter, Ollama Cloud, and Kimchi.
+- [ ] Implement immutable records and provider definitions for Codex, Kiro, OpenRouter, Ollama Cloud.
 - [ ] Implement URL construction, quick-link metadata, and provider workflow kind decisions.
 - [ ] Implement priority calculation and stable profile/provider secret keys.
 - [ ] Run the focused tests and confirm they pass.

@@ -176,12 +176,6 @@ Similar to Codex, check Kiro's API documentation for usage endpoints. Typically 
 - `GET /api/v1/account/usage`
 - `GET /api/v1/account/limits`
 
-### Kimchi
-
-Check Kimchi API documentation. Likely similar pattern:
-- `GET /api/usage`
-- `GET /api/account`
-
 ## Implementation Strategy for 9Router Backend
 
 ### Option 1: Fetch on Demand (Recommended for MVP)
@@ -373,7 +367,7 @@ Returns all provider connections with optional usage quota data.
   "connections": [
     {
       "id": "string",
-      "provider": "openrouter" | "codex" | "kiro" | "ollama" | "kimchi",
+      "provider": "openrouter" | "codex" | "kiro" | "ollama",
       "name": "string",
       "priority": "number",
       "isActive": "boolean",

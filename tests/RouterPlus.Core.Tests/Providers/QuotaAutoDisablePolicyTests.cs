@@ -27,7 +27,6 @@ public sealed class QuotaAutoDisablePolicyTests
 
     [Theory]
     [InlineData(ProviderKind.GitHub)]
-    [InlineData(ProviderKind.Kimchi)]
     public void CanAutoDisable_returns_false_for_providers_without_auto_disable_policy(ProviderKind provider)
     {
         // Arrange
@@ -147,7 +146,7 @@ public sealed class QuotaAutoDisablePolicyTests
     [InlineData(ProviderKind.OpenRouter)]
     [InlineData(ProviderKind.GitHub)]
     [InlineData(ProviderKind.Ollama)]
-    [InlineData(ProviderKind.Kimchi)]
+    [InlineData(ProviderKind.Nous)]
     public void HasRecovered_returns_true_for_non_kiro_connections_below_limit(ProviderKind provider)
     {
         // Arrange

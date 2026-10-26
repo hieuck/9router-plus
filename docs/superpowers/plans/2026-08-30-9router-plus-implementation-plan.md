@@ -345,7 +345,7 @@ dotnet test tests/RouterPlus.Infrastructure.Tests/RouterPlus.Infrastructure.Test
 **Interfaces:** Refresh preserves last known configured state; health states include `Checking` and `Unavailable`; selection clears when the selected stable ID disappears; no dashboard URL UI.
 
 - [ ] Add tests for search/filter/status cycle, selection preservation/clearing, duplicate-free refresh, health success/error/timeout/quota and provider configuration preservation on network failure.
-- [ ] Decide explicitly whether Ollama/Kimchi are v1 out-of-scope; hide consistently or define their complete behavior before enabling them.
+- [ ] Decide explicitly whether Ollama is v1 out-of-scope; hide consistently or define its complete behavior before enabling it.
 - [ ] Add versioned settings fields only for approved v1 settings such as vault remember option, automation timeout and status-check policy; validate and persist them through `SettingsStore`.
 - [ ] Remove dashboard URL from user-facing settings and leave any internal Router endpoint in service composition.
 - [ ] Run MainViewModel/App settings tests and supported E2E.

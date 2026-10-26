@@ -83,7 +83,6 @@ Hệ thống thu thập dữ liệu (data collection) trong RouterPlus bao gồm
 - ✅ Parses OpenRouter credit details from error message
 - ✅ Detects Ollama weekly limit
 - ✅ Detects Ollama session limit
-- ✅ Detects Kimchi credits exhausted
 - ✅ Calculates monthly reset correctly
 - ✅ Handles December → January rollover
 - ✅ Weekly reset logic for all days
@@ -95,19 +94,17 @@ Hệ thống thu thập dữ liệu (data collection) trong RouterPlus bao gồm
 - ✅ Kiro - monthly request count
 - ✅ OpenRouter - credit parsing with regex
 - ✅ Ollama - weekly/session/daily limits
-- ✅ Kimchi - credits exhausted
 
 ### 3. UsageInferenceIntegrationTests.cs (Core.Tests)
 **Location:** `tests\RouterPlus.Core.Tests\UsageInferenceIntegrationTests.cs` (existing)
 
 **Coverage:** Integration tests với real JSON từ 9Router backend
 
-**Test Cases (7 tests):**
+**Test Cases (6 tests):**
 - ✅ Codex 429 error inference
 - ✅ Kiro monthly limit inference
 - ✅ Ollama weekly limit inference
 - ✅ OpenRouter 402 error inference
-- ✅ Kimchi credits exhausted inference
 - ✅ Does not infer for active connections
 - ✅ Does not infer for non-limit errors
 

@@ -25,7 +25,7 @@
   3. Chọn profile, tìm profile và tạo profile mới.
   4. Mở dashboard 9Router bằng đúng Chrome profile.
   5. Đồng bộ và đọc trạng thái provider.
-  6. Thêm Codex/Kiro/Kimchi qua OAuth hoặc device code.
+  6. Thêm Codex/Kiro qua OAuth hoặc device code.
   7. Thêm OpenRouter/Ollama bằng API key, kiểm tra trạng thái lưu cục bộ và DPAPI.
   8. Dùng context menu để đăng nhập Google, mở thư mục, sao chép tên hoặc xóa profile.
   9. Đổi theme/font và lưu settings.

@@ -61,12 +61,6 @@ lastError: "[402]: {\"error\":{\"message\":\"This request requires more credits,
 errorCode: 402
 ```
 
-**Kimchi:**
-```
-lastError: "[402]: {\"error\": \"the provider for model kimi-k2.7 has exhausted its credits and cannot process requ"
-errorCode: 402
-```
-
 ### 📊 Dashboard Page Tồn tại
 
 Dashboard có route: `http://localhost:20128/dashboard/quota`

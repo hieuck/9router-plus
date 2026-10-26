@@ -195,7 +195,6 @@ Reset sau 5 ngày
 | Codex | TBD - check dashboard | GET |
 | Kiro | TBD - check dashboard | GET |
 | Ollama | Local tracking (no API) | - |
-| Kimchi | TBD - check dashboard | GET |
 
 ## Implementation Priority
 
@@ -203,7 +202,6 @@ Reset sau 5 ngày
 2. **Ollama** (Local tracking, no external API needed)
 3. **Codex** (Check API docs)
 4. **Kiro** (Check API docs)
-5. **Kimchi** (Check API docs)
 
 ## Common Issues
 

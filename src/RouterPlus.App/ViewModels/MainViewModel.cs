@@ -2406,7 +2406,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             // Check all providers - returns true if any provider has credentials
             foreach (ProviderKind kind in Enum.GetValues(typeof(ProviderKind)))
             {
-                if (kind == ProviderKind.Ollama || kind == ProviderKind.Kimchi)
+                if (kind == ProviderKind.Ollama)
                 {
                     // Skip providers without auto-login support
                     continue;
@@ -2632,7 +2632,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             // Skip providers without auto-login support
-            if (kind == ProviderKind.Ollama || kind == ProviderKind.Kimchi)
+            if (kind == ProviderKind.Ollama)
             {
                 continue;
             }

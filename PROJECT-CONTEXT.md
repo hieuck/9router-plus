@@ -3,7 +3,7 @@
 **Project name and purpose**: RouterPlus (9Router Profile Tool) is a Windows desktop
 companion for 9Router. It detects Chrome and the Chrome User Data directory, lists
 Chrome profiles from `Local State`, opens the 9Router dashboard with the chosen
-profile, and adds provider connections (Codex/Kiro/Nous/Kimchi via OAuth/device-code,
+profile, and adds provider connections (Codex/Kiro/Nous via OAuth/device-code,
 OpenRouter/Ollama via API key) named after the profile.
 
 **Tech stack**:

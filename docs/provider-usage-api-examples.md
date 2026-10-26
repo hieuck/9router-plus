@@ -290,39 +290,6 @@ function calculateDailyReset(lastReset = new Date()) {
 }
 ```
 
-## Kimchi
-
-### API Documentation
-- Check [Kimchi Dashboard](https://app.kimchi.dev/)
-
-### Node.js Implementation
-
-```javascript
-async function fetchKimchiUsage(accessToken) {
-  // Replace with actual Kimchi API endpoint
-  const response = await fetch('https://api.kimchi.dev/v1/usage', {
-    method: 'GET',
-    headers: {
-      'Authorization': \Bearer \\,
-      'Content-Type': 'application/json'
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(\Kimchi API error: \\);
-  }
-
-  const json = await response.json();
-
-  // Adjust based on actual Kimchi API response
-  return {
-    usageCount: json.usage || 0,
-    limitCount: json.limit || 1000,
-    usageResetAt: json.reset_at || calculateMonthlyReset().toISOString()
-  };
-}
-```
-
 ## Complete Integration Example
 
 ### Main Usage Fetcher
@@ -357,9 +324,6 @@ class UsageTracker {
           break;
         case 'ollama':
           usageData = await getOllamaUsage(connection.id, this.db);
-          break;
-        case 'kimchi':
-          usageData = await fetchKimchiUsage(connection.accessToken);
           break;
         default:
           usageData = null;

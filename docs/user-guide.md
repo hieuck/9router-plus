@@ -149,13 +149,6 @@ Xóa profile chỉ xóa thư mục profile được chọn; không xóa toàn b�
 4. Nếu portal hiển thị trang xác minh người ("Verifying humanity" / Kasada), hãy hoàn tất xác minh trong Chrome; app sẽ tiếp tục polling.
 5. Chờ app nhận connection mới và đổi tên theo profile.
 
-### Kimchi
-
-1. Chọn profile.
-2. Nhấn `Thêm` ở card Kimchi.
-3. Hoàn tất OAuth trong Chrome.
-4. Quay lại app để app nhận và đổi tên connection.
-
 Nếu OAuth/device code timeout, không tạo lại liên tục; xem [Troubleshooting](troubleshooting.md), kiểm tra Chrome profile và thử lại sau khi đóng luồng cũ.
 
 ## 7. Thêm OpenRouter/Ollama bằng API key

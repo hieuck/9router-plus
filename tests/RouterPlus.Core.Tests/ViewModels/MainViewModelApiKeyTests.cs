@@ -50,10 +50,10 @@ public sealed class MainViewModelApiKeyTests
         using var httpClient = new HttpClient(handler);
         var viewModel = new MainViewModel(httpClient: httpClient);
 
-        var added = await viewModel.AddApiKeyAsync(ProviderKind.Kimchi, "test-key");
+        var added = await viewModel.AddApiKeyAsync(ProviderKind.GitHub, "test-key");
 
         Assert.False(added);
-        Assert.Equal("Kimchi không dùng API key.", viewModel.StatusText);
+        Assert.Equal("GitHub không dùng API key.", viewModel.StatusText);
         Assert.Empty(handler.Requests);
     }
 

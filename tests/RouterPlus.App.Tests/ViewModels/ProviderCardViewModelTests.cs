@@ -73,7 +73,6 @@ public sealed class ProviderCardViewModelTests
     [InlineData(ProviderKind.Kiro, "KI")]
     [InlineData(ProviderKind.OpenRouter, "OR")]
     [InlineData(ProviderKind.Ollama, "OL")]
-    [InlineData(ProviderKind.Kimchi, "KM")]
     [InlineData(ProviderKind.Nous, "NS")]
     public void ShortCode_ReturnsCorrectCodeForProvider(ProviderKind kind, string expectedCode)
     {

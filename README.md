@@ -57,16 +57,15 @@ Wizard không tự cài Python, Visual Studio Build Tools hoặc Chocolatey. Cá
   - xóa profile sau khi xác nhận; chỉ thư mục profile được xóa, thư mục `User Data` vẫn được giữ lại.
 - Nháy đúp profile để mở dashboard 9Router bằng đúng profile đó.
 - Bảng profile hiển thị trạng thái từng provider bằng badge `✓`/`—` và có nút đồng bộ với 9Router.
-- Nút `Thêm` cho Codex, Kiro, Nous và Kimchi; OpenRouter/Ollama có ô API key ngay trong card provider.
+- Nút `Thêm` cho Codex, Kiro, Nous; OpenRouter/Ollama có ô API key ngay trong card provider.
 - Nút mở nhanh:
   - OpenRouter API key: `https://openrouter.ai/settings/keys`
   - Ollama API key: `https://ollama.com/settings/keys`
-  - Kimchi login: `https://app.kimchi.dev/`
   - Nous portal: `https://portal.nousresearch.com/`
 - API-key workflow đặt tên connection theo profile và đặt priority ở cuối danh sách.
 - API key được mã hóa bằng Windows DPAPI trong user profile hiện tại.
 - Khi chọn lại profile, key OpenRouter/Ollama đã lưu được nạp lại vào card ở trạng thái ẩn; nút `Hiện key`/`Ẩn key` dùng để so sánh và ô nhập không bị xóa sau khi thêm.
-- Codex, Kiro, Nous và Kimchi tự khởi động OAuth/device-code, tự chờ connection mới và đổi tên theo profile sau khi người dùng xác nhận.
+- Codex, Kiro, Nous tự khởi động OAuth/device-code, tự chờ connection mới và đổi tên theo profile sau khi người dùng xác nhận.
 - Settings được thu gọn mặc định; dùng nút `⚙ Cài đặt` để ẩn/hiện khi cần.
 - Menu `Trợ giúp` có About, hướng dẫn bảo mật, kiểm tra update và cài update có xác nhận; request update không gửi profile, email, API key, OAuth state hoặc machine identifier.
 
@@ -118,7 +117,7 @@ Build script sẽ restore, test, build và publish vào `artifacts\publish`.
 1. Kiểm tra `Chrome executable` và `Chrome User Data`.
 2. Nhấn `Lưu cài đặt`.
 3. Chọn profile rồi nháy đúp để mở dashboard.
-4. Với Codex/Kiro/Kimchi, nhấn `Thêm` và hoàn tất OAuth/device-code trong Chrome; tool tự chờ và đổi tên connection.
+4. Với Codex/Kiro/Nous, nhấn `Thêm` và hoàn tất OAuth/device-code trong Chrome; tool tự chờ và đổi tên connection.
 5. Với OpenRouter/Ollama, dán key trực tiếp vào card provider rồi bấm `Thêm vào 9Router`; profile hiện tại được dùng làm tên và priority tự thêm cuối danh sách.
 
 ## Bảo mật và giới hạn

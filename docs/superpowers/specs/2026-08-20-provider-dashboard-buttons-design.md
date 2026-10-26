@@ -20,7 +20,6 @@ Add a per-provider button that opens the matching 9Router dashboard page in the 
 - Kiro: /dashboard/providers/kiro
 - OpenRouter: /dashboard/providers/openrouter
 - Ollama: /dashboard/providers/ollama
-- Kimchi: /dashboard/providers/kimchi
 
 ## Scope
 

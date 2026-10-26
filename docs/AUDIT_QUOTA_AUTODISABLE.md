@@ -15,7 +15,7 @@ The **Auto-disable Connection** feature automatically disables provider connecti
 | **Ollama** | `IsOverLimit == true` | `!IsOverLimit` |
 | **Kiro** | ALL buckets: `Total > 0` AND `IsOverLimit` AND `ResetAt.HasValue` | ALL buckets: `Total > 0` AND `!IsOverLimit` |
 | OpenRouter | `IsOverLimit == true` AND `LastError.Contains("Rate limit exceeded: free-models-per-day")` | `!IsOverLimit` |
-| GitHub, Kimchi | **Never** | N/A |
+| GitHub | **Never** | N/A |
 
 ### Kiro Special Handling
 - Multi-bucket quota (e.g., `credit`, `credit_freetrial`)

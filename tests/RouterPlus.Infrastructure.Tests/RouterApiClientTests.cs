@@ -52,14 +52,14 @@ public sealed class RouterApiClientTests
         const string redirectUri = "http://127.0.0.1:1234/callback?value=a b";
 
         // Act
-        var session = await client.StartOAuthAuthorizationAsync(ProviderKind.Kimchi, redirectUri);
+        var session = await client.StartOAuthAuthorizationAsync(ProviderKind.GitHub, redirectUri);
 
         // Assert
         Assert.Equal("https://accounts.example/authorize", session.AuthUrl);
         Assert.Equal(redirectUri, session.RedirectUri);
         Assert.Equal("browser", session.FlowType);
         var requestUri = handler.Requests.Single().RequestUri!;
-        Assert.Equal("kimchi", requestUri.Segments[3].TrimEnd('/'));
+        Assert.Equal("github", requestUri.Segments[3].TrimEnd('/'));
         Assert.Equal(redirectUri, Uri.UnescapeDataString(requestUri.Query["?redirect_uri=".Length..].Replace('+', ' ')));
     }
 

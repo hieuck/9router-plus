@@ -9,7 +9,6 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Kiro, "/dashboard/providers/kiro", "https://kiro.dev")]
     [InlineData(ProviderKind.OpenRouter, "/dashboard/providers/openrouter", "https://openrouter.ai/settings/keys")]
     [InlineData(ProviderKind.Ollama, "/dashboard/providers/ollama", "https://ollama.com/settings/keys")]
-    [InlineData(ProviderKind.Kimchi, "/dashboard/providers/kimchi", "https://app.kimchi.dev/")]
     [InlineData(ProviderKind.Nous, "/dashboard/providers/nous", "https://portal.nousresearch.com")]
     [InlineData(ProviderKind.GitHub, "/dashboard/providers/github", "https://github.com")]
     public void Catalog_exposes_dashboard_and_quick_link_urls(
@@ -39,7 +38,6 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Kiro, "Kiro", "🚀")]
     [InlineData(ProviderKind.OpenRouter, "OpenR", "🧠")]
     [InlineData(ProviderKind.Ollama, "Ollama", "🦙")]
-    [InlineData(ProviderKind.Kimchi, "Kimchi", "🌿")]
     [InlineData(ProviderKind.Nous, "Nous", "🔭")]
     [InlineData(ProviderKind.GitHub, "GitHub", "🐙")]
     public void Catalog_exposes_provider_short_names_and_glyphs(
@@ -137,7 +135,6 @@ public sealed class ProviderCatalogTests
     [InlineData("kiro")]
     [InlineData("openrouter")]
     [InlineData("ollama")]
-    [InlineData("kimchi")]
     [InlineData("nous")]
     public void TryGetByApiAlias_round_trips_case_insensitive(string alias)
     {
@@ -161,7 +158,6 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Kiro, "kiro", "Kiro", "🚀", "KI")]
     [InlineData(ProviderKind.OpenRouter, "openrouter", "OpenR", "🧠", "OR")]
     [InlineData(ProviderKind.Ollama, "ollama", "Ollama", "🦙", "OL")]
-    [InlineData(ProviderKind.Kimchi, "kimchi", "Kimchi", "🌿", "KM")]
     [InlineData(ProviderKind.Nous, "nous", "Nous", "🔭", "NS")]
     [InlineData(ProviderKind.GitHub, "github", "GitHub", "🐙", "GH")]
     public void Catalog_exposes_exact_provider_metadata(
@@ -202,7 +198,6 @@ public sealed class ProviderCatalogTests
 
     [Theory]
     [InlineData(ProviderKind.Ollama)]
-    [InlineData(ProviderKind.Kimchi)]
     public void GetDirectLoginStartUri_returns_null_for_non_direct_login_providers(ProviderKind kind)
     {
         Assert.Null(ProviderCatalog.GetDirectLoginStartUri(kind));

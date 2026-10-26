@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Observability;
@@ -201,8 +202,11 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
                 var encryptedBytes = await File.ReadAllBytesAsync(_vaultPath, cancellationToken);
                 var json = DecryptPayload(encryptedBytes);
 
+                // Sanitize legacy vault JSON: remove undefined provider keys (string "Kimchi" and numeric "5")
+                var sanitizedJson = SanitizeLegacyVaultJson(json);
+
                 var deserialized = JsonSerializer.Deserialize<Dictionary<string, Dictionary<ProviderKind, ProviderAuthConnection>>>(
-                    json,
+                    sanitizedJson,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                 if (deserialized == null)
@@ -262,6 +266,142 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
                 throw new CryptographicException("Invalid vault format", ex);
             }
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sanitizes legacy vault JSON by removing provider keys that are no longer defined:
+    /// - String key "Kimchi" (legacy provider name)
+    /// - Numeric key "5" (legacy Kimchi enum value)
+    /// Also removes connections with invalid nested Provider values (non-integer, null)
+    /// to prevent deserialization failures.
+    /// Numeric key "6" (Nous) is preserved — it maps to ProviderKind.Nous = 6.
+    /// Does NOT remap any values. Unknown providers are filtered after deserialization.
+    /// </summary>
+    private static string SanitizeLegacyVaultJson(string json)
+    {
+        try
+        {
+            var node = JsonNode.Parse(json);
+            if (node is not JsonObject root)
+            {
+                return json; // Not an object, return as-is
+            }
+
+            var sanitizedRoot = new JsonObject();
+            bool anyChanges = false;
+
+            foreach (var (profileName, profileNode) in root)
+            {
+                if (profileNode is not JsonObject providersObj)
+                {
+                    var cloned = profileNode?.DeepClone();
+                    if (cloned is JsonNode clonedNode)
+                    {
+                        sanitizedRoot[profileName] = clonedNode;
+                    }
+                    continue;
+                }
+
+                var sanitizedProviders = new JsonObject();
+
+                foreach (var (providerKey, connectionNode) in providersObj)
+                {
+                    // Drop legacy provider keys that are no longer defined
+                    var isKimchiString = string.Equals(providerKey, "Kimchi", StringComparison.OrdinalIgnoreCase);
+                    var isKimchiNumeric = providerKey == "5";
+
+                    if (isKimchiString || isKimchiNumeric)
+                    {
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "ProviderConnectionVault",
+                            "LegacyKimchiDropped",
+                            "Dropping legacy Kimchi provider key from vault",
+                            new { profile = profileName, key = providerKey });
+                        anyChanges = true;
+                        continue;
+                    }
+
+                    // Check for invalid nested Provider value (non-integer, null)
+                    // This prevents deserialization failure when Provider is string/null
+                    if (connectionNode is JsonObject connObj &&
+                        connObj.TryGetPropertyValue("Provider", out var providerNode))
+                    {
+                        // If Provider is not a valid integer, skip this entire connection
+                        // to prevent JsonException during deserialization
+                        if (providerNode is not JsonValue pv || !IsValidIntegerProvider(pv))
+                        {
+                            ObservabilityHub.Instance.LogEvent(
+                                LogLevel.Warning,
+                                "ProviderConnectionVault",
+                                "InvalidNestedProviderSkipped",
+                                "Skipping connection with invalid nested Provider value",
+                                new { profile = profileName, key = providerKey, valueType = providerNode?.GetType().Name ?? "null" });
+                            anyChanges = true;
+                            continue;
+                        }
+                    }
+
+                    // Keep everything else as-is (including numeric "6" -> Nous = 6)
+                    var cloned = connectionNode?.DeepClone();
+                    if (cloned is JsonNode clonedNode)
+                    {
+                        sanitizedProviders[providerKey] = clonedNode;
+                    }
+                }
+
+                if (sanitizedProviders.Count > 0)
+                {
+                    sanitizedRoot[profileName] = sanitizedProviders;
+                }
+            }
+
+            if (anyChanges)
+            {
+                return JsonSerializer.Serialize(sanitizedRoot, new JsonSerializerOptions { WriteIndented = false });
+            }
+
+            return json;
+        }
+        catch (Exception ex)
+        {
+            // If sanitization fails, fall back to original JSON
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "ProviderConnectionVault",
+                "LegacySanitizationFailed",
+                "Legacy vault sanitization failed, using original JSON",
+                new { error = ex.Message });
+            return json;
+        }
+    }
+
+    /// <summary>
+    /// Checks if a JsonValue represents a valid integer Provider value.
+    /// Returns false for null, string, or non-integer values.
+    /// </summary>
+    private static bool IsValidIntegerProvider(JsonValue jsonValue)
+    {
+        try
+        {
+            if (jsonValue is null)
+                return false;
+            
+            if (jsonValue.GetValueKind() == System.Text.Json.JsonValueKind.Null)
+                return false;
+
+            // Check if it's an integer (int or long)
+            if (jsonValue.TryGetValue(out int _))
+                return true;
+            if (jsonValue.TryGetValue(out long _))
+                return true;
+            
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task SaveAsync(CancellationToken cancellationToken)

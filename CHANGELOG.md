@@ -118,7 +118,7 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 ### Added
 
 - Bộ lọc provider trong sidebar cho phép lọc profile theo kết nối provider.
-- Toggle button với icon và tên ngắn cho từng provider (Codex, Kiro, OpenRouter, Ollama, Kimchi).
+- Toggle button với icon và tên ngắn cho từng provider (Codex, Kiro, OpenRouter, Ollama).
 
 ### Fixed
 

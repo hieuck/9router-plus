@@ -107,7 +107,7 @@ Document search, adding a new managed profile, double-clicking to open the dashb
 
 - [ ] **Step 4: Add provider flows**
 
-Document separate steps for Codex OAuth, Kiro device code, Kimchi OAuth, OpenRouter API key, and Ollama API key. Explain that API keys remain masked, are associated with the selected profile, are stored with Windows DPAPI, and must never be pasted into issues or screenshots.
+Document separate steps for Codex OAuth, Kiro device code, OpenRouter API key, and Ollama API key. Explain that API keys remain masked, are associated with the selected profile, are stored with Windows DPAPI, and must never be pasted into issues or screenshots.
 
 - [ ] **Step 5: Add settings, backup, and uninstall flows**
 

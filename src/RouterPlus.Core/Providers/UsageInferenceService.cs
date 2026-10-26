@@ -36,7 +36,6 @@ public static class UsageInferenceService
             ProviderKind.Kiro => InferKiroUsage(lastError, lastErrorAt),
             ProviderKind.OpenRouter => InferOpenRouterUsage(lastError, lastErrorAt),
             ProviderKind.Ollama => InferOllamaUsage(lastError, lastErrorAt),
-            ProviderKind.Kimchi => InferKimchiUsage(lastError, lastErrorAt),
             _ => null
         };
     }
@@ -160,18 +159,6 @@ public static class UsageInferenceService
             UsageResetAt: CalculateDailyReset(lastErrorAt),
             IsEstimate: true,
             Source: "Inferred from error: limit reached"
-        );
-    }
-
-    private static InferredUsage InferKimchiUsage(string lastError, DateTimeOffset? lastErrorAt)
-    {
-        // Kimchi: "[402]: {\"error\": \"the provider for model X has exhausted its credits..."
-        return new InferredUsage(
-            UsageCount: 100,
-            LimitCount: 100,
-            UsageResetAt: CalculateNextMonthReset(lastErrorAt),
-            IsEstimate: true,
-            Source: "Inferred from error: credits exhausted"
         );
     }
 

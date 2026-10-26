@@ -82,14 +82,14 @@ public sealed class RouterApiClientBranchTests
         var client = new RouterApiClient(httpClient, "https://dashboard.example.test");
 
         await client.ExchangeOAuthCodeAsync(
-            ProviderKind.Kimchi,
+            ProviderKind.GitHub,
             "synthetic-code",
             "http://127.0.0.1:4321/callback",
             "synthetic-verifier",
             "synthetic-state");
 
         Assert.Equal(HttpMethod.Post, handler.Method);
-        Assert.Equal("/api/oauth/kimchi/exchange", handler.RequestUri!.AbsolutePath);
+        Assert.Equal("/api/oauth/github/exchange", handler.RequestUri!.AbsolutePath);
         using var body = JsonDocument.Parse(handler.Body);
         Assert.Equal("synthetic-code", body.RootElement.GetProperty("code").GetString());
         Assert.Equal("http://127.0.0.1:4321/callback", body.RootElement.GetProperty("redirectUri").GetString());

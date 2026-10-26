@@ -7,8 +7,8 @@ public enum ProviderKind
     OpenRouter,
     GitHub,
     Ollama,
-    Kimchi,
-    Nous
+    // Value 5 is reserved; never reuse.
+    Nous = 6
 }
 
 public enum WorkflowKind

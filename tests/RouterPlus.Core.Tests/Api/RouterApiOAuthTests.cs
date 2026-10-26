@@ -15,7 +15,7 @@ public sealed class RouterApiOAuthTests
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
         var session = await api.StartOAuthAuthorizationAsync(
-            ProviderKind.Kimchi,
+            ProviderKind.GitHub,
             "http://127.0.0.1:38579/callback");
 
         Assert.Equal("https://accounts.example/authorize", session.AuthUrl);
@@ -63,12 +63,12 @@ public sealed class RouterApiOAuthTests
             "https://accounts.example/authorize", "state with spaces", "verifier/value",
             "http://127.0.0.1/callback?mode=oauth", "browser", false, "/callback");
 
-        var result = await api.StartOAuthProxyAsync(ProviderKind.Kimchi, 38579, session);
+        var result = await api.StartOAuthProxyAsync(ProviderKind.GitHub, 38579, session);
 
         Assert.True(result.Success);
         Assert.True(result.ServerSide);
         Assert.Equal("GET", handler.Method);
-        Assert.Contains("/api/oauth/kimchi/start-proxy?app_port=38579", handler.RequestUri, StringComparison.Ordinal);
+        Assert.Contains("/api/oauth/github/start-proxy?app_port=38579", handler.RequestUri, StringComparison.Ordinal);
         var query = Uri.UnescapeDataString(new Uri(handler.RequestUri!).Query);
         Assert.Contains("state=state with spaces", query, StringComparison.Ordinal);
         Assert.Contains("code_verifier=verifier/value", query, StringComparison.Ordinal);

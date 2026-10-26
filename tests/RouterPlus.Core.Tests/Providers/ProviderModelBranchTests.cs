@@ -9,7 +9,6 @@ public sealed class ProviderModelBranchTests
     [InlineData(ProviderKind.Kiro, "Kiro", "🚀")]
     [InlineData(ProviderKind.OpenRouter, "OpenR", "🧠")]
     [InlineData(ProviderKind.Ollama, "Ollama", "🦙")]
-    [InlineData(ProviderKind.Kimchi, "Kimchi", "🌿")]
     [InlineData(ProviderKind.Nous, "Nous", "🔭")]
     public void Definition_exposes_kind_specific_short_name_and_glyph(
         ProviderKind kind,

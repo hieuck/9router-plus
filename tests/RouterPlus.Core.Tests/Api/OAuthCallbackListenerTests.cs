@@ -54,7 +54,7 @@ public sealed class OAuthCallbackListenerTests
 
     [Theory]
     [InlineData("http://127.0.0.1:38579/callback?code=abc&state=xyz", "abc", "", "xyz")]
-    [InlineData("http://127.0.0.1:38579/callback?token=kimchi-token&state=xyz", "", "kimchi-token", "xyz")]
+    [InlineData("http://127.0.0.1:38579/callback?token=test-token&state=xyz", "", "test-token", "xyz")]
     public void ParseCallbackUri_reads_code_or_token_and_state(
         string callbackUrl,
         string expectedCode,

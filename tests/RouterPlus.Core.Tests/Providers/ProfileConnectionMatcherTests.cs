@@ -216,7 +216,6 @@ public sealed class ProfileConnectionMatcherTests
         Assert.Equal(0, counts[ProviderKind.Kiro]);
         Assert.Equal(1, counts[ProviderKind.Ollama]);
         Assert.Equal(0, counts[ProviderKind.OpenRouter]);
-        Assert.Equal(0, counts[ProviderKind.Kimchi]);
     }
 
     [Fact]

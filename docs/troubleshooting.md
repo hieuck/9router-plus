@@ -43,7 +43,7 @@ Làm theo từng mục từ trên xuống dưới. Khi cần báo lỗi, hãy x�
 
 ## OAuth hoặc device code timeout
 
-**Triệu chứng:** Codex/Kiro/Kimchi không tạo connection mới.
+**Triệu chứng:** Codex/Kiro không tạo connection mới.
 
 1. Đóng tab OAuth/device code cũ.
 2. Kiểm tra Chrome profile đang mở có đăng nhập đúng tài khoản.

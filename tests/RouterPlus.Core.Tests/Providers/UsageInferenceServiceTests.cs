@@ -269,28 +269,6 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
-    public void InferUsageFromError_Kimchi_ReturnsMonthlyLimit()
-    {
-        // Arrange
-        var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.Zero);
-
-        // Act
-        var result = UsageInferenceService.InferUsageFromError(
-            ProviderKind.Kimchi,
-            "402",
-            "[402]: {\"error\": \"the provider has exhausted its credits\"}",
-            errorTime);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(100, result.UsageCount);
-        Assert.Equal(100, result.LimitCount);
-        Assert.Equal("Inferred from error: credits exhausted", result.Source);
-        Assert.NotNull(result.UsageResetAt);
-        Assert.Equal(10, result.UsageResetAt.Value.Month);
-    }
-
-    [Fact]
     public void InferUsageFromError_OpenRouter_CreditDetailsMessage_KeepsUsageBelowLimit()
     {
         // Arrange
@@ -310,23 +288,20 @@ public sealed class UsageInferenceServiceTests
     }
 
     [Fact]
-    public void InferUsageFromError_Kimchi_JsonCreditsExhaustedMessage_ReturnsMonthlyLimit()
+    public void InferUsageFromError_GitHub_GenericLimitError_ReturnsNull()
     {
         // Arrange
         var errorTime = new DateTimeOffset(2026, 9, 15, 10, 30, 0, TimeSpan.Zero);
 
-        // Act
+        // Act - GitHub is not a supported provider for usage inference
         var result = UsageInferenceService.InferUsageFromError(
-            ProviderKind.Kimchi,
-            "402",
-            "[402]: {\"error\": \"the provider for model kimi-k2.7 has exhausted its credits and cannot process requests\"}",
+            ProviderKind.GitHub,
+            "429",
+            "[429]: Rate limit exceeded",
             errorTime);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal(100, result.UsageCount);
-        Assert.Equal(100, result.LimitCount);
-        Assert.True(result.IsEstimate);
+        Assert.Null(result);
     }
 
     [Fact]

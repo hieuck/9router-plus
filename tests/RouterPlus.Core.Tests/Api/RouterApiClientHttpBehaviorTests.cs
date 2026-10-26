@@ -200,12 +200,12 @@ public sealed class RouterApiClientHttpBehaviorTests
         using var httpClient = new HttpClient(handler);
         var api = new RouterApiClient(httpClient, "http://localhost:20128");
 
-        var status = await api.GetOAuthProxyStatusAsync(ProviderKind.Kimchi, "state with spaces");
+        var status = await api.GetOAuthProxyStatusAsync(ProviderKind.GitHub, "state with spaces");
 
         Assert.Equal("pending", status.Status);
         Assert.Equal("still waiting", status.Error);
         var requestUri = new Uri(Assert.Single(handler.Requests).Uri);
-        Assert.Equal("/api/oauth/kimchi/poll-status", requestUri.AbsolutePath);
+        Assert.Equal("/api/oauth/github/poll-status", requestUri.AbsolutePath);
         Assert.Equal("state=state%20with%20spaces", requestUri.Query.TrimStart('?'));
     }
 

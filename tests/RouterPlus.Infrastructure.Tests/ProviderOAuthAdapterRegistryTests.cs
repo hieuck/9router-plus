@@ -24,7 +24,6 @@ public sealed class ProviderOAuthAdapterRegistryTests
 
     [Theory]
     [InlineData(ProviderKind.Ollama)]
-    [InlineData(ProviderKind.Kimchi)]
     public void Get_UnsupportedProviderThrowsWithoutFallback(ProviderKind provider)
     {
         var registry = new ProviderOAuthAdapterRegistry();
