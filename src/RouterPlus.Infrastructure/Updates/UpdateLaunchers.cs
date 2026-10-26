@@ -48,7 +48,7 @@ public sealed class WindowsUpdaterProcessLauncher : IUpdaterProcessLauncher
             CreateNoWindow = true
         };
         startInfo.ArgumentList.Add("--pid");
-        startInfo.ArgumentList.Add(processId.ToString());
+        startInfo.ArgumentList.Add(processId.ToString(System.Globalization.CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add("--target");
         startInfo.ArgumentList.Add(targetDirectory);
         startInfo.ArgumentList.Add("--staging");

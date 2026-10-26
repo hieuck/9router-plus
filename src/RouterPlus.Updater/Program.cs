@@ -66,7 +66,7 @@ internal static class Program
             Get(values, "--staging"),
             Get(values, "--backup"),
             Get(values, "--app"),
-            int.Parse(Get(values, "--pid")),
+            int.Parse(Get(values, "--pid"), System.Globalization.CultureInfo.InvariantCulture),
             ReleaseVersion.Parse(Get(values, "--version")),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(5));

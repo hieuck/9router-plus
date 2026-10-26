@@ -41,7 +41,7 @@ public sealed class RecentProfileRowViewModel : INotifyPropertyChanged
             if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes} phút trước";
             if (delta.TotalHours < 24) return $"{(int)delta.TotalHours} giờ trước";
             if (delta.TotalDays < 7) return $"{(int)delta.TotalDays} ngày trước";
-            return local.ToString("dd/MM HH:mm");
+            return local.ToString("dd/MM HH:mm", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 

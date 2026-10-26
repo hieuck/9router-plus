@@ -63,7 +63,7 @@ public sealed class DiagnosticReportBuilder
         }
 
         var latestSession = sessions[0];
-        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture);
         var outputPath = Path.Combine(outputDirectory, $"diagnostic_report_{timestamp}.zip");
 
         return CreateReport(latestSession.SessionId, outputPath);

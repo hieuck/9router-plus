@@ -53,7 +53,7 @@ public sealed class ProfileHealthChecker
         // Check #2: Profile directory readable
         try
         {
-            _enumerateFiles(profile.ProfilePath).Any();
+            _ = _enumerateFiles(profile.ProfilePath).Any();
         }
         catch (UnauthorizedAccessException)
         {

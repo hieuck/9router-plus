@@ -75,12 +75,13 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
 
         await EnsureLoadedAsync(cancellationToken);
 
-        if (!_connections!.ContainsKey(connection.ProfileName))
+        if (!_connections!.TryGetValue(connection.ProfileName, out var byProvider))
         {
-            _connections[connection.ProfileName] = new Dictionary<ProviderKind, ProviderAuthConnection>();
+            byProvider = new Dictionary<ProviderKind, ProviderAuthConnection>();
+            _connections[connection.ProfileName] = byProvider;
         }
 
-        _connections[connection.ProfileName][connection.Provider] = connection;
+        byProvider[connection.Provider] = connection;
 
         await SaveAsync(cancellationToken);
 

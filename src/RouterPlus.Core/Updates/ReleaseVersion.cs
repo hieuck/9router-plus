@@ -133,6 +133,24 @@ public sealed class ReleaseVersion : IComparable<ReleaseVersion>, IEquatable<Rel
         return _prereleaseIdentifiers.Length.CompareTo(other._prereleaseIdentifiers.Length);
     }
 
+    // Null sorts before any non-null version, so the ordering operators are total.
+    public static bool operator ==(ReleaseVersion? left, ReleaseVersion? right) =>
+        left is null ? right is null : left.CompareTo(right) == 0;
+
+    public static bool operator !=(ReleaseVersion? left, ReleaseVersion? right) => !(left == right);
+
+    public static bool operator <(ReleaseVersion? left, ReleaseVersion? right) =>
+        left is null ? right is not null : right is null ? false : left.CompareTo(right) < 0;
+
+    public static bool operator <=(ReleaseVersion? left, ReleaseVersion? right) =>
+        left is null || (right is not null && left.CompareTo(right) <= 0);
+
+    public static bool operator >(ReleaseVersion? left, ReleaseVersion? right) =>
+        left is not null && (right is null || left.CompareTo(right) > 0);
+
+    public static bool operator >=(ReleaseVersion? left, ReleaseVersion? right) =>
+        right is null ? true : left is not null && left.CompareTo(right) >= 0;
+
     public bool Equals(ReleaseVersion? other) => CompareTo(other) == 0;
 
     public override bool Equals(object? obj) => obj is ReleaseVersion other && Equals(other);

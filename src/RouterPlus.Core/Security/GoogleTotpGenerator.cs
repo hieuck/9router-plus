@@ -37,7 +37,9 @@ public static class GoogleTotpGenerator
             Array.Reverse(counterBytes);
         }
 
+#pragma warning disable CA5350 // HMAC-SHA1 is required by RFC 6238 TOTP default algorithm
         using var hmac = new HMACSHA1(keyBytes);
+#pragma warning restore CA5350
         var hash = hmac.ComputeHash(counterBytes);
 
         var offset = hash[^1] & 0x0F;
@@ -47,7 +49,7 @@ public static class GoogleTotpGenerator
                    | (hash[offset + 3] & 0xFF);
 
         var otp = binary % (int)Math.Pow(10, digits);
-        return otp.ToString($"D{digits}");
+        return otp.ToString($"D{digits}", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static byte[] DecodeBase32(string input)

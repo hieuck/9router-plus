@@ -100,7 +100,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _isProfileSidebarCollapsed;
     private double _fontScale = 1d;
     private bool _useLightTheme = true;
-    private bool _useOriginalProfileForAutoLogin = false;
+    private bool _useOriginalProfileForAutoLogin;
     private string _savedDashboardBaseUrl = "http://localhost:20128";
     private string? _dashboardAuthPassword;
     private string? _savedDashboardAuthPassword;
@@ -108,7 +108,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _savedChromeUserDataDirectory = string.Empty;
     private double _savedFontScale = 1d;
     private bool _savedUseLightTheme = true;
-    private bool _savedUseOriginalProfileForAutoLogin = false;
+    private bool _savedUseOriginalProfileForAutoLogin;
     private WindowPlacement? _savedWindowPlacement;
     private string _connectionStatusText = "Chưa đồng bộ trạng thái provider.";
     private string _statusText = "Đang khởi tạo…";
@@ -3419,7 +3419,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     "Google auto-login Chrome launch requested",
                     new { });
 
-                var settings = await _settingsStore.LoadAsync();
+                var settings = await _settingsStore.LoadAsync(cancellationToken);
 
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
@@ -3614,7 +3614,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         "CodexOAuthLaunchingChrome",
                         "Launching Chrome for Codex OAuth",
                         new { });
-                    var settings = await _settingsStore.LoadAsync();
+                    var settings = await _settingsStore.LoadAsync(cancellationToken);
 
                     var codexOAuthUrl = new Uri("https://auth.openai.com/authorize?client_id=chatgpt-web&scope=openid%20profile%20email&response_type=code&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fcodex");
 
@@ -3692,7 +3692,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         "Starting Codex direct login with email/password",
                         new { email = credential.Email });
 
-                    var settings = await _settingsStore.LoadAsync();
+                    var settings = await _settingsStore.LoadAsync(cancellationToken);
 
                     // Navigate to OpenAI login page (not OAuth authorize)
                     var loginUrl = new Uri("https://chatgpt.com/auth/login");
@@ -3948,7 +3948,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ChromeManagedSession? session = null;
             try
             {
-                var settings = await _settingsStore.LoadAsync();
+                var settings = await _settingsStore.LoadAsync(cancellationToken);
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
                     profile,
@@ -3994,7 +3994,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ChromeManagedSession? session = null;
             try
             {
-                var settings = await _settingsStore.LoadAsync();
+                var settings = await _settingsStore.LoadAsync(cancellationToken);
                 session = await _chromeLauncher.LaunchManagedAsync(
                     installation,
                     profile,

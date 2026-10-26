@@ -67,7 +67,7 @@ public sealed class SnapshotManager : IDisposable
 
             // Check if state changed from last snapshot
             var stateHash = ComputeHash(json);
-            if (_lastSnapshot != null && stateHash.Equals(ComputeHash(JsonSerializer.Serialize(_lastSnapshot, _jsonOptions))))
+            if (_lastSnapshot != null && string.Equals(stateHash, ComputeHash(JsonSerializer.Serialize(_lastSnapshot, _jsonOptions)), StringComparison.Ordinal))
             {
                 return; // No change, skip snapshot
             }
@@ -102,8 +102,7 @@ public sealed class SnapshotManager : IDisposable
 
     private static string ComputeHash(string input)
     {
-        using var sha = System.Security.Cryptography.SHA256.Create();
-        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input));
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input));
         return Convert.ToBase64String(hash);
     }
 

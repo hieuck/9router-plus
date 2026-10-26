@@ -10,4 +10,13 @@
     <DebugType>None</DebugType>
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
+  <!-- Analyzers only on product projects (src/). Test projects are excluded by location
+       and by their IsTestProject=true convention to avoid disproportionate noise. -->
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('\src\')) And '$(IsTestProject)' != 'true'">
+    <AnalysisMode>Recommended</AnalysisMode>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+  </PropertyGroup>
+  <ItemGroup Condition="$(MSBuildProjectDirectory.Contains('\src\')) And '$(IsTestProject)' != 'true'">
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" PrivateAssets="all" />
+  </ItemGroup>
 </Project>

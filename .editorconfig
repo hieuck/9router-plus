@@ -8,6 +8,37 @@ insert_final_newline = true
 [*.cs]
 dotnet_sort_system_directives_first = true
 
+# Analyzer severities: downgrade noisy, non-actionable rules to suggestions.
+# CA1822: many WPF/view-model members are instance by design; static conversion churn not worth it.
+dotnet_diagnostic.CA1822.severity = suggestion
+# CA1859: concrete collection types leak implementation details; IReadOnlyDictionary is intended API.
+dotnet_diagnostic.CA1859.severity = suggestion
+# CA1860: Any() vs Count is stylistic; readability preferred in many spots.
+dotnet_diagnostic.CA1860.severity = suggestion
+# CA1869: caching JsonSerializerOptions broadly would require shared infrastructure; low value.
+dotnet_diagnostic.CA1869.severity = suggestion
+# CA1051: public fields are used as simple bindable data carriers in this app.
+dotnet_diagnostic.CA1051.severity = suggestion
+# CA1510/CA1512/CA1513: modernization to ThrowIfNull is mechanical; keep as suggestion.
+dotnet_diagnostic.CA1510.severity = suggestion
+dotnet_diagnostic.CA1512.severity = suggestion
+dotnet_diagnostic.CA1513.severity = suggestion
+# CA1861: const array args are localized and not hot paths.
+dotnet_diagnostic.CA1861.severity = suggestion
+# CA1001: disposable fields are managed via explicit cleanup; adding IDisposable is invasive.
+dotnet_diagnostic.CA1001.severity = suggestion
+# CA1725: parameter-name alignment is cosmetic across interface adapters.
+dotnet_diagnostic.CA1725.severity = suggestion
+# CA1068: CancellationToken is intentionally grouped with related flags in several APIs.
+dotnet_diagnostic.CA1068.severity = suggestion
+# CA1826: LINQ on indexable collections is clearer for filtered lookups.
+dotnet_diagnostic.CA1826.severity = suggestion
+# CA1865: string overloads with char are micro-optimizations, not actionable here.
+dotnet_diagnostic.CA1865.severity = suggestion
+# CA1715/CA1716: naming style choices for interfaces/members; not correctness.
+dotnet_diagnostic.CA1715.severity = suggestion
+dotnet_diagnostic.CA1716.severity = suggestion
+
 [*.xaml]
 indent_style = space
 indent_size = 4

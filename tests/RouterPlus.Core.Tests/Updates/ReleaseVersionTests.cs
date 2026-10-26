@@ -78,6 +78,75 @@ public sealed class ReleaseVersionTests
         Assert.Throws<FormatException>(() => ReleaseVersion.Parse(value));
     }
 
+    [Fact]
+    public void Null_versions_compare_equal_only_to_null()
+    {
+        ReleaseVersion? version = ReleaseVersion.Parse("1.2.3");
+
+        Assert.True(null == null);
+        Assert.False(null != null);
+        Assert.False(null == version);
+        Assert.False(version == null);
+        Assert.True(null != version);
+        Assert.True(version != null);
+
+        var left = ReleaseVersion.Parse("1.2.3");
+        var right = ReleaseVersion.Parse("1.2.3");
+        var other = ReleaseVersion.Parse("1.2.4");
+
+        Assert.True(left == right);
+        Assert.False(left != right);
+        Assert.False(left == other);
+        Assert.True(left != other);
+    }
+
+    [Fact]
+    public void Null_versions_order_consistently()
+    {
+        ReleaseVersion? nullVersion = null;
+        var value = ReleaseVersion.Parse("1.2.3");
+        var equal = ReleaseVersion.Parse("1.2.3");
+        var greater = ReleaseVersion.Parse("1.2.4");
+
+        // null == null / !=
+        Assert.True((ReleaseVersion?)null == (ReleaseVersion?)null);
+        Assert.False((ReleaseVersion?)null != (ReleaseVersion?)null);
+
+        // null vs value
+        Assert.False(nullVersion == value);
+        Assert.True(nullVersion != value);
+        Assert.True(nullVersion < value);
+        Assert.False(value < nullVersion);
+        Assert.True(nullVersion <= value);
+        Assert.False(value <= nullVersion);
+        Assert.False(nullVersion > value);
+        Assert.True(value > nullVersion);
+        Assert.False(nullVersion >= value);
+        Assert.True(value >= nullVersion);
+
+        // null < null false etc already covered by equality; ordering null<null false
+        Assert.False((ReleaseVersion?)null < (ReleaseVersion?)null);
+        Assert.True((ReleaseVersion?)null <= (ReleaseVersion?)null);
+        Assert.False((ReleaseVersion?)null > (ReleaseVersion?)null);
+        Assert.True((ReleaseVersion?)null >= (ReleaseVersion?)null);
+
+        // equal values
+        Assert.True(value == equal);
+        Assert.False(value != equal);
+        Assert.False(value < equal);
+        Assert.True(value <= equal);
+        Assert.False(value > equal);
+        Assert.True(value >= equal);
+
+        // unequal values
+        Assert.False(value == greater);
+        Assert.True(value != greater);
+        Assert.True(value < greater);
+        Assert.True(value <= greater);
+        Assert.False(value > greater);
+        Assert.False(value >= greater);
+    }
+
     [Theory]
     [InlineData("1.2.3-alpha.1", "1.2.3-alpha.beta", -1)]
     [InlineData("1.2.3-alpha.1", "1.2.3-alpha.1.1", -1)]
