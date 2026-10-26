@@ -83,40 +83,55 @@ public sealed class GoogleOAuthPageDetectorTests
     }
 
     [Fact]
-    public async Task TryClickAccountAsync_returns_true_and_serializes_special_email()
+    public async Task TryClickAccountAsync_returns_true_and_dispatches_trusted_click_when_coords_found()
     {
         const string profileEmail = "qa+google\\account@example.test\"";
-        await using var server = await FakeCdpServer.StartAsync(
-            "{\"result\":{\"value\":{\"clicked\":true}}}");
-        await using var client = await CreateConnectedClientAsync(server);
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                ResultCoords(42, 84),
+                EmptyResult(),
+                EmptyResult(),
+                EmptyResult()
+            ]
+        };
 
         var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
             client, "session-account", profileEmail, CancellationToken.None);
 
         Assert.True(clicked);
-        var request = await server.GetRequestAsync();
-        Assert.Contains(JsonSerializer.Serialize(profileEmail), request.GetProperty("params").GetProperty("expression").GetString());
-        Assert.Equal("session-account", request.GetProperty("sessionId").GetString());
+        Assert.Equal(4, client.Calls.Count);
+        Assert.Equal("Runtime.evaluate", client.Calls[0].Method);
+        Assert.Equal(3, client.Calls.Count(c => c.Method == "Input.dispatchMouseEvent"));
+        Assert.DoesNotContain(".click()", client.Calls[0].Expression);
+        Assert.Equal("session-account", client.Calls[0].SessionId);
+        Assert.Contains(JsonSerializer.Serialize(profileEmail), client.Calls[0].Expression);
     }
 
     [Fact]
-    public async Task TryClickAccountAsync_returns_false_when_account_is_not_clicked()
+    public async Task TryClickAccountAsync_returns_false_when_no_coords()
     {
-        await using var server = await FakeCdpServer.StartAsync(
-            "{\"result\":{\"value\":{\"clicked\":false}}}");
-        await using var client = await CreateConnectedClientAsync(server);
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultNoCoords()]
+        };
 
         var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
             client, "session-account", "account@example.test", CancellationToken.None);
 
         Assert.False(clicked);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
     }
 
     [Fact]
     public async Task TryClickAccountAsync_returns_false_when_cdp_value_is_missing()
     {
-        await using var server = await FakeCdpServer.StartAsync("{\"result\":{}}");
-        await using var client = await CreateConnectedClientAsync(server);
+        var client = new FakeCdpClient
+        {
+            Responses = [EmptyResult()]
+        };
 
         var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
             client, "session-account", "account@example.test", CancellationToken.None);
@@ -127,14 +142,49 @@ public sealed class GoogleOAuthPageDetectorTests
     [Fact]
     public async Task TryClickAccountAsync_returns_false_for_cdp_error()
     {
-        await using var server = await FakeCdpServer.StartAsync(
-            "{\"error\":{\"code\":-32000,\"message\":\"synthetic failure\"}}");
-        await using var client = await CreateConnectedClientAsync(server);
+        var client = new FakeCdpClient
+        {
+            Exceptions = [new InvalidOperationException("synthetic failure")]
+        };
 
         var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
             client, "session-account", "account@example.test", CancellationToken.None);
 
         Assert.False(clicked);
+    }
+
+    [Fact]
+    public async Task TryClickAccountAsync_dispatches_mouse_events_with_expected_parameters()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                ResultCoords(10, 20),
+                EmptyResult(),
+                EmptyResult(),
+                EmptyResult()
+            ]
+        };
+
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "account@example.test", CancellationToken.None);
+
+        Assert.True(clicked);
+        var moved = client.Calls[1];
+        var pressed = client.Calls[2];
+        var released = client.Calls[3];
+        Assert.Equal("mouseMoved", GetProperty(moved.Parameters, "type"));
+        Assert.Equal("none", GetProperty(moved.Parameters, "button"));
+        Assert.Equal("0", GetProperty(moved.Parameters, "buttons"));
+        Assert.Equal("mousePressed", GetProperty(pressed.Parameters, "type"));
+        Assert.Equal("left", GetProperty(pressed.Parameters, "button"));
+        Assert.Equal("1", GetProperty(pressed.Parameters, "buttons"));
+        Assert.Equal("1", GetProperty(pressed.Parameters, "clickCount"));
+        Assert.Equal("mouseReleased", GetProperty(released.Parameters, "type"));
+        Assert.Equal("left", GetProperty(released.Parameters, "button"));
+        Assert.Equal("0", GetProperty(released.Parameters, "buttons"));
+        Assert.Equal("1", GetProperty(released.Parameters, "clickCount"));
     }
 
     [Theory]
@@ -164,26 +214,52 @@ public sealed class GoogleOAuthPageDetectorTests
         Assert.False(result);
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task TryClickGoogleConsentButtonAsync_returns_cdp_boolean(bool clicked)
+    [Fact]
+    public async Task TryClickGoogleConsentButtonAsync_returns_true_and_dispatches_trusted_click_when_coords_found()
     {
-        await using var server = await FakeCdpServer.StartAsync(
-            $"{{\"result\":{{\"value\":{clicked.ToString().ToLowerInvariant()}}}}}");
-        await using var client = await CreateConnectedClientAsync(server);
+        var client = new FakeCdpClient
+        {
+            Responses =
+            [
+                ResultCoords(10, 20),
+                EmptyResult(),
+                EmptyResult(),
+                EmptyResult()
+            ]
+        };
 
         var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
             client, "session-consent", CancellationToken.None);
 
-        Assert.Equal(clicked, result);
+        Assert.True(result);
+        Assert.Equal(4, client.Calls.Count);
+        Assert.Equal(3, client.Calls.Count(c => c.Method == "Input.dispatchMouseEvent"));
+        Assert.DoesNotContain(".click()", client.Calls[0].Expression);
+    }
+
+    [Fact]
+    public async Task TryClickGoogleConsentButtonAsync_returns_false_when_no_coords()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultNoCoords()]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
+            client, "session-consent", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
     }
 
     [Fact]
     public async Task TryClickGoogleConsentButtonAsync_returns_false_when_cdp_value_is_missing()
     {
-        await using var server = await FakeCdpServer.StartAsync("{\"result\":{}}");
-        await using var client = await CreateConnectedClientAsync(server);
+        var client = new FakeCdpClient
+        {
+            Responses = [EmptyResult()]
+        };
 
         var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
             client, "session-consent", CancellationToken.None);
@@ -194,9 +270,10 @@ public sealed class GoogleOAuthPageDetectorTests
     [Fact]
     public async Task TryClickGoogleConsentButtonAsync_returns_false_for_cdp_error()
     {
-        await using var server = await FakeCdpServer.StartAsync(
-            "{\"error\":{\"code\":-32000,\"message\":\"synthetic failure\"}}");
-        await using var client = await CreateConnectedClientAsync(server);
+        var client = new FakeCdpClient
+        {
+            Exceptions = [new InvalidOperationException("synthetic failure")]
+        };
 
         var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
             client, "session-consent", CancellationToken.None);
@@ -307,6 +384,50 @@ public sealed class GoogleOAuthPageDetectorTests
             catch (HttpListenerException)
             {
             }
+        }
+    }
+
+    private static JsonElement ResultCoords(double x, double y) =>
+        JsonSerializer.SerializeToDocument(new { result = new { value = new { found = true, x, y } } }).RootElement.Clone();
+
+    private static JsonElement ResultNoCoords() =>
+        JsonSerializer.SerializeToDocument(new { result = new { value = new { found = false } } }).RootElement.Clone();
+
+    private static JsonElement EmptyResult() =>
+        JsonSerializer.SerializeToDocument(new { }).RootElement.Clone();
+
+    private static string GetProperty(object? parameters, string name)
+    {
+        var prop = parameters?.GetType().GetProperty(name);
+        var value = prop?.GetValue(parameters);
+        return value?.ToString() ?? string.Empty;
+    }
+
+    private sealed record CdpCall(string Method, object? Parameters, string? SessionId, string Expression);
+
+    private sealed class FakeCdpClient : IChromeCdpClient
+    {
+        public List<JsonElement> Responses { get; init; } = [];
+        public List<Exception> Exceptions { get; init; } = [];
+        public List<CdpCall> Calls { get; } = [];
+
+        public Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken, string? sessionId = null)
+        {
+            var expression = parameters?.GetType().GetProperty("expression")?.GetValue(parameters)?.ToString() ?? string.Empty;
+            Calls.Add(new CdpCall(method, parameters, sessionId, expression));
+
+            if (Exceptions.Count > 0)
+            {
+                return Task.FromException<JsonElement>(Exceptions[0]);
+            }
+            if (Responses.Count == 0)
+            {
+                throw new InvalidOperationException("No fake CDP response configured.");
+            }
+
+            var response = Responses[0];
+            Responses.RemoveAt(0);
+            return Task.FromResult(response);
         }
     }
 }

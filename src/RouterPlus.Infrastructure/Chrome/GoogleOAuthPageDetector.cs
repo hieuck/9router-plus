@@ -183,10 +183,11 @@ public static class GoogleOAuthPageDetector
     }
 
     if (matchedButton) {
-        matchedButton.click();
-        return {clicked: true, found: true, totalButtons: allButtons.length, allButtons};
+        matchedButton.scrollIntoView({ block: 'center' });
+        const rect = matchedButton.getBoundingClientRect();
+        return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, totalButtons: allButtons.length, allButtons: allButtons };
     }
-    return {clicked: false, found: false, totalButtons: allButtons.length, allButtons};
+    return { found: false, totalButtons: allButtons.length, allButtons: allButtons };
 })()
 ";
 
@@ -201,15 +202,61 @@ public static class GoogleOAuthPageDetector
             if (result.TryGetProperty("result", out var resultProp) &&
                 resultProp.TryGetProperty("value", out var valueProp))
             {
-                var clicked = valueProp.GetProperty("clicked").GetBoolean();
-                if (clicked)
+                // Handle exceptionDetails
+                if (resultProp.TryGetProperty("exceptionDetails", out _))
                 {
+                    return false;
+                }
+
+                if (valueProp.ValueKind == JsonValueKind.False)
+                {
+                    return false;
+                }
+
+                if (valueProp.TryGetProperty("found", out var foundProp) &&
+                    foundProp.GetBoolean() &&
+                    valueProp.TryGetProperty("x", out var xProp) &&
+                    valueProp.TryGetProperty("y", out var yProp))
+                {
+                    double x = xProp.GetDouble();
+                    double y = yProp.GetDouble();
+
+                    // Trusted CDP click
+                    await client.CallAsync("Input.dispatchMouseEvent", new
+                    {
+                        type = "mouseMoved",
+                        x,
+                        y,
+                        button = "none",
+                        buttons = 0
+                    }, cancellationToken, sessionId);
+
+                    await client.CallAsync("Input.dispatchMouseEvent", new
+                    {
+                        type = "mousePressed",
+                        x,
+                        y,
+                        button = "left",
+                        buttons = 1,
+                        clickCount = 1
+                    }, cancellationToken, sessionId);
+
+                    await client.CallAsync("Input.dispatchMouseEvent", new
+                    {
+                        type = "mouseReleased",
+                        x,
+                        y,
+                        button = "left",
+                        buttons = 0,
+                        clickCount = 1
+                    }, cancellationToken, sessionId);
+
                     ObservabilityHub.Instance.LogEvent(
                         LogLevel.Info,
                         "GoogleOAuthDetector",
                         "AccountClicked",
                         "Google account clicked successfully",
-                        new { email = profileEmail });
+                        new { email = profileEmail, x, y, trusted = true });
                     return true;
                 }
             }
@@ -322,13 +369,16 @@ public static class GoogleOAuthPageDetector
         if (!isVisible(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('continue') || text.includes('tiếp tục') ||
-               text.includes('allow') || text.includes('cho phép');
+               text.includes('allow') || text.includes('cho phép') ||
+               text.includes('accept') || text.includes('chấp nhận');
     });
     if (buttons.length > 0) {
-        buttons[0].click();
-        return true;
+        const btn = buttons[0];
+        btn.scrollIntoView({ block: 'center' });
+        const rect = btn.getBoundingClientRect();
+        return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }
-    return false;
+    return { found: false };
 })()
 ";
 
@@ -341,16 +391,63 @@ public static class GoogleOAuthPageDetector
             }, cancellationToken, sessionId);
 
             if (result.TryGetProperty("result", out var resultProp) &&
-                resultProp.TryGetProperty("value", out var clickedProp) &&
-                clickedProp.GetBoolean())
+                resultProp.TryGetProperty("value", out var valueProp))
             {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "GoogleOAuthDetector",
-                    "ConsentButtonClicked",
-                    "Google consent button clicked",
-                    null);
-                return true;
+                if (resultProp.TryGetProperty("exceptionDetails", out _))
+                {
+                    return false;
+                }
+
+                if (valueProp.ValueKind == JsonValueKind.False)
+                {
+                    return false;
+                }
+
+                if (valueProp.TryGetProperty("found", out var foundProp) &&
+                    foundProp.GetBoolean() &&
+                    valueProp.TryGetProperty("x", out var xProp) &&
+                    valueProp.TryGetProperty("y", out var yProp))
+                {
+                    double x = xProp.GetDouble();
+                    double y = yProp.GetDouble();
+
+                    await client.CallAsync("Input.dispatchMouseEvent", new
+                    {
+                        type = "mouseMoved",
+                        x,
+                        y,
+                        button = "none",
+                        buttons = 0
+                    }, cancellationToken, sessionId);
+
+                    await client.CallAsync("Input.dispatchMouseEvent", new
+                    {
+                        type = "mousePressed",
+                        x,
+                        y,
+                        button = "left",
+                        buttons = 1,
+                        clickCount = 1
+                    }, cancellationToken, sessionId);
+
+                    await client.CallAsync("Input.dispatchMouseEvent", new
+                    {
+                        type = "mouseReleased",
+                        x,
+                        y,
+                        button = "left",
+                        buttons = 0,
+                        clickCount = 1
+                    }, cancellationToken, sessionId);
+
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "GoogleOAuthDetector",
+                        "ConsentButtonClicked",
+                        "Google consent button clicked",
+                        new { x, y, trusted = true });
+                    return true;
+                }
             }
 
             return false;
