@@ -31,6 +31,18 @@ public sealed class MainViewModelProviderConnectionServiceTests
 
             return Task.FromResult(Result);
         }
+
+        public Task<IReadOnlyList<ProviderConnection>> RefreshConnectionsLightweightAsync(
+            Func<Task<IRouterApiClient>> apiFactory,
+            CancellationToken cancellationToken)
+        {
+            if (ThrowOnRefresh is not null)
+            {
+                throw ThrowOnRefresh;
+            }
+
+            return Task.FromResult<IReadOnlyList<ProviderConnection>>(Result.Connections);
+        }
     }
 
     private static ProviderConnection MakeExhaustedConnection(string id) =>

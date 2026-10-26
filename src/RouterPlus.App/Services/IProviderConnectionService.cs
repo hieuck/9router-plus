@@ -17,4 +17,8 @@ public interface IProviderConnectionService
     Task<ConnectionRefreshResult> RefreshConnectionsAsync(
         Func<Task<IRouterApiClient>> apiFactory,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ProviderConnection>> RefreshConnectionsLightweightAsync(
+        Func<Task<IRouterApiClient>> apiFactory,
+        CancellationToken cancellationToken);
 }

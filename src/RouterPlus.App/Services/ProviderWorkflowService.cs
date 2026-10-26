@@ -23,6 +23,7 @@ public sealed class ProviderWorkflowService : IProviderWorkflowService
     private readonly Func<Task> _pauseQuotaPolling;
     private readonly Func<Task> _resumeQuotaPolling;
     private readonly Func<bool, bool, CancellationToken, Task> _refreshConnections;
+    private readonly Func<CancellationToken, Task<IReadOnlyList<ProviderConnection>>> _refreshConnectionsLightweight;
     private readonly Action<string> _setStatus;
     private readonly Action<string, ToastType, int> _showToast;
     private readonly Action<ProviderKind, bool> _setCardWorkflowInProgress;
@@ -51,6 +52,7 @@ public sealed class ProviderWorkflowService : IProviderWorkflowService
         Func<Task>? pauseQuotaPolling = null,
         Func<Task>? resumeQuotaPolling = null,
         Func<bool, bool, CancellationToken, Task>? refreshConnections = null,
+        Func<CancellationToken, Task<IReadOnlyList<ProviderConnection>>>? refreshConnectionsLightweight = null,
         Action<string>? statusCallback = null,
         Action<string, ToastType, int>? showToast = null,
         Action<ProviderKind, bool>? setCardWorkflowInProgress = null,
@@ -75,9 +77,11 @@ public sealed class ProviderWorkflowService : IProviderWorkflowService
         var rawPause = pauseQuotaPolling ?? (() => Task.CompletedTask);
         var rawResume = resumeQuotaPolling ?? (() => Task.CompletedTask);
         var rawRefresh = refreshConnections ?? ((s, f, c) => Task.CompletedTask);
-        _pauseQuotaPolling = () => SafeInvokeAsync(rawPause, "pauseQuotaPolling");
-        _resumeQuotaPolling = () => SafeInvokeAsync(rawResume, "resumeQuotaPolling");
-        _refreshConnections = (s, f, c) => SafeInvokeAsync(() => rawRefresh(s, f, c), "refreshConnections");
+        var rawRefreshLightweight = refreshConnectionsLightweight ?? (new Func<CancellationToken, Task<IReadOnlyList<ProviderConnection>>>(ct => Task.FromResult<IReadOnlyList<ProviderConnection>>(Array.Empty<ProviderConnection>())));
+        _pauseQuotaPolling = () => SafeInvokeAsync(rawPause, "pauseQuotaPolling", CancellationToken.None);
+        _resumeQuotaPolling = () => SafeInvokeAsync(rawResume, "resumeQuotaPolling", CancellationToken.None);
+        _refreshConnections = (s, f, c) => SafeInvokeAsync(() => rawRefresh(s, f, c), "refreshConnections", c);
+        _refreshConnectionsLightweight = ct => SafeInvokeAsync<IReadOnlyList<ProviderConnection>>(() => rawRefreshLightweight(ct), "refreshConnectionsLightweight", ct);
         var rawStatus = statusCallback ?? (_ => { });
         var rawToast = showToast ?? ((m, t, i) => { });
         var rawCard = setCardWorkflowInProgress ?? ((k, v) => { });
@@ -124,11 +128,15 @@ public sealed class ProviderWorkflowService : IProviderWorkflowService
         new(StringComparer.Ordinal);
     public DateTimeOffset WorkflowStartedAt { get; internal set; }
 
-    private async Task SafeInvokeAsync(Func<Task> action, string callbackName)
+    private async Task SafeInvokeAsync(Func<Task> action, string callbackName, CancellationToken cancellationToken = default)
     {
         try
         {
             await action();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -138,6 +146,28 @@ public sealed class ProviderWorkflowService : IProviderWorkflowService
                 "WorkflowCallbackFailed",
                 "Workflow async callback failed",
                 new { callback = callbackName, error = ex.Message });
+        }
+    }
+
+    private async Task<T> SafeInvokeAsync<T>(Func<Task<T>> action, string callbackName, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "Providers",
+                "WorkflowCallbackFailed",
+                "Workflow async callback failed",
+                new { callback = callbackName, error = ex.Message });
+            return default!;
         }
     }
 
@@ -713,7 +743,7 @@ public sealed class ProviderWorkflowService : IProviderWorkflowService
         CurrentProvider = null;
         _setStatus($"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.");
         _showToast($"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.", ToastType.Success, 5);
-        await _refreshConnections(false, false, cancellationToken);
+        await _refreshConnectionsLightweight(cancellationToken);
     }
 
     public async Task WaitForConnectionAsync()
@@ -751,7 +781,7 @@ public sealed class ProviderWorkflowService : IProviderWorkflowService
             CurrentProvider = null;
             _setStatus($"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.");
             _showToast($"Đã kết nối {ProviderCatalog.Get(provider).DisplayName} với profile {profile.Name}.", ToastType.Success, 5);
-            await _refreshConnections(false, true, cancellationToken);
+            await _refreshConnectionsLightweight(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {

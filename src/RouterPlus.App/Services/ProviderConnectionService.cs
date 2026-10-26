@@ -75,4 +75,17 @@ public sealed class ProviderConnectionService : IProviderConnectionService
             nearLimit,
             followUpRefreshException);
     }
+
+    public async Task<IReadOnlyList<ProviderConnection>> RefreshConnectionsLightweightAsync(
+        Func<Task<IRouterApiClient>> apiFactory,
+        CancellationToken cancellationToken)
+    {
+        if (apiFactory is null)
+        {
+            throw new ArgumentNullException(nameof(apiFactory));
+        }
+
+        var api = await apiFactory();
+        return await api.ListAllConnectionsAsync(cancellationToken, includeQuotas: false);
+    }
 }

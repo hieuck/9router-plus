@@ -263,4 +263,38 @@ public sealed class ProviderConnectionServiceTests
 
         Assert.True(result.NearLimit);
     }
+
+    [Fact]
+    public async Task RefreshConnectionsLightweightAsync_CallsListAllConnectionsWithIncludeQuotasFalse()
+    {
+        var connection = new ProviderConnection("c1", ProviderKind.Codex, "Work", 1, true);
+        var mock = new Mock<IRouterApiClient>();
+        bool capturedIncludeQuotas = true;
+        mock.Setup(m => m.ListAllConnectionsAsync(It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback<CancellationToken, bool>((_, includeQuotas) => capturedIncludeQuotas = includeQuotas)
+            .ReturnsAsync(new[] { connection });
+
+        var service = new ProviderConnectionService();
+        var result = await service.RefreshConnectionsLightweightAsync(() => Task.FromResult(mock.Object), CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.False(capturedIncludeQuotas);
+    }
+
+    [Fact]
+    public async Task RefreshConnectionsAsync_StillRequestsQuotas()
+    {
+        var connection = new ProviderConnection("c1", ProviderKind.Codex, "Work", 1, true);
+        var mock = new Mock<IRouterApiClient>();
+        bool capturedIncludeQuotas = false;
+        mock.Setup(m => m.ListAllConnectionsAsync(It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback<CancellationToken, bool>((_, includeQuotas) => capturedIncludeQuotas = includeQuotas)
+            .ReturnsAsync(new[] { connection });
+
+        var service = new ProviderConnectionService();
+        var result = await service.RefreshConnectionsAsync(() => Task.FromResult(mock.Object), CancellationToken.None);
+
+        Assert.Single(result.Connections);
+        Assert.True(capturedIncludeQuotas);
+    }
 }

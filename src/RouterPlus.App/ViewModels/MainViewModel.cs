@@ -293,6 +293,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 pauseQuotaPolling: () => { PauseQuotaPolling(); return Task.CompletedTask; },
                 resumeQuotaPolling: ResumeQuotaPollingAsync,
                 refreshConnections: (showStatus, forceLog, ct) => RefreshConnectionStatusesAsync(showStatus, forceLog, ct),
+                refreshConnectionsLightweight: ct => RefreshConnectionsLightweightAsync(ct),
                 statusCallback: value => StatusText = value,
                 showToast: (msg, type, sec) => ShowToast(msg, type, sec),
                 setCardWorkflowInProgress: (kind, value) => GetProviderCard(kind).SetWorkflowInProgress(value),
@@ -2696,6 +2697,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public Task RefreshConnectionStatusesAsync(CancellationToken cancellationToken = default) =>
         RefreshConnectionStatusesAsync(showStatus: true, forceLog: true, cancellationToken);
+
+    public async Task<IReadOnlyList<ProviderConnection>> RefreshConnectionsLightweightAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var connections = await _connectionService.RefreshConnectionsLightweightAsync(
+            async () => (IRouterApiClient)await CreateApiClientAsync(),
+            cancellationToken);
+
+        foreach (var row in ProfileRows)
+        {
+            row.UpdateConnections(connections);
+        }
+
+        OnPropertyChanged(nameof(SelectedProfileRow));
+        UpdateProviderCardStatuses();
+        UpdateProviderFilterCounts();
+        ApplyProfileFilter();
+
+        return connections;
+    }
 
     public void StartQuotaPolling() => _quotaPollingService.Start();
 
