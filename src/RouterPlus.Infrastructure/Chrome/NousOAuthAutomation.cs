@@ -330,7 +330,7 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
                 return true;
             }
         }
-        catch
+        catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
             // Ignore errors, treat as not found
         }
@@ -339,7 +339,7 @@ public sealed class NousOAuthAutomation : GoogleOAuthFlowAutomation
 
     /// <summary>
     /// Override account picker for Nous: dedicated retry that polls for the account row to appear,
-    /// using the shared Google detector (base.TryClickAccountPickerAsync) with JS click and exact data-identifier.
+    /// using the shared Google detector (base.TryClickAccountPickerAsync) with trusted CDP click and exact data-identifier.
     /// </summary>
     protected override async Task<bool> TryClickAccountPickerAsync(
         CombinedOAuthPageState state,

@@ -149,43 +149,23 @@ public static class GoogleOAuthPageDetector
         allButtons.push({text: text.substring(0, 100), visible, dataEmail, dataIdentifier, tag: el.tagName});
 
         if (!visible) continue;
-        if (text.includes('xóa') || text.includes('remove') || text.includes('delete') || text.includes('sign out') || text.includes('cuộn xuống') || text.includes('use another')) continue;
-        if (text.includes(emailLower) || dataEmail === emailLower || dataIdentifier === emailLower) {
+        // ONLY exact profile email match; no fallback to first/scroll/use-another/add-account.
+        const textExact = text.trim() === emailLower;
+        if (dataEmail === emailLower || dataIdentifier === emailLower || textExact) {
             matchedButton = el;
             break;
         }
-    }
-
-    // Fallback: If no email match, look for actual Google account (not AWS SSO identity)
-    let scrollButton = null;
-    if (!matchedButton) {
-        for (const el of buttons) {
-            if (!isVisible(el)) continue;
-            const text = ((el.innerText || el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
-
-            // Track 'scroll down' / 'use another' button
-            if (text.includes('cuộn xuống') || text.includes('use another') || text.includes('add account')) {
-                if (!scrollButton) scrollButton = el;
-                continue;
-            }
-            if (text.includes('remove') || text.includes('xóa')) continue;
-            // Skip AWS SSO identity provider button (provider-agnostic fallback)
-            if (text.includes('amazon web services') || text.includes('aws sso')) continue;
-            // Found a real account button
-            matchedButton = el;
-            break;
-        }
-    }
-
-    // If no real account button found, click 'scroll down' to reveal more accounts
-    if (!matchedButton && scrollButton) {
-        matchedButton = scrollButton;
     }
 
     if (matchedButton) {
         matchedButton.scrollIntoView({ block: 'center' });
         const rect = matchedButton.getBoundingClientRect();
-        return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, totalButtons: allButtons.length, allButtons: allButtons };
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+                 viewportWidth: viewportWidth, viewportHeight: viewportHeight,
+                 left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+                 totalButtons: allButtons.length, allButtons: allButtons };
     }
     return { found: false, totalButtons: allButtons.length, allButtons: allButtons };
 })()
@@ -193,77 +173,136 @@ public static class GoogleOAuthPageDetector
 
         try
         {
+            // Check CDP/JS exceptions at both top-level result and nested result.result.
             var result = await client.CallAsync("Runtime.evaluate", new
             {
                 expression = script,
                 returnByValue = true
             }, cancellationToken, sessionId);
 
-            if (result.TryGetProperty("result", out var resultProp) &&
-                resultProp.TryGetProperty("value", out var valueProp))
+            if (result.TryGetProperty("exceptionDetails", out _))
             {
-                // Handle exceptionDetails
-                if (resultProp.TryGetProperty("exceptionDetails", out _))
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "GoogleOAuthDetector",
+                    "ClickAccountError",
+                    "Click account script exception",
+                    new { email = profileEmail });
+                return false;
+            }
+
+            if (!result.TryGetProperty("result", out var resultProp))
+            {
+                return false;
+            }
+
+            if (resultProp.TryGetProperty("exceptionDetails", out _))
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "GoogleOAuthDetector",
+                    "ClickAccountError",
+                    "Click account script exception",
+                    new { email = profileEmail });
+                return false;
+            }
+
+            if (!resultProp.TryGetProperty("value", out var valueProp))
+            {
+                return false;
+            }
+
+            if (valueProp.ValueKind == JsonValueKind.False)
+            {
+                return false;
+            }
+
+            if (valueProp.TryGetProperty("found", out var foundProp) &&
+                foundProp.GetBoolean() &&
+                valueProp.TryGetProperty("x", out var xProp) &&
+                valueProp.TryGetProperty("y", out var yProp))
+            {
+                if (xProp.ValueKind != JsonValueKind.Number || yProp.ValueKind != JsonValueKind.Number)
                 {
                     return false;
                 }
 
-                if (valueProp.ValueKind == JsonValueKind.False)
+                double x = xProp.GetDouble();
+                double y = yProp.GetDouble();
+
+                // Coordinate safety: reject non-positive or out-of-viewport coords.
+                double viewportWidth = valueProp.TryGetProperty("viewportWidth", out var vwProp) && vwProp.ValueKind == JsonValueKind.Number
+                    ? vwProp.GetDouble() : 0;
+                double viewportHeight = valueProp.TryGetProperty("viewportHeight", out var vhProp) && vhProp.ValueKind == JsonValueKind.Number
+                    ? vhProp.GetDouble() : 0;
+
+                if (x <= 0 || y <= 0)
+                {
+                    return false;
+                }
+                if (viewportWidth > 0 && (x > viewportWidth))
+                {
+                    return false;
+                }
+                if (viewportHeight > 0 && (y > viewportHeight))
                 {
                     return false;
                 }
 
-                if (valueProp.TryGetProperty("found", out var foundProp) &&
-                    foundProp.GetBoolean() &&
-                    valueProp.TryGetProperty("x", out var xProp) &&
-                    valueProp.TryGetProperty("y", out var yProp))
+                // Element bounds must be positive if provided.
+                if (valueProp.TryGetProperty("width", out var wProp) && wProp.ValueKind == JsonValueKind.Number && wProp.GetDouble() <= 0)
                 {
-                    double x = xProp.GetDouble();
-                    double y = yProp.GetDouble();
-
-                    // Trusted CDP click
-                    await client.CallAsync("Input.dispatchMouseEvent", new
-                    {
-                        type = "mouseMoved",
-                        x,
-                        y,
-                        button = "none",
-                        buttons = 0
-                    }, cancellationToken, sessionId);
-
-                    await client.CallAsync("Input.dispatchMouseEvent", new
-                    {
-                        type = "mousePressed",
-                        x,
-                        y,
-                        button = "left",
-                        buttons = 1,
-                        clickCount = 1
-                    }, cancellationToken, sessionId);
-
-                    await client.CallAsync("Input.dispatchMouseEvent", new
-                    {
-                        type = "mouseReleased",
-                        x,
-                        y,
-                        button = "left",
-                        buttons = 0,
-                        clickCount = 1
-                    }, cancellationToken, sessionId);
-
-                    ObservabilityHub.Instance.LogEvent(
-                        LogLevel.Info,
-                        "GoogleOAuthDetector",
-                        "AccountClicked",
-                        "Google account clicked successfully",
-                        new { email = profileEmail, x, y, trusted = true });
-                    return true;
+                    return false;
                 }
+                if (valueProp.TryGetProperty("height", out var hProp) && hProp.ValueKind == JsonValueKind.Number && hProp.GetDouble() <= 0)
+                {
+                    return false;
+                }
+
+                // Trusted CDP click
+                await client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseMoved",
+                    x,
+                    y,
+                    button = "none",
+                    buttons = 0
+                }, cancellationToken, sessionId);
+
+                await client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mousePressed",
+                    x,
+                    y,
+                    button = "left",
+                    buttons = 1,
+                    clickCount = 1
+                }, cancellationToken, sessionId);
+
+                await Task.Delay(50, cancellationToken);
+
+                await client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseReleased",
+                    x,
+                    y,
+                    button = "left",
+                    buttons = 0,
+                    clickCount = 1
+                }, cancellationToken, sessionId);
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleOAuthDetector",
+                    "AccountClicked",
+                    "Google account clicked successfully",
+                    new { email = profileEmail, x, y, trusted = true });
+                return true;
             }
 
             return false;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
         {
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Error,
@@ -365,8 +404,14 @@ public static class GoogleOAuthPageDetector
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     };
+    const isEnabled = el => {
+        if (!el) return false;
+        if (el.disabled) return false;
+        const ariaDisabled = (el.getAttribute('aria-disabled') || '').toLowerCase();
+        return ariaDisabled !== 'true';
+    };
     const buttons = Array.from(document.querySelectorAll('button, [role=""button""]')).filter(btn => {
-        if (!isVisible(btn)) return false;
+        if (!isVisible(btn) || !isEnabled(btn)) return false;
         const text = ((btn.innerText || '') + ' ' + (btn.getAttribute('aria-label') || '')).toLowerCase();
         return text.includes('continue') || text.includes('tiếp tục') ||
                text.includes('allow') || text.includes('cho phép') ||
@@ -376,7 +421,11 @@ public static class GoogleOAuthPageDetector
         const btn = buttons[0];
         btn.scrollIntoView({ block: 'center' });
         const rect = btn.getBoundingClientRect();
-        return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+                 viewportWidth: viewportWidth, viewportHeight: viewportHeight,
+                 left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     }
     return { found: false };
 })()
@@ -390,70 +439,121 @@ public static class GoogleOAuthPageDetector
                 returnByValue = true
             }, cancellationToken, sessionId);
 
-            if (result.TryGetProperty("result", out var resultProp) &&
-                resultProp.TryGetProperty("value", out var valueProp))
+            if (result.TryGetProperty("exceptionDetails", out _))
             {
-                if (resultProp.TryGetProperty("exceptionDetails", out _))
+                return false;
+            }
+
+            if (!result.TryGetProperty("result", out var resultProp))
+            {
+                return false;
+            }
+
+            if (resultProp.TryGetProperty("exceptionDetails", out _))
+            {
+                return false;
+            }
+
+            if (!resultProp.TryGetProperty("value", out var valueProp))
+            {
+                return false;
+            }
+
+            if (valueProp.ValueKind == JsonValueKind.False)
+            {
+                return false;
+            }
+
+            if (valueProp.TryGetProperty("found", out var foundProp) &&
+                foundProp.GetBoolean() &&
+                valueProp.TryGetProperty("x", out var xProp) &&
+                valueProp.TryGetProperty("y", out var yProp))
+            {
+                if (xProp.ValueKind != JsonValueKind.Number || yProp.ValueKind != JsonValueKind.Number)
                 {
                     return false;
                 }
 
-                if (valueProp.ValueKind == JsonValueKind.False)
+                double x = xProp.GetDouble();
+                double y = yProp.GetDouble();
+
+                double viewportWidth = valueProp.TryGetProperty("viewportWidth", out var vwProp) && vwProp.ValueKind == JsonValueKind.Number
+                    ? vwProp.GetDouble() : 0;
+                double viewportHeight = valueProp.TryGetProperty("viewportHeight", out var vhProp) && vhProp.ValueKind == JsonValueKind.Number
+                    ? vhProp.GetDouble() : 0;
+
+                if (x <= 0 || y <= 0)
+                {
+                    return false;
+                }
+                if (viewportWidth > 0 && x > viewportWidth)
+                {
+                    return false;
+                }
+                if (viewportHeight > 0 && y > viewportHeight)
                 {
                     return false;
                 }
 
-                if (valueProp.TryGetProperty("found", out var foundProp) &&
-                    foundProp.GetBoolean() &&
-                    valueProp.TryGetProperty("x", out var xProp) &&
-                    valueProp.TryGetProperty("y", out var yProp))
+                if (valueProp.TryGetProperty("width", out var wProp) && wProp.ValueKind == JsonValueKind.Number && wProp.GetDouble() <= 0)
                 {
-                    double x = xProp.GetDouble();
-                    double y = yProp.GetDouble();
-
-                    await client.CallAsync("Input.dispatchMouseEvent", new
-                    {
-                        type = "mouseMoved",
-                        x,
-                        y,
-                        button = "none",
-                        buttons = 0
-                    }, cancellationToken, sessionId);
-
-                    await client.CallAsync("Input.dispatchMouseEvent", new
-                    {
-                        type = "mousePressed",
-                        x,
-                        y,
-                        button = "left",
-                        buttons = 1,
-                        clickCount = 1
-                    }, cancellationToken, sessionId);
-
-                    await client.CallAsync("Input.dispatchMouseEvent", new
-                    {
-                        type = "mouseReleased",
-                        x,
-                        y,
-                        button = "left",
-                        buttons = 0,
-                        clickCount = 1
-                    }, cancellationToken, sessionId);
-
-                    ObservabilityHub.Instance.LogEvent(
-                        LogLevel.Info,
-                        "GoogleOAuthDetector",
-                        "ConsentButtonClicked",
-                        "Google consent button clicked",
-                        new { x, y, trusted = true });
-                    return true;
+                    return false;
                 }
+                if (valueProp.TryGetProperty("height", out var hProp) && hProp.ValueKind == JsonValueKind.Number && hProp.GetDouble() <= 0)
+                {
+                    return false;
+                }
+
+                await client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseMoved",
+                    x,
+                    y,
+                    button = "none",
+                    buttons = 0
+                }, cancellationToken, sessionId);
+
+                await client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mousePressed",
+                    x,
+                    y,
+                    button = "left",
+                    buttons = 1,
+                    clickCount = 1
+                }, cancellationToken, sessionId);
+
+                await Task.Delay(50, cancellationToken);
+
+                await client.CallAsync("Input.dispatchMouseEvent", new
+                {
+                    type = "mouseReleased",
+                    x,
+                    y,
+                    button = "left",
+                    buttons = 0,
+                    clickCount = 1
+                }, cancellationToken, sessionId);
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "GoogleOAuthDetector",
+                    "ConsentButtonClicked",
+                    "Google consent button clicked",
+                    new { x, y, trusted = true });
+                return true;
             }
 
             return false;
         }
-        catch
+        catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "GoogleOAuthDetector",
+                "ConsentClickFailed",
+                "Consent click failed",
+                new { error = ex.Message });
             return false;
         }
     }

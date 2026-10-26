@@ -387,11 +387,139 @@ public sealed class GoogleOAuthPageDetectorTests
         }
     }
 
-    private static JsonElement ResultCoords(double x, double y) =>
-        JsonSerializer.SerializeToDocument(new { result = new { value = new { found = true, x, y } } }).RootElement.Clone();
+    [Fact]
+    public async Task TryClickAccountAsync_returns_false_when_no_exact_email_match()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultNoCoords()]
+        };
+
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "exact@example.test", CancellationToken.None);
+
+        Assert.False(clicked);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryClickAccountAsync_returns_false_for_offscreen_coords()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultCoords(150, 20, 100, 100)]
+        };
+
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "exact@example.test", CancellationToken.None);
+
+        Assert.False(clicked);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryClickAccountAsync_returns_false_for_non_positive_coords()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultCoords(0, 20, 100, 100)]
+        };
+
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "exact@example.test", CancellationToken.None);
+
+        Assert.False(clicked);
+        Assert.Single(client.Calls);
+    }
+
+    [Fact]
+    public async Task TryClickAccountAsync_returns_false_on_exceptionDetails_top_level()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultExceptionTopLevel()]
+        };
+
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "exact@example.test", CancellationToken.None);
+
+        Assert.False(clicked);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryClickAccountAsync_returns_false_on_exceptionDetails_nested()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultExceptionNested()]
+        };
+
+        var clicked = await GoogleOAuthPageDetector.TryClickAccountAsync(
+            client, "session-account", "exact@example.test", CancellationToken.None);
+
+        Assert.False(clicked);
+        Assert.Single(client.Calls);
+        Assert.DoesNotContain(client.Calls, c => c.Method == "Input.dispatchMouseEvent");
+    }
+
+    [Fact]
+    public async Task TryClickGoogleConsentButtonAsync_skips_disabled_and_returns_false_when_none()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultNoCoords()]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
+            client, "session-consent", CancellationToken.None);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task TryClickGoogleConsentButtonAsync_returns_false_on_exceptionDetails()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultExceptionNested()]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
+            client, "session-consent", CancellationToken.None);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task TryClickGoogleConsentButtonAsync_returns_false_for_offscreen_coords()
+    {
+        var client = new FakeCdpClient
+        {
+            Responses = [ResultCoords(150, 20, 100, 100)]
+        };
+
+        var result = await GoogleOAuthPageDetector.TryClickGoogleConsentButtonAsync(
+            client, "session-consent", CancellationToken.None);
+
+        Assert.False(result);
+        Assert.Single(client.Calls);
+    }
+
+    private static JsonElement ResultCoords(double x, double y, double viewportWidth = 100, double viewportHeight = 100, double width = 10, double height = 10) =>
+        JsonSerializer.SerializeToDocument(new { result = new { value = new { found = true, x, y, viewportWidth, viewportHeight, width, height } } }).RootElement.Clone();
 
     private static JsonElement ResultNoCoords() =>
         JsonSerializer.SerializeToDocument(new { result = new { value = new { found = false } } }).RootElement.Clone();
+
+    private static JsonElement ResultExceptionTopLevel() =>
+        JsonSerializer.SerializeToDocument(new { exceptionDetails = new { text = "synthetic error" } }).RootElement.Clone();
+
+    private static JsonElement ResultExceptionNested() =>
+        JsonSerializer.SerializeToDocument(new { result = new { exceptionDetails = new { text = "synthetic error" } } }).RootElement.Clone();
 
     private static JsonElement EmptyResult() =>
         JsonSerializer.SerializeToDocument(new { }).RootElement.Clone();
