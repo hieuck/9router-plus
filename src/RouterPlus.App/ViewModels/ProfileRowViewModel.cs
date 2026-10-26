@@ -12,6 +12,7 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
     private bool _isSelected;
     private ProfileHealthStatus? _healthStatus;
     private bool _isCheckingHealth;
+    private bool _isNameAmbiguous;
 
     public ProfileRowViewModel(
         ChromeProfile profile,
@@ -21,6 +22,21 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
         ArgumentNullException.ThrowIfNull(providerDefinitions);
         ProviderStatuses = new ObservableCollection<ProfileProviderStatusViewModel>(
             providerDefinitions.Select(definition => new ProfileProviderStatusViewModel(definition)));
+    }
+
+    /// <summary>
+    /// Whether this profile's name is ambiguous (shared by another profile).
+    /// When true, no connections should be matched for this profile.
+    /// </summary>
+    public bool IsNameAmbiguous
+    {
+        get => _isNameAmbiguous;
+        internal set
+        {
+            if (_isNameAmbiguous == value) return;
+            _isNameAmbiguous = value;
+            OnPropertyChanged();
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -142,22 +158,43 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
         }
     }
 
-    public void UpdateConnections(IEnumerable<ProviderConnection> connections)
+    public void UpdateConnections(IEnumerable<ProviderConnection> connections, IEnumerable<ChromeProfile>? allProfiles = null)
     {
         var connectionList = connections.ToArray();
-        var counts = ProfileConnectionMatcher.CountByProvider(Profile, connectionList);
+
+        // If name is ambiguous, don't match any connections
+        if (IsNameAmbiguous)
+        {
+            foreach (var status in ProviderStatuses)
+            {
+                status.SetConnectionCount(
+                    0,
+                    ProviderHealthState.Missing,
+                    null,
+                    null,
+                    null,
+                    Array.Empty<ProviderConnection>());
+            }
+
+            OnPropertyChanged(nameof(ConnectedProviderCount));
+            OnPropertyChanged(nameof(ConnectionSummary));
+            return;
+        }
+
+        // Use the new matcher with all profiles for ambiguity detection
+        var matches = ProfileConnectionMatcher.MatchAllProviders(
+            Profile,
+            connectionList,
+            allProfiles ?? [Profile]);
+
         foreach (var status in ProviderStatuses)
         {
-            var matchingConnections = connectionList
-                .Where(connection =>
-                    connection.Provider == status.Definition.Kind &&
-                    string.Equals(connection.Name?.Trim(), Profile.Name.Trim(), StringComparison.OrdinalIgnoreCase))
-                .ToArray();
+            var matchingConnections = matches.GetValueOrDefault(status.Definition.Kind, Array.Empty<ProviderConnection>());
             var errorConnection = matchingConnections.FirstOrDefault(connection => connection.IsActive && connection.HasError)
                 ?? matchingConnections.FirstOrDefault(connection => connection.HasError);
             var healthState = ProviderHealthStateResolver.Resolve(true, matchingConnections);
             status.SetConnectionCount(
-                counts[status.Definition.Kind],
+                matchingConnections.Count,
                 healthState,
                 errorConnection?.TestStatus,
                 errorConnection?.ErrorCode,

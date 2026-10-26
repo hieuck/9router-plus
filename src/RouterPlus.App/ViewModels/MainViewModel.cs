@@ -2113,11 +2113,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         Profiles.Clear();
         ProfileRows.Clear();
-        foreach (var profile in profiles)
+
+        // Compute ambiguous profile names once
+        var allProfilesList = profiles.ToArray();
+        var ambiguousNames = ProfileConnectionMatcher.GetAmbiguousProfileNames(allProfilesList);
+
+        foreach (var profile in allProfilesList)
         {
             Profiles.Add(profile);
             var row = new ProfileRowViewModel(profile, Providers);
             row.SelectionChanged += OnProfileSelectionChanged;
+            row.IsNameAmbiguous = ambiguousNames.Contains(ProfileConnectionMatcher.NormalizeName(profile.Name));
             ProfileRows.Add(row);
         }
 
@@ -2139,11 +2145,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var profiles = _harnessProfiles ?? Array.Empty<ChromeProfile>();
         Profiles.Clear();
         ProfileRows.Clear();
-        foreach (var profile in profiles)
+
+        var allProfilesList = profiles.ToArray();
+        var ambiguousNames = ProfileConnectionMatcher.GetAmbiguousProfileNames(allProfilesList);
+
+        foreach (var profile in allProfilesList)
         {
             Profiles.Add(profile);
             var row = new ProfileRowViewModel(profile, Providers);
             row.SelectionChanged += OnProfileSelectionChanged;
+            row.IsNameAmbiguous = ambiguousNames.Contains(ProfileConnectionMatcher.NormalizeName(profile.Name));
             ProfileRows.Add(row);
         }
 
@@ -2924,9 +2935,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             await UpdateQuotaResetSuggestionsAsync(connections, cancellationToken);
 
+            var allProfilesList = ProfileRows.Select(r => r.Profile).ToArray();
             foreach (var row in ProfileRows)
             {
-                row.UpdateConnections(connections);
+                row.UpdateConnections(connections, allProfilesList);
             }
 
             OnPropertyChanged(nameof(SelectedProfileRow));
@@ -2936,6 +2948,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             var matchedProfiles = ProfileRows.Count(row => row.ConnectedProviderCount > 0);
             var lostRows = ProfileRows.Where(row => row.ProviderStatuses.Any(status => status.HasLostConnection)).ToList();
+
+            // Track unmatched connections (not assigned to any profile/provider)
+            var matchedConnectionIds = new HashSet<string>(ProfileRows
+                .SelectMany(row => row.ProviderStatuses.SelectMany(status => status.Connections))
+                .Where(c => !string.IsNullOrEmpty(c.Id))
+                .Select(c => c.Id!), StringComparer.Ordinal);
+            var unmatchedCount = connections.Count(c => !string.IsNullOrEmpty(c.Id) && !matchedConnectionIds.Contains(c.Id!));
+
             ConnectionStatusText = disableFailures > 0
                 ? $"Đã đồng bộ {connections.Count} connection · tắt tự động thất bại {disableFailures} connection."
                 : $"Đã đồng bộ {connections.Count} connection · {matchedProfiles}/{ProfileRows.Count} profile có provider.";
@@ -2944,6 +2964,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 var lostNames = string.Join(", ", lostRows.Select(row => row.Name));
                 ConnectionStatusText += $" · Mất connection: {lostNames} — thêm lại";
                 AppendLog("WARN", $"Mất connection: {lostNames} — thêm lại");
+            }
+            if (unmatchedCount > 0)
+            {
+                ConnectionStatusText += $" · {unmatchedCount} connection chưa khớp profile";
             }
             if (showStatus)
             {
