@@ -161,7 +161,7 @@ public sealed class DiagnosticHelpersTests
     }
 
     private static LogEvent EventByName(IReadOnlyList<LogEvent> events, string eventName) =>
-        Assert.Single(events.Where(e => e.Event == eventName));
+        Assert.Single(events, e => e.Event == eventName);
 
     private static Dictionary<string, object?> Context(LogEvent logEvent) =>
         Assert.IsType<Dictionary<string, object?>>(logEvent.Context);
