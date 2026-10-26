@@ -3,6 +3,7 @@ namespace RouterPlus.App.E2E;
 /// <summary>
 /// Tests for profile selection and interaction.
 /// </summary>
+[Trait("Category", "E2E")]
 public sealed class ProfileManagementTests
 {
     [E2EFact]

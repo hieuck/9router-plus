@@ -7,6 +7,7 @@ namespace RouterPlus.App.E2E;
 /// <summary>
 /// User journeys for the Credentials Manager dialog.
 /// </summary>
+[Trait("Category", "E2E")]
 public sealed class CredentialsManagerDialogTests
 {
     [E2EFact]

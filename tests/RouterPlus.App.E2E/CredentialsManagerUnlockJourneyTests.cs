@@ -9,6 +9,7 @@ namespace RouterPlus.App.E2E;
 /// <summary>
 /// User journeys for unlocking the credentials vault and logging in from a single row.
 /// </summary>
+[Trait("Category", "E2E")]
 public sealed class CredentialsManagerUnlockJourneyTests
 {
     [E2EFact]

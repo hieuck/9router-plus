@@ -9,6 +9,7 @@ namespace RouterPlus.App.E2E;
 /// <summary>
 /// Functional E2E tests for profile health check (using synthetic test data).
 /// </summary>
+[Trait("Category", "E2E")]
 public class ProfileHealthCheckFunctionalTests
 {
     private readonly ITestOutputHelper _output;

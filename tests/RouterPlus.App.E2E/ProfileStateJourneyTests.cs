@@ -2,6 +2,7 @@ using FlaUI.Core.Tools;
 
 namespace RouterPlus.App.E2E;
 
+[Trait("Category", "E2E")]
 public sealed class ProfileStateJourneyTests
 {
     [E2EFact]

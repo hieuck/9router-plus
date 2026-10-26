@@ -5,6 +5,7 @@ using Xunit.Abstractions;
 
 namespace RouterPlus.App.E2E;
 
+[Trait("Category", "E2E")]
 public class ProfileContextMenuPerformanceTests
 {
     private readonly ITestOutputHelper _output;

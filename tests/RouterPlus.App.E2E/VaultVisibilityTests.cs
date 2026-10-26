@@ -7,6 +7,7 @@ namespace RouterPlus.App.E2E;
 /// <summary>
 /// Tests for vault unlock button visibility and state transitions.
 /// </summary>
+[Trait("Category", "E2E")]
 public sealed class VaultVisibilityTests
 {
     [E2EFact]

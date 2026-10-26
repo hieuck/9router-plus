@@ -3,6 +3,7 @@ namespace RouterPlus.App.E2E;
 /// <summary>
 /// Tests for application startup and shutdown.
 /// </summary>
+[Trait("Category", "E2E")]
 public sealed class AppLifecycleTests
 {
     [E2EFact]

@@ -10,6 +10,10 @@
     <DebugType>None</DebugType>
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
+  <!-- Default test filter: exclude E2E tests unless explicitly overridden via filter -->
+  <PropertyGroup>
+    <VSTestTestCaseFilter Condition="'$(VSTestTestCaseFilter)' == ''">Category!=E2E</VSTestTestCaseFilter>
+  </PropertyGroup>
   <!-- Analyzers only on product projects (src/). Test projects are excluded by location
        and by their IsTestProject=true convention to avoid disproportionate noise. -->
   <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('\src\')) And '$(IsTestProject)' != 'true'">

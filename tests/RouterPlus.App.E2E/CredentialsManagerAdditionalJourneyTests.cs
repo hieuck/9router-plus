@@ -7,6 +7,7 @@ namespace RouterPlus.App.E2E;
 /// <summary>
 /// Additional user journeys for Credentials Manager provider navigation and removal.
 /// </summary>
+[Trait("Category", "E2E")]
 public sealed class CredentialsManagerAdditionalJourneyTests
 {
     [E2EFact]

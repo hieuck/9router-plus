@@ -10,6 +10,7 @@ namespace RouterPlus.App.E2E;
 /// <summary>
 /// E2E test verifying health check with REAL Chrome profile data (not synthetic).
 /// </summary>
+[Trait("Category", "E2E")]
 public class RealChromeHealthCheckTests
 {
     private readonly ITestOutputHelper _output;
