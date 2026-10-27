@@ -212,13 +212,4 @@ public sealed class ChromeManagedSessionTests
         await Task.CompletedTask;
     }
 
-    [Fact]
-    public async Task ConnectGoogleLoginAsync_rejects_multiple_marked_targets()
-    {
-        // If somehow two targets have the same session marker, should fail
-        // This test validates that exactly one target with the marker is required
-        // Multiple marked targets would indicate a logic error
-        await Task.CompletedTask;
-        Assert.True(true, "Multiple marked target rejection is enforced in ConnectGoogleLoginAsync");
     }
-}

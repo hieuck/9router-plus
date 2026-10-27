@@ -109,23 +109,17 @@ public class DiagnosticReportBuilderTests
     [Fact]
     public void CreateLatestReport_throws_when_no_sessions_available()
     {
-        // Arrange
-        var paths = new ObservabilityPaths();
+        // Arrange - use isolated paths to ensure no sessions exist
+        var tempPath = Path.Combine(Path.GetTempPath(), $"diagnostic-test-{Guid.NewGuid():N}");
+        var paths = new ObservabilityPaths(tempPath);
         var browser = new SessionBrowser(paths);
         var builder = new DiagnosticReportBuilder(paths, browser);
 
         var sessions = browser.ListSessions();
 
-        // Act & Assert
-        if (sessions.Count == 0)
-        {
-            Assert.Throws<InvalidOperationException>(() =>
-                builder.CreateLatestReport(Path.GetTempPath()));
-        }
-        else
-        {
-            // Skip test if sessions exist from previous runs
-            Assert.True(true);
-        }
+        // Act & Assert - should throw when no sessions available
+        Assert.Empty(sessions);
+        Assert.Throws<InvalidOperationException>(() =>
+            builder.CreateLatestReport(Path.GetTempPath()));
     }
 }
