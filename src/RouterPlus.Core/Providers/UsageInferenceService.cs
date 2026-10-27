@@ -12,6 +12,7 @@ public static class UsageInferenceService
     /// <summary>
     /// Attempts to infer usage data from error code and error message.
     /// Returns estimated usage when limits are reached, or null if no inference possible.
+    /// Nous and GitHub have no reliable usage API and must not be inferred (always null).
     /// </summary>
     public static InferredUsage? InferUsageFromError(
         ProviderKind provider,
@@ -36,6 +37,8 @@ public static class UsageInferenceService
             ProviderKind.Kiro => InferKiroUsage(lastError, lastErrorAt),
             ProviderKind.OpenRouter => InferOpenRouterUsage(lastError, lastErrorAt),
             ProviderKind.Ollama => InferOllamaUsage(lastError, lastErrorAt),
+            // Nous and GitHub have no reliable usage API; never fabricate numbers.
+            ProviderKind.Nous or ProviderKind.GitHub => null,
             _ => null
         };
     }
