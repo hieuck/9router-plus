@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Chrome;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.Core.Tests.Chrome;
 
@@ -10,7 +11,7 @@ public sealed class ChromeProfileDeleterTests
     [Fact]
     public async Task Delete_rejects_null_profile()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
 
         try
         {
@@ -18,7 +19,7 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
@@ -35,7 +36,7 @@ public sealed class ChromeProfileDeleterTests
     [Fact]
     public async Task Delete_closes_configured_browser_before_removing_profile()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var executablePath = Path.Combine(userDataDirectory, "chrome.exe");
@@ -61,14 +62,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_skips_browser_close_when_executable_path_is_blank()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var closeCalled = false;
@@ -85,14 +86,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_removes_profile_directory_and_preserves_user_data_root()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(Path.Combine(profileDirectory, "Default"));
         File.WriteAllText(Path.Combine(profileDirectory, "Preferences"), "profile");
@@ -108,14 +109,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_profile_nested_below_user_data_directory()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var nestedDirectory = Path.Combine(userDataDirectory, "Profiles", "Profile 1");
         Directory.CreateDirectory(nestedDirectory);
 
@@ -129,14 +130,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_profile_path_that_is_a_file()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profilePath = Path.Combine(userDataDirectory, "Profile 1");
         File.WriteAllText(profilePath, "not a directory");
 
@@ -150,15 +151,15 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_profile_outside_configured_user_data_directory()
     {
-        var userDataDirectory = CreateTempDirectory();
-        var outsideDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
+        var outsideDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(outsideDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
 
@@ -171,15 +172,15 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
-            DeleteTempDirectory(outsideDirectory);
+            TestDirectory.Delete(userDataDirectory);
+            TestDirectory.Delete(outsideDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_target_equal_to_configured_user_data_directory()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
 
         try
         {
@@ -190,14 +191,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_handles_local_state_without_profile_metadata_without_rewriting_it()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
@@ -215,14 +216,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_handles_null_local_state_json_without_rewriting_it()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
@@ -239,14 +240,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_handles_profile_metadata_with_non_array_order_properties_without_rewriting_it()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
@@ -264,14 +265,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_removes_all_case_insensitive_matches_from_local_state_arrays()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
@@ -290,14 +291,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_preserves_non_string_local_state_array_values()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
@@ -317,14 +318,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_allows_missing_profile_directory()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
 
         try
         {
@@ -336,14 +337,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_removes_profile_from_local_state()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
 
@@ -384,14 +385,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_removes_case_insensitive_duplicate_array_entries_and_ignores_non_strings()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
@@ -421,14 +422,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_leaves_local_state_unchanged_when_profile_has_no_matching_metadata()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
@@ -446,14 +447,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_handles_missing_local_state_gracefully()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
 
@@ -467,14 +468,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_handles_malformed_local_state_gracefully()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
 
@@ -492,14 +493,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_profile_path_that_is_not_a_directory()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profilePath = Path.Combine(userDataDirectory, "Profile 1");
         File.WriteAllText(profilePath, "not a directory");
 
@@ -512,14 +513,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_nested_profile_path()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profiles", "Profile 1");
         Directory.CreateDirectory(profileDirectory);
 
@@ -537,14 +538,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_surfaces_profile_directory_deletion_failure()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
         var lockedFilePath = Path.Combine(profileDirectory, "locked.txt");
@@ -561,7 +562,7 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
@@ -654,19 +655,4 @@ public sealed class ChromeProfileDeleterTests
             directoryName,
             userDataDirectory,
             string.Equals(directoryName, "Default", StringComparison.OrdinalIgnoreCase));
-
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void DeleteTempDirectory(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
-    }
 }

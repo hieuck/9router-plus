@@ -4,6 +4,7 @@ using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Storage;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.Core.Tests.ViewModels;
 
@@ -12,7 +13,7 @@ public sealed class MainViewModelProfileDeleteOrderingTests
     [Fact]
     public async Task DeleteSelectedProfile_save_failure_does_not_delete_and_restores_managed()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var userDataDirectory = Path.Combine(directory, "User Data");
@@ -59,14 +60,14 @@ public sealed class MainViewModelProfileDeleteOrderingTests
         {
             var sp = Path.Combine(directory, "settings.json");
             if (Directory.Exists(sp)) Directory.Delete(sp, recursive: true);
-            DeleteTempDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task DeleteSelectedProfile_success_deletes_after_save()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var userDataDirectory = Path.Combine(directory, "User Data");
@@ -103,14 +104,14 @@ public sealed class MainViewModelProfileDeleteOrderingTests
         }
         finally
         {
-            DeleteTempDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task DeleteSelectedProfile_failure_after_save_restores_managed_and_allows_retry()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var userDataDirectory = Path.Combine(directory, "User Data");
@@ -155,14 +156,14 @@ public sealed class MainViewModelProfileDeleteOrderingTests
         }
         finally
         {
-            DeleteTempDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task DeleteSelectedProfile_stale_user_data_setting_does_not_delete_outside_discovered_root()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var userDataDirectory = Path.Combine(directory, "User Data");
@@ -209,14 +210,14 @@ public sealed class MainViewModelProfileDeleteOrderingTests
         }
         finally
         {
-            DeleteTempDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task AddProfileAsync_save_failure_removes_managed_and_cleans_created_directory()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var userDataDirectory = Path.Combine(directory, "User Data");
@@ -260,22 +261,7 @@ public sealed class MainViewModelProfileDeleteOrderingTests
         {
             var sp = Path.Combine(directory, "settings.json");
             if (Directory.Exists(sp)) Directory.Delete(sp, recursive: true);
-            DeleteTempDirectory(directory);
-        }
-    }
-
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "RouterPlusDeleteOrderingTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void DeleteTempDirectory(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 }

@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using System.IO;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.Core.Tests.TestHelpers;
 
@@ -32,19 +32,12 @@ public static class TestData
         string directoryName = "Default",
         string? userDataDirectory = null)
     {
-        var root = userDataDirectory ?? CreateTempDirectory();
+        var root = userDataDirectory ?? TestDirectory.Create();
         return new ChromeProfile(
             ChromeProfile.CreateId(root, directoryName),
             name,
             directoryName,
             root,
             false);
-    }
-
-    public static string CreateTempDirectory()
-    {
-        var directory = Path.Combine(Path.GetTempPath(), "rp-core-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        return directory;
     }
 }

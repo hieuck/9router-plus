@@ -2,6 +2,7 @@ using RouterPlus.App.ViewModels;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.Core.Tests.ViewModels;
 
@@ -10,7 +11,7 @@ public sealed class MainViewModelProfileContextMenuTests
     [Fact]
     public async Task DeleteSelectedProfile_removes_directory_mapping_and_selects_remaining_profile()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         var userDataDirectory = Path.Combine(directory, "User Data");
         var chromeExecutablePath = Path.Combine(directory, "chrome.exe");
         var settingsPath = Path.Combine(directory, "settings.json");
@@ -54,7 +55,7 @@ public sealed class MainViewModelProfileContextMenuTests
         }
         finally
         {
-            DeleteTempDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
@@ -274,18 +275,4 @@ public sealed class MainViewModelProfileContextMenuTests
         }
     }
 
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void DeleteTempDirectory(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
-    }
 }

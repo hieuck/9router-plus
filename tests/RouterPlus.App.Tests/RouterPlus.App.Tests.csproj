@@ -29,5 +29,8 @@
   <ItemGroup>
     <Folder Include="TestHelpers\" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\TestDirectory.cs" Link="TestHelpers\TestDirectory.cs" />
+  </ItemGroup>
 
 </Project>

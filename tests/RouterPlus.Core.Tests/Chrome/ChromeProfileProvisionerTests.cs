@@ -1,5 +1,6 @@
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Chrome;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.Core.Tests.Chrome;
 
@@ -8,7 +9,7 @@ public sealed class ChromeProfileProvisionerTests
     [Fact]
     public void Create_trims_name_uses_name_for_directory_and_creates_it()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         try
         {
             Directory.CreateDirectory(Path.Combine(userDataDirectory, "Profile 1"));
@@ -40,7 +41,7 @@ public sealed class ChromeProfileProvisionerTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
@@ -49,7 +50,7 @@ public sealed class ChromeProfileProvisionerTests
     [InlineData("abc@example.com", "Profile abc@example.com")]
     public void Create_preserves_email_and_special_characters_in_directory_name(string name, string expectedDirectoryName)
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         try
         {
             var created = new ChromeProfileProvisioner().Create(
@@ -63,14 +64,14 @@ public sealed class ChromeProfileProvisionerTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public void Create_rejects_existing_directory_for_name()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         try
         {
             Directory.CreateDirectory(Path.Combine(userDataDirectory, "Profile abc"));
@@ -85,7 +86,7 @@ public sealed class ChromeProfileProvisionerTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
@@ -94,7 +95,7 @@ public sealed class ChromeProfileProvisionerTests
     [InlineData("   ")]
     public void Create_rejects_blank_names(string name)
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         try
         {
             Assert.Throws<ArgumentException>(() => new ChromeProfileProvisioner().Create(
@@ -105,14 +106,14 @@ public sealed class ChromeProfileProvisionerTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public void Create_rejects_case_insensitive_duplicate_names()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         try
         {
             var discovered = new[]
@@ -133,22 +134,7 @@ public sealed class ChromeProfileProvisionerTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
-        }
-    }
-
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "RouterPlusTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void DeleteTempDirectory(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 }

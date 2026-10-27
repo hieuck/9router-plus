@@ -4,6 +4,7 @@ using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.Core.Tests.ViewModels;
 
@@ -68,7 +69,7 @@ public sealed class MainViewModelCoreBehaviorTests
     [Fact]
     public async Task SaveWindowPlacement_rejects_non_positive_dimensions_without_writing()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         var settingsPath = Path.Combine(directory, "settings.json");
         try
         {
@@ -81,14 +82,14 @@ public sealed class MainViewModelCoreBehaviorTests
         }
         finally
         {
-            DeleteTempDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task InitializeAsync_in_harness_mode_loads_synthetic_profiles_without_provider_sync()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var profiles = new[] { Profile("Personal"), Profile("Work") };
@@ -107,7 +108,7 @@ public sealed class MainViewModelCoreBehaviorTests
         }
         finally
         {
-            DeleteTempDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
@@ -133,21 +134,6 @@ public sealed class MainViewModelCoreBehaviorTests
         name,
         @"C:\Chrome\User Data",
         false);
-
-    private static string CreateTempDirectory()
-    {
-        var directory = Path.Combine(Path.GetTempPath(), "RouterPlusMainViewModelTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        return directory;
-    }
-
-    private static void DeleteTempDirectory(string directory)
-    {
-        if (Directory.Exists(directory))
-        {
-            Directory.Delete(directory, recursive: true);
-        }
-    }
 
     private sealed class RecordingLinkLauncher : IExternalLinkLauncher
     {

@@ -5,6 +5,7 @@ using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Services;
+using RouterPlus.TestHelpers;
 using Xunit;
 
 namespace RouterPlus.Infrastructure.Tests;
@@ -199,7 +200,7 @@ public sealed class AutoLoginOrchestratorTests
     public async Task LoginAsync_DirectPrimaryFallsBackToGoogleOAuth_WhenOAuthSucceeds()
     {
         // Arrange
-        var tempDir = CreateTempDirectory();
+        var tempDir = TestDirectory.Create();
         try
         {
             var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
@@ -242,7 +243,7 @@ public sealed class AutoLoginOrchestratorTests
         }
         finally
         {
-            DeleteTempDirectory(tempDir);
+            TestDirectory.Delete(tempDir);
         }
     }
 
@@ -250,7 +251,7 @@ public sealed class AutoLoginOrchestratorTests
     public async Task LoginAsync_GooglePrimaryReturnsAccountNotFound_WhenLinkedAccountIsMissing()
     {
         // Arrange
-        var tempDir = CreateTempDirectory();
+        var tempDir = TestDirectory.Create();
         try
         {
             var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
@@ -283,7 +284,7 @@ public sealed class AutoLoginOrchestratorTests
         }
         finally
         {
-            DeleteTempDirectory(tempDir);
+            TestDirectory.Delete(tempDir);
         }
     }
 
@@ -291,7 +292,7 @@ public sealed class AutoLoginOrchestratorTests
     public async Task LoginAsync_GooglePrimaryFallsBackToDirect_WhenVaultIsLocked()
     {
         // Arrange
-        var tempDir = CreateTempDirectory();
+        var tempDir = TestDirectory.Create();
         try
         {
             var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
@@ -329,14 +330,14 @@ public sealed class AutoLoginOrchestratorTests
         }
         finally
         {
-            DeleteTempDirectory(tempDir);
+            TestDirectory.Delete(tempDir);
         }
     }
 
     [Fact]
     public async Task LoginAsync_GoogleVaultCancellation_PropagatesCancellation()
     {
-        var tempDir = CreateTempDirectory();
+        var tempDir = TestDirectory.Create();
         try
         {
             var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
@@ -370,7 +371,7 @@ public sealed class AutoLoginOrchestratorTests
         }
         finally
         {
-            DeleteTempDirectory(tempDir);
+            TestDirectory.Delete(tempDir);
         }
     }
 
@@ -378,7 +379,7 @@ public sealed class AutoLoginOrchestratorTests
     public async Task LoginAsync_DirectPrimaryWithoutFallback_DoesNotRetry()
     {
         // Arrange
-        var tempDir = CreateTempDirectory();
+        var tempDir = TestDirectory.Create();
         try
         {
             var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
@@ -414,22 +415,7 @@ public sealed class AutoLoginOrchestratorTests
         }
         finally
         {
-            DeleteTempDirectory(tempDir);
-        }
-    }
-
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void DeleteTempDirectory(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, true);
+            TestDirectory.Delete(tempDir);
         }
     }
 
@@ -525,9 +511,7 @@ public sealed class AutoLoginOrchestratorTests
     public void Constructor_NullGoogleVault_ThrowsArgumentNullException()
     {
         // Arrange
-        var tempDir = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
-        Directory.CreateDirectory(tempDir);
-
+        var tempDir = TestDirectory.Create();
         try
         {
             var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
@@ -544,7 +528,7 @@ public sealed class AutoLoginOrchestratorTests
         }
         finally
         {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            TestDirectory.Delete(tempDir);
         }
     }
 
@@ -552,9 +536,7 @@ public sealed class AutoLoginOrchestratorTests
     public void Constructor_NullProviderVault_ThrowsArgumentNullException()
     {
         // Arrange
-        var tempDir = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
-        Directory.CreateDirectory(tempDir);
-
+        var tempDir = TestDirectory.Create();
         try
         {
             var vaultPaths = new GoogleAccountVaultPaths(tempDir);
@@ -572,7 +554,7 @@ public sealed class AutoLoginOrchestratorTests
         }
         finally
         {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            TestDirectory.Delete(tempDir);
         }
     }
 
@@ -580,9 +562,7 @@ public sealed class AutoLoginOrchestratorTests
     public void Constructor_NullChromeLauncher_ThrowsArgumentNullException()
     {
         // Arrange
-        var tempDir = Path.Combine(Path.GetTempPath(), $"test-vault-{Guid.NewGuid()}");
-        Directory.CreateDirectory(tempDir);
-
+        var tempDir = TestDirectory.Create();
         try
         {
             var vaultPaths = new GoogleAccountVaultPaths(tempDir);
@@ -600,7 +580,7 @@ public sealed class AutoLoginOrchestratorTests
         }
         finally
         {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            TestDirectory.Delete(tempDir);
         }
     }
 }

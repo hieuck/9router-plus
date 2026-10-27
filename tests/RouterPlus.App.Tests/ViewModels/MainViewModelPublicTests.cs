@@ -9,6 +9,7 @@ using RouterPlus.Core.Providers;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
 using RouterPlus.App.Tests.TestHelpers;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.App.Tests.ViewModels;
 
@@ -31,7 +32,7 @@ public sealed class MainViewModelPublicTests
     [Fact]
     public async Task HasVaultCredentialsAsync_returns_true_when_a_provider_has_credentials()
     {
-        var directory = TestData.CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var profile = TestData.CreateProfile("Work", "Default", directory);
@@ -50,14 +51,14 @@ public sealed class MainViewModelPublicTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task HasVaultCredentialsAsync_returns_false_when_no_provider_has_credentials()
     {
-        var directory = TestData.CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var profile = TestData.CreateProfile("Work", "Default", directory);
@@ -67,14 +68,14 @@ public sealed class MainViewModelPublicTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task SelectProfilesWithVaultCredentialsAsync_selects_only_profiles_with_credentials()
     {
-        var directory = TestData.CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var withCreds = TestData.CreateProfile("WithCreds", "Default", directory);
@@ -100,7 +101,7 @@ public sealed class MainViewModelPublicTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 }

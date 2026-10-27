@@ -8,6 +8,7 @@ using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Router;
 using RouterPlus.Infrastructure.Security;
 using RouterPlus.Infrastructure.Storage;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.App.Tests.ViewModels;
 
@@ -39,7 +40,7 @@ public sealed class MainViewModelBehaviorTests
     [Fact]
     public async Task InitializeAsync_in_harness_mode_loads_synthetic_profiles_without_provider_sync()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var profile = CreateProfile("Synthetic", "Default", directory);
@@ -69,14 +70,14 @@ public sealed class MainViewModelBehaviorTests
         }
         finally
         {
-            DeleteDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task CheckProfileHealthCommand_maps_successful_login_to_healthy_status()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var profile = CreateProfile("Work", "Default", directory);
@@ -111,14 +112,14 @@ public sealed class MainViewModelBehaviorTests
         }
         finally
         {
-            DeleteDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task SaveWindowPlacementAsync_ignores_invalid_dimensions_after_valid_save()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var store = Mocks.CreateSettingsStore(directory);
@@ -140,14 +141,14 @@ public sealed class MainViewModelBehaviorTests
         }
         finally
         {
-            DeleteDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
     [Fact]
     public async Task CheckProfileHealthCommand_reports_missing_vault_without_running_automation()
     {
-        var directory = CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var profile = CreateProfile("Work", "Default", directory);
@@ -174,7 +175,7 @@ public sealed class MainViewModelBehaviorTests
         }
         finally
         {
-            DeleteDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 
@@ -285,8 +286,6 @@ public sealed class MainViewModelBehaviorTests
             userDataDirectory ?? @"C:\Chrome\User Data",
             directoryName == "Default");
 
-    private static string CreateTempDirectory() => TestData.CreateTempDirectory();
-
     private sealed class NoOpSecretVault : ISecretVault
     {
         public Task<string?> ReadAsync(string key, CancellationToken cancellationToken = default) =>
@@ -354,7 +353,7 @@ public sealed class MainViewModelBehaviorTests
     [Fact]
     public async Task Batch_completion_raises_close_progress_can_execute_changed()
     {
-        var directory = TestData.CreateTempDirectory();
+        var directory = TestDirectory.Create();
         try
         {
             var profile = TestData.CreateProfile("Synthetic", "Default", directory);
@@ -384,7 +383,7 @@ public sealed class MainViewModelBehaviorTests
         }
         finally
         {
-            DeleteDirectory(directory);
+            TestDirectory.Delete(directory);
         }
     }
 

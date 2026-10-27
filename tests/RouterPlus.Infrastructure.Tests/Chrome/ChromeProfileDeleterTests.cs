@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Infrastructure.Chrome;
+using RouterPlus.TestHelpers;
 
 namespace RouterPlus.Infrastructure.Tests.Chrome;
 
@@ -10,7 +11,7 @@ public sealed class ChromeProfileDeleterTests
     [Fact]
     public async Task Delete_rejects_null_profile()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
 
         try
         {
@@ -18,14 +19,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_whitespace_user_data_directory()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profile = CreateProfile(userDataDirectory, "Profile 1");
 
         try
@@ -34,15 +35,15 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_profile_with_different_user_data_directory()
     {
-        var userDataDirectory = CreateTempDirectory();
-        var profileUserDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
+        var profileUserDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(profileUserDataDirectory, "Profile 1");
         Directory.CreateDirectory(profileDirectory);
 
@@ -58,15 +59,15 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
-            DeleteTempDirectory(profileUserDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
+            TestDirectory.Delete(profileUserDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_profile_that_is_not_an_immediate_child()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profiles", "Profile 1");
         Directory.CreateDirectory(profileDirectory);
 
@@ -82,14 +83,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_rejects_profile_path_that_is_a_file()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profilePath = Path.Combine(userDataDirectory, "Profile 1");
         File.WriteAllText(profilePath, string.Empty);
 
@@ -105,14 +106,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_handles_null_local_state_document()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
         Directory.CreateDirectory(profileDirectory);
@@ -127,14 +128,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_preserves_local_state_when_profile_metadata_is_missing()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
         var localStateJson = "{\"profile\":{\"info_cache\":{},\"profiles_order\":[],\"last_active_profiles\":[]}}";
@@ -150,14 +151,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_removes_case_insensitive_duplicate_profile_entries_and_ignores_non_string_values()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
         Directory.CreateDirectory(profileDirectory);
@@ -193,14 +194,14 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
     [Fact]
     public async Task Delete_preserves_local_state_when_profile_entries_do_not_match()
     {
-        var userDataDirectory = CreateTempDirectory();
+        var userDataDirectory = TestDirectory.Create();
         var profileDirectory = Path.Combine(userDataDirectory, "Profile 1");
         var localStatePath = Path.Combine(userDataDirectory, "Local State");
         var localStateJson = "{\"profile\":{\"info_cache\":{\"Default\":{}},\"profiles_order\":[\"Default\"],\"last_active_profiles\":[1]}}";
@@ -215,7 +216,7 @@ public sealed class ChromeProfileDeleterTests
         }
         finally
         {
-            DeleteTempDirectory(userDataDirectory);
+            TestDirectory.Delete(userDataDirectory);
         }
     }
 
@@ -338,18 +339,4 @@ public sealed class ChromeProfileDeleterTests
             string.Equals(directoryName, "Default", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "RouterPlusInfrastructureTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void DeleteTempDirectory(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
-    }
 }

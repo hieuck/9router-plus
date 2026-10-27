@@ -22,4 +22,7 @@
     <ProjectReference Include="..\..\src\RouterPlus.Infrastructure\RouterPlus.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\RouterPlus.App\RouterPlus.App.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\TestDirectory.cs" Link="TestHelpers\TestDirectory.cs" />
+  </ItemGroup>
 </Project>
