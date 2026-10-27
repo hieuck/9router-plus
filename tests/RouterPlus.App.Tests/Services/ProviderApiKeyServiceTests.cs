@@ -205,4 +205,35 @@ public sealed class ProviderApiKeyServiceTests
 
         Assert.Equal("secret", vault.Get(ProfileSecretKey.Create(profile, ProviderKind.OpenRouter)));
     }
+
+    [Fact]
+    public async Task Agnes_Create_Asserts_TestConnection_Called_And_Returned_Provider_Agnes()
+    {
+        var profile = Profile();
+        var connection = new ProviderConnection("agnes-1", ProviderKind.Agnes, profile.Name, 1, true);
+        var mock = new Mock<IRouterApiClient>();
+        mock.Setup(m => m.ListConnectionsAsync(ProviderKind.Agnes, It.IsAny<CancellationToken>(), false))
+            .ReturnsAsync(Array.Empty<ProviderConnection>());
+        mock.Setup(m => m.AddApiKeyConnectionAsync(ProviderKind.Agnes, profile.Name, "agnes-secret", 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(connection);
+        mock.Setup(m => m.TestConnectionAsync("agnes-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProviderConnectionTestResult(true, null));
+
+        var vault = new InMemorySecretVault();
+        var service = new ProviderApiKeyService(vault);
+
+        var result = await service.AddOrUpdateAsync(
+            ProviderKind.Agnes,
+            "agnes-secret",
+            profile,
+            () => Task.FromResult(mock.Object),
+            CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.Equal("agnes-1", result.Connection.Id);
+        Assert.Equal(ProviderKind.Agnes, result.Connection.Provider);
+        Assert.True(result.TestResult.Valid);
+        mock.Verify(m => m.TestConnectionAsync("agnes-1", It.IsAny<CancellationToken>()), Times.Once);
+        mock.Verify(m => m.AddApiKeyConnectionAsync(ProviderKind.Agnes, profile.Name, "agnes-secret", 1, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

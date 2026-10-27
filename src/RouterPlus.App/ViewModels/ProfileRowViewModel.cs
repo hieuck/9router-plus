@@ -140,6 +140,8 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
 
     public int ConnectedProviderCount => ProviderStatuses.Count(status => status.IsConnected);
 
+    public string ConnectedProviderSummary => $"{ConnectedProviderCount} / {ProviderStatuses.Count}";
+
     public string ConnectionSummary
     {
         get
@@ -178,6 +180,7 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
 
             OnPropertyChanged(nameof(ConnectedProviderCount));
             OnPropertyChanged(nameof(ConnectionSummary));
+            OnPropertyChanged(nameof(ConnectedProviderSummary));
             return;
         }
 
@@ -204,6 +207,7 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(ConnectedProviderCount));
         OnPropertyChanged(nameof(ConnectionSummary));
+        OnPropertyChanged(nameof(ConnectedProviderSummary));
     }
 
     public void MarkStatusUnknown()
@@ -215,6 +219,7 @@ public sealed class ProfileRowViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(ConnectedProviderCount));
         OnPropertyChanged(nameof(ConnectionSummary));
+        OnPropertyChanged(nameof(ConnectedProviderSummary));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

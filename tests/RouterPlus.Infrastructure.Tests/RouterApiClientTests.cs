@@ -229,6 +229,31 @@ public sealed class RouterApiClientTests
     }
 
     [Fact]
+    public async Task AddApiKeyConnectionAsync_Agnes_parses_provider_agnes()
+    {
+        // Arrange
+        var handler = new RecordingHandler((_, _) => JsonResponse("""
+            {"connection":{"id":"agnes-1","provider":"agnes","name":"Agnes Profile","priority":1,"isActive":true}}
+            """));
+        using var httpClient = new HttpClient(handler);
+        var client = new RouterApiClient(httpClient, "https://dashboard.example.test");
+
+        // Act
+        var connection = await client.AddApiKeyConnectionAsync(ProviderKind.Agnes, "Agnes Profile", "agnes-secret", 1);
+
+        // Assert
+        Assert.Equal("agnes-1", connection.Id);
+        Assert.Equal(ProviderKind.Agnes, connection.Provider);
+        Assert.Equal(HttpMethod.Post, handler.Requests.Single().Method);
+        using var body = JsonDocument.Parse(handler.Bodies.Single());
+        Assert.Equal("agnes", body.RootElement.GetProperty("provider").GetString());
+        Assert.Equal("agnes-secret", body.RootElement.GetProperty("apiKey").GetString());
+        Assert.Equal("Agnes Profile", body.RootElement.GetProperty("name").GetString());
+        Assert.Equal(1, body.RootElement.GetProperty("priority").GetInt32());
+        Assert.Equal("unknown", body.RootElement.GetProperty("testStatus").GetString());
+    }
+
+    [Fact]
     public async Task UpdateConnectionAsync_sends_only_supplied_trimmed_fields()
     {
         // Arrange

@@ -270,12 +270,33 @@ public sealed class MainViewModelBehaviorTests
     }
 
     [Fact]
-    public void ProviderCount_matches_ProviderCards_count()
+    public void ProviderCount_is_7_including_Agnes_matches_ProviderCatalog_All_Count()
     {
         var viewModel = new MainViewModel(secretVault: new NoOpSecretVault());
 
-        Assert.Equal(viewModel.ProviderCards.Count, viewModel.ProviderCount);
-        Assert.Contains(viewModel.ProviderCards, card => card.Kind == ProviderKind.GitHub);
+        Assert.Equal(7, viewModel.ProviderCount);
+        Assert.Equal(ProviderCatalog.All.Count, viewModel.ProviderCount);
+        Assert.Contains(viewModel.ProviderCards, card => card.Kind == ProviderKind.Agnes);
+    }
+
+    [Fact]
+    public void ConnectionSummary_includes_Agnes_in_provider_count()
+    {
+        var profile = CreateProfile("Work", "Default");
+        var viewModel = new MainViewModel(secretVault: new NoOpSecretVault());
+        viewModel.Profiles.Add(profile);
+        viewModel.ProfileRows.Add(new ProfileRowViewModel(profile, viewModel.Providers));
+        var row = viewModel.ProfileRows[0];
+
+        // All providers unknown initially, so ConnectionSummary shows "Đang chờ đồng bộ provider…"
+        Assert.Equal("Đang chờ đồng bộ provider…", row.ConnectionSummary);
+
+        // After update with no connections, shows "Chưa có provider được gán"
+        row.UpdateConnections(Array.Empty<ProviderConnection>());
+        Assert.Equal("Chưa có provider được gán", row.ConnectionSummary);
+
+        // The provider count should include Agnes (7 total)
+        Assert.Equal(7, row.ProviderStatuses.Count);
     }
 
     private static ChromeProfile CreateProfile(string name, string directoryName, string? userDataDirectory = null) =>

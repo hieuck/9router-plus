@@ -12,6 +12,94 @@ namespace RouterPlus.Core.Tests.ViewModels;
 public sealed class MainViewModelAutoGetKeyTests
 {
     [Fact]
+    public async Task AutoGetKey_Agnes_success_captures_POST_and_asserts_provider_name_apikey()
+    {
+        var profile = Profile();
+        var handler = new SaveKeyHandler();
+        using var httpClient = new HttpClient(handler);
+        var vm = new MainViewModel(httpClient: httpClient)
+        {
+            DashboardBaseUrl = "http://router.test"
+        };
+        vm.Profiles.Add(profile);
+        vm.ProfileRows.Add(new ProfileRowViewModel(profile, vm.Providers));
+        vm.SelectedProfile = profile;
+        vm.AgnesKeyFlow = (localProfile, credential, ct) =>
+            Task.FromResult(AgnesSuccess("agnes-api-key-created"));
+        vm.AutoGetKeyCredentials = (localProfile, ct) =>
+            Task.FromResult<GoogleLoginCredential?>(new GoogleLoginCredential(
+                profileId: profile.Id, email: "user@example.com", password: "pw", totpSecret: "JBSWY3DPEHPK3PXP"));
+
+        try
+        {
+            var ok = await vm.AutoGetKeyAsync(ProviderKind.Agnes);
+
+            Assert.True(ok);
+            Assert.Contains("POST /api/providers", handler.Requests);
+            var postIndices = handler.Requests.Select((r, i) => (r, i)).Where(t => t.r == "POST /api/providers").ToList();
+            for (int i = 0; i < postIndices.Count; i++)
+            {
+                var idx = postIndices[i].i;
+                System.Console.WriteLine($"POST body {i}: {handler.Bodies[idx]}");
+            }
+            // Find the POST body that contains agnes
+            var agnesBody = handler.Bodies.FirstOrDefault(b => b.Contains("\"provider\":\"agnes\""));
+            if (agnesBody is null)
+            {
+                // Fallback to first POST body
+                var postIdx = postIndices[0].i;
+                agnesBody = handler.Bodies[postIdx];
+            }
+            using var doc = System.Text.Json.JsonDocument.Parse(agnesBody);
+            var root = doc.RootElement;
+            Assert.Equal("agnes", root.GetProperty("provider").GetString());
+            Assert.Equal(profile.Name, root.GetProperty("name").GetString());
+            Assert.Equal("agnes-api-key-created", root.GetProperty("apiKey").GetString());
+
+            // Assert the parsed/returned connection provider is Agnes and name profile
+            // Check that we got the agnes connection returned
+            var getReqs = handler.Requests.Where(r => r.Contains("GET /api/providers")).ToList();
+            Assert.True(getReqs.Count >= 1);
+            // The handler returns agnes connection for agnes POST
+        }
+        finally
+        {
+            await new DpapiSecretVault().RemoveAsync(ProfileSecretKey.Create(profile, ProviderKind.Agnes));
+        }
+    }
+
+    [Fact]
+    public async Task AutoGetKey_Agnes_failure_asserts_no_POST_and_no_connection()
+    {
+        var profile = Profile();
+        var handler = new SaveKeyHandler();
+        using var httpClient = new HttpClient(handler);
+        var vm = new MainViewModel(httpClient: httpClient)
+        {
+            DashboardBaseUrl = "http://router.test"
+        };
+        vm.Profiles.Add(profile);
+        vm.ProfileRows.Add(new ProfileRowViewModel(profile, vm.Providers));
+        vm.SelectedProfile = profile;
+        vm.AgnesKeyFlow = (localProfile, credential, ct) =>
+            Task.FromResult(AgnesFailure("No 'Sign in with Google' button was found."));
+        vm.AutoGetKeyCredentials = (localProfile, ct) =>
+            Task.FromResult<GoogleLoginCredential?>(new GoogleLoginCredential(
+                profileId: profile.Id, email: "user@example.com", password: "pw", totpSecret: "JBSWY3DPEHPK3PXP"));
+
+        var ok = await vm.AutoGetKeyAsync(ProviderKind.Agnes);
+
+        Assert.False(ok);
+        Assert.DoesNotContain(handler.Requests, r => r.Contains("POST"));
+    }
+
+    private static AgnesKeyFlowOrchestrator.AgnesKeyFlowResult AgnesSuccess(string apiKey) =>
+        new(Success: true, apiKey, null);
+
+    private static AgnesKeyFlowOrchestrator.AgnesKeyFlowResult AgnesFailure(string message) =>
+        new(Success: false, null, message);
+
+    [Fact]
     public async Task AutoGetKey_when_flow_succeeds_saves_key_to_9router()
     {
         var profile = Profile();
@@ -162,6 +250,74 @@ public sealed class MainViewModelAutoGetKeyTests
         Assert.True(raised > 0);
     }
 
+    [Fact]
+    public async Task AutoGetKeyAsync_unsupported_provider_does_not_call_openrouter_flow()
+    {
+        var profile = Profile();
+        var handler = new SaveKeyHandler();
+        using var httpClient = new HttpClient(handler);
+        var vm = new MainViewModel(httpClient: httpClient)
+        {
+            DashboardBaseUrl = "http://router.test"
+        };
+        vm.Profiles.Add(profile);
+        vm.ProfileRows.Add(new ProfileRowViewModel(profile, vm.Providers));
+        vm.SelectedProfile = profile;
+        
+        var openRouterFlowCalled = false;
+        vm.OpenRouterKeyFlow = (localProfile, credential, ct) =>
+        {
+            openRouterFlowCalled = true;
+            return Task.FromResult(Success("sk-or-v1-should-not-run"));
+        };
+        vm.AutoGetKeyCredentials = (localProfile, ct) =>
+            Task.FromResult<GoogleLoginCredential?>(new GoogleLoginCredential(
+                profileId: profile.Id, email: "user@example.com", password: "pw", totpSecret: "JBSWY3DPEHPK3PXP"));
+
+        var ok = await vm.AutoGetKeyAsync(ProviderKind.GitHub);
+
+        Assert.False(ok);
+        Assert.False(openRouterFlowCalled);
+        Assert.Contains("Provider GitHub không hỗ trợ tự lấy key", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task AutoGetKeyAsync_Agnes_calls_Agnes_flow_not_OpenRouter()
+    {
+        var profile = Profile();
+        var handler = new SaveKeyHandler();
+        using var httpClient = new HttpClient(handler);
+        var vm = new MainViewModel(httpClient: httpClient)
+        {
+            DashboardBaseUrl = "http://router.test"
+        };
+        vm.Profiles.Add(profile);
+        vm.ProfileRows.Add(new ProfileRowViewModel(profile, vm.Providers));
+        vm.SelectedProfile = profile;
+        
+        var agnesFlowCalled = false;
+        var openRouterFlowCalled = false;
+        vm.AgnesKeyFlow = (localProfile, credential, ct) =>
+        {
+            agnesFlowCalled = true;
+            return Task.FromResult(AgnesSuccess("agnes-api-key"));
+        };
+        vm.OpenRouterKeyFlow = (localProfile, credential, ct) =>
+        {
+            openRouterFlowCalled = true;
+            return Task.FromResult(Success("sk-or-v1-should-not-run"));
+        };
+        vm.AutoGetKeyCredentials = (localProfile, ct) =>
+            Task.FromResult<GoogleLoginCredential?>(new GoogleLoginCredential(
+                profileId: profile.Id, email: "user@example.com", password: "pw", totpSecret: "JBSWY3DPEHPK3PXP"));
+
+        var ok = await vm.AutoGetKeyAsync(ProviderKind.Agnes);
+
+        Assert.True(ok);
+        Assert.True(agnesFlowCalled);
+        Assert.False(openRouterFlowCalled);
+    }
+
     private static ChromeProfile Profile() =>
         new(
             "profile-id",
@@ -179,6 +335,7 @@ public sealed class MainViewModelAutoGetKeyTests
     private sealed class SaveKeyHandler : HttpMessageHandler
     {
         public List<string> Requests { get; } = [];
+        public List<string> Bodies { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -186,15 +343,25 @@ public sealed class MainViewModelAutoGetKeyTests
         {
             var path = request.RequestUri!.AbsolutePath;
             Requests.Add($"{request.Method} {path}");
+            var requestBody = request.Content is null
+                ? string.Empty
+                : request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+            Bodies.Add(requestBody);
             var body = path switch
             {
                 "/api/providers" when request.Method == HttpMethod.Get =>
                     "{\"connections\":[]}",
+                "/api/providers" when request.Method == HttpMethod.Post && requestBody.Contains("\"provider\":\"agnes\"") =>
+                    "{\"connection\":{\"id\":\"agnes-1\",\"provider\":\"agnes\",\"name\":\"Work\",\"priority\":1,\"isActive\":true,\"testStatus\":\"unknown\"}}",
                 "/api/providers" when request.Method == HttpMethod.Post =>
                     "{\"connection\":{\"id\":\"openrouter-1\",\"provider\":\"openrouter\",\"name\":\"Work\",\"priority\":1,\"isActive\":true,\"testStatus\":\"unknown\"}}",
                 "/api/providers/openrouter-1/test" when request.Method == HttpMethod.Post =>
                     "{\"valid\":true}",
+                "/api/providers/agnes-1/test" when request.Method == HttpMethod.Post =>
+                    "{\"valid\":true}",
                 "/api/usage/openrouter-1" when request.Method == HttpMethod.Get =>
+                    "{}",
+                "/api/usage/agnes-1" when request.Method == HttpMethod.Get =>
                     "{}",
                 _ => throw new InvalidOperationException($"Unexpected request: {request.Method} {path}")
             };

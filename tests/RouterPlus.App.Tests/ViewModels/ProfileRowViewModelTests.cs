@@ -491,4 +491,68 @@ public sealed class ProfileRowViewModelTests
         var codexStatus = viewModel.ProviderStatuses.First(s => s.Definition.Kind == ProviderKind.Codex);
         Assert.Equal(2, codexStatus.Connections.Count);
     }
+
+    [Fact]
+    public void ConnectedProviderSummary_InitialValue_IsZeroOverTotal()
+    {
+        // Arrange
+        var viewModel = new ProfileRowViewModel(_testProfile, _providers);
+
+        // Act
+        var summary = viewModel.ConnectedProviderSummary;
+
+        // Assert
+        Assert.Equal($"0 / {_providers.Count}", summary);
+    }
+
+    [Fact]
+    public void ConnectedProviderSummary_AfterUpdateConnections_RaisesPropertyChangedAndUpdatesValue()
+    {
+        // Arrange
+        var viewModel = new ProfileRowViewModel(_testProfile, _providers);
+        var propertyChangedNames = new List<string>();
+        viewModel.PropertyChanged += (sender, e) =>
+        {
+            if (e.PropertyName != null)
+                propertyChangedNames.Add(e.PropertyName);
+        };
+
+        var connections = new[]
+        {
+            TestData.CreateConnection(ProviderKind.Codex)
+        };
+
+        // Act
+        viewModel.UpdateConnections(connections);
+
+        // Assert
+        Assert.Contains(nameof(ProfileRowViewModel.ConnectedProviderSummary), propertyChangedNames);
+        Assert.Equal($"1 / {_providers.Count}", viewModel.ConnectedProviderSummary);
+    }
+
+    [Fact]
+    public void ConnectedProviderSummary_MarkStatusUnknown_RaisesPropertyChangedAndResetsValue()
+    {
+        // Arrange
+        var viewModel = new ProfileRowViewModel(_testProfile, _providers);
+        var connections = new[]
+        {
+            TestData.CreateConnection(ProviderKind.Codex)
+        };
+        viewModel.UpdateConnections(connections);
+
+        var propertyChangedNames = new List<string>();
+        viewModel.PropertyChanged += (sender, e) =>
+        {
+            if (e.PropertyName != null)
+                propertyChangedNames.Add(e.PropertyName);
+        };
+
+        // Act
+        viewModel.MarkStatusUnknown();
+
+        // Assert
+        Assert.Contains(nameof(ProfileRowViewModel.ConnectedProviderSummary), propertyChangedNames);
+        Assert.Equal($"0 / {_providers.Count}", viewModel.ConnectedProviderSummary);
+    }
 }

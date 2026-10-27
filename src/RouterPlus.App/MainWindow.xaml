@@ -788,7 +788,7 @@
                             <Border Grid.Column="0" Style="{StaticResource StatBorderStyle}" Margin="0,0,6,0">
                                 <StackPanel>
                                     <TextBlock Text="Provider connected" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" />
-                                    <TextBlock Text="{Binding SelectedProfileRow.ConnectedProviderCount, TargetNullValue=0, StringFormat={}{0} / 5}" FontSize="16" FontWeight="Bold" Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding SelectedProfileRow.ConnectedProviderSummary, TargetNullValue=0 / 0}" FontSize="16" FontWeight="Bold" Margin="0,4,0,0" />
                                 </StackPanel>
                             </Border>
                             <Border Grid.Column="1" Style="{StaticResource StatBorderStyle}" Margin="3,0">
@@ -1114,8 +1114,8 @@
                                                 </Button>
                                                 <Button Content="{DynamicResource ProviderAutoGetKeyText}"
                                                         Command="{Binding DataContext.AutoGetKeyCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                                                        CommandParameter="{Binding Kind}"
-                                                        ToolTip="Tự động mở Chrome, đăng nhập Google và lưu API key vào 9Router">
+                                                        CommandParameter="{Binding DataContext.Kind, RelativeSource={RelativeSource AncestorType={x:Type ContentPresenter}}}"
+                                                        ToolTip="{DynamicResource ProviderAutoGetKeyToolTip}">
                                                     <Button.Style>
                                                         <Style TargetType="Button" BasedOn="{StaticResource ProviderActionButtonStyle}">
                                                             <Setter Property="Visibility" Value="Collapsed" />

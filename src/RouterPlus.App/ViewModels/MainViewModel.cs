@@ -82,6 +82,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     // key flow for a profile + vault credential. Testable standalone.
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult>> _openRouterKeyFlow = null!;
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OllamaKeyFlowOrchestrator.OllamaKeyFlowResult>> _ollamaKeyFlow = null!;
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<AgnesKeyFlowOrchestrator.AgnesKeyFlowResult>> _agnesKeyFlow = null!;
     private Func<ChromeProfile, CancellationToken, Task<GoogleLoginCredential?>> _autoGetKeyCredentials = null!;
     private Func<CancellationToken, Task<OpenRouterPkceResult>> _openRouterPkceFlow = null!;
     private string _quickLaunchFilterText = string.Empty;
@@ -200,6 +201,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _codexLoginAutomation = CreateDefaultCodexLoginAutomation();
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
         _ollamaKeyFlow = CreateDefaultOllamaKeyFlow();
+        _agnesKeyFlow = CreateDefaultAgnesKeyFlow();
         _autoGetKeyCredentials = CreateDefaultAutoGetKeyCredentials();
         _openRouterPkceFlow = CreateDefaultOpenRouterPkceFlow();
         _quotaPollingService = new QuotaPollingService(
@@ -2406,7 +2408,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             // Check all providers - returns true if any provider has credentials
             foreach (ProviderKind kind in Enum.GetValues(typeof(ProviderKind)))
             {
-                if (kind == ProviderKind.Ollama)
+                if (kind == ProviderKind.Ollama || kind == ProviderKind.Agnes)
                 {
                     // Skip providers without auto-login support
                     continue;
@@ -2632,7 +2634,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             // Skip providers without auto-login support
-            if (kind == ProviderKind.Ollama)
+            if (kind == ProviderKind.Ollama || kind == ProviderKind.Agnes)
             {
                 continue;
             }
@@ -3079,6 +3081,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Injectable seam for the Chrome-based Agnes key flow, so tests can drive the flow
+    /// without launching a browser.
+    /// </summary>
+    public Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<AgnesKeyFlowOrchestrator.AgnesKeyFlowResult>> AgnesKeyFlow
+    {
+        get => _agnesKeyFlow;
+        set => _agnesKeyFlow = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
     /// Injectable seam for loading the Google login credential (from the
     /// Google account vault) used by <see cref="AutoGetKeyAsync"/>.
     /// </summary>
@@ -3095,7 +3107,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Auto-get an API key for the given provider (OpenRouter or Ollama):
+    /// Auto-get an API key for the given provider (OpenRouter, Ollama, or Agnes):
     /// opens Chrome, signs in with Google from the vault, deletes old keys, creates
     /// a new one, then saves it into 9Router for the selected profile.
     /// </summary>
@@ -3131,7 +3143,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             return await AddApiKeyAsync(ProviderKind.Ollama, ollamaResult.ApiKey!);
         }
-        else
+        else if (provider == ProviderKind.Agnes)
+        {
+            var agnesResult = await _agnesKeyFlow(profile, credential, cancellationToken);
+            if (!agnesResult.Success)
+            {
+                StatusText = $"Không lấy được Agnes key: {agnesResult.ErrorMessage}";
+                ShowToast(StatusText, ToastType.Error);
+                return false;
+            }
+
+            return await AddApiKeyAsync(ProviderKind.Agnes, agnesResult.ApiKey!);
+        }
+        else if (provider == ProviderKind.OpenRouter)
         {
             var flowResult = await _openRouterKeyFlow(profile, credential, cancellationToken);
             if (!flowResult.Success)
@@ -3142,6 +3166,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             return await AddApiKeyAsync(ProviderKind.OpenRouter, flowResult.ApiKey!);
+        }
+        else
+        {
+            StatusText = $"Provider {provider} không hỗ trợ tự lấy key.";
+            ShowToast(StatusText, ToastType.Warning);
+            return false;
         }
     }
 
@@ -4062,6 +4092,49 @@ public sealed class MainViewModel : INotifyPropertyChanged
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
             {
                 return new OllamaKeyFlowOrchestrator.OllamaKeyFlowResult(false, null, ex.Message);
+            }
+            finally
+            {
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                }
+            }
+        };
+    }
+
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<AgnesKeyFlowOrchestrator.AgnesKeyFlowResult>> CreateDefaultAgnesKeyFlow()
+    {
+        return async (profile, credential, cancellationToken) =>
+        {
+            var installation = _installation ?? throw new InvalidOperationException("Chrome installation not configured.");
+
+            ChromeManagedSession? session = null;
+            try
+            {
+                var settings = await _settingsStore.LoadAsync(cancellationToken);
+                session = await _chromeLauncher.LaunchManagedAsync(
+                    installation,
+                    profile,
+                    new Uri("https://platform.agnes-ai.com/settings/apiKeys"),
+                    cancellationToken,
+                    settings.UseOriginalProfileForAutoLogin);
+
+                var (agnesPage, connectGooglePopup) = await session.ConnectAgnesFlowAsync(cancellationToken);
+                return await AgnesKeyFlowOrchestrator.RunAsync(
+                    agnesPage,
+                    credential,
+                    connectGooglePopup,
+                    cancellationToken,
+                    _googleAuthenticationService);
+            }
+            catch (OperationCanceledException)
+            {
+                return new AgnesKeyFlowOrchestrator.AgnesKeyFlowResult(false, null, "Đã hủy.");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+            {
+                return new AgnesKeyFlowOrchestrator.AgnesKeyFlowResult(false, null, ex.Message);
             }
             finally
             {

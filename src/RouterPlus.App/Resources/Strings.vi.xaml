@@ -7,7 +7,8 @@
     <sys:String x:Key="ProviderQuickOpenText">Mở nhanh</sys:String>
     <sys:String x:Key="ProviderSaveKeyText">Lưu key</sys:String>
     <sys:String x:Key="ProviderGetKeyText">Lấy key</sys:String>
-    <sys:String x:Key="ProviderAutoGetKeyText">Tự lấy key</sys:String>
+    <sys:String x:Key="ProviderAutoGetKeyText">Tự động thêm</sys:String>
+<sys:String x:Key="ProviderAutoGetKeyToolTip">Tự động mở Chrome, đăng nhập Google, tạo API key và thêm connection vào 9Router</sys:String>
     <sys:String x:Key="ProviderOpenRouterOAuthText">Kết nối OAuth</sys:String>
     <sys:String x:Key="ProviderOpenRouterOAuthToolTip">Ủy quyền OpenRouter bằng OAuth PKCE và lưu API key vào 9Router</sys:String>
     <sys:String x:Key="ProviderCancelText">Hủy</sys:String>
