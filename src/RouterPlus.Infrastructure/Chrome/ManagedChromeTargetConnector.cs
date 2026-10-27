@@ -26,10 +26,10 @@ internal sealed class ManagedChromeTargetConnector
         ArgumentException.ThrowIfNullOrWhiteSpace(noTargetMessage);
 
         var client = new ChromeCdpClient(_devToolsBaseUri);
-        await client.ConnectAsync(cancellationToken);
-
         try
         {
+            await client.ConnectAsync(cancellationToken);
+
             var deadline = DateTimeOffset.UtcNow + TargetWaitTimeout;
             string? targetId = null;
 
@@ -97,7 +97,7 @@ internal sealed class ManagedChromeTargetConnector
             ?? (googleTargets.Count == 1 ? googleTargets[0].TargetId : null);
     }
 
-    private static IReadOnlyList<ManagedChromeTarget> ReadTargets(JsonElement response)
+    internal static IReadOnlyList<ManagedChromeTarget> ReadTargets(JsonElement response)
     {
         var targetInfos = response.GetProperty("targetInfos");
         var targets = new List<ManagedChromeTarget>();

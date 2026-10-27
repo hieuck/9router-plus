@@ -8,7 +8,8 @@ public enum ProviderKind
     GitHub,
     Ollama,
     // Value 5 is reserved; never reuse.
-    Nous = 6
+    Nous = 6,
+    Agnes = 7
 }
 
 public enum WorkflowKind

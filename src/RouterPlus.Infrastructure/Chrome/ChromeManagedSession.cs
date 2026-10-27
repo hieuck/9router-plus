@@ -1,9 +1,57 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using RouterPlus.Core.Security;
 
 namespace RouterPlus.Infrastructure.Chrome;
+
+/// <summary>
+/// Wrapper that owns both the ChromeCdpClient and the GoogleLoginCdpBrowser,
+/// implementing IGoogleLoginBrowser + IAsyncDisposable.
+/// Ensures the CDP client is disposed when the popup browser is disposed.
+/// </summary>
+internal sealed class GoogleLoginPopupBrowser : IGoogleLoginBrowser, IAsyncDisposable
+{
+    private readonly ChromeCdpClient _client;
+    private readonly GoogleLoginCdpBrowser _browser;
+    private bool _disposed;
+
+    public GoogleLoginPopupBrowser(ChromeCdpClient client, GoogleLoginCdpBrowser browser)
+    {
+        _client = client;
+        _browser = browser;
+    }
+
+    public Task<GoogleLoginPageState> ReadStateAsync(CancellationToken cancellationToken)
+        => _browser.ReadStateAsync(cancellationToken);
+
+    public Task FillAsync(GoogleLoginField field, string value, CancellationToken cancellationToken)
+        => _browser.FillAsync(field, value, cancellationToken);
+
+    public Task SubmitAsync(GoogleLoginField field, CancellationToken cancellationToken)
+        => _browser.SubmitAsync(field, cancellationToken);
+
+    public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
+        => _browser.TrySelectAuthenticatorMethodAsync(cancellationToken);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        // Dispose the inner browser first
+        await _browser.DisposeAsync();
+
+        // Then dispose the client we own
+        await _client.DisposeAsync();
+    }
+}
 
 /// <summary>
 /// Manages a Chrome process with loopback-only CDP endpoint.
@@ -15,6 +63,7 @@ public sealed class ChromeManagedSession : IAsyncDisposable
     private readonly string _sessionMarker;
     private readonly ManagedChromeTargetConnector _targetConnector;
     private string? _tempUserDataDirectory;
+    private string? _agnesTabTargetId;
     private bool _disposed;
 
     internal ChromeManagedSession(Process process, Uri devToolsBaseUri, string sessionMarker)
@@ -121,6 +170,206 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         var ollamaPage = new OllamaApiKeyCdpBrowser(session.Client, session.SessionId, session.TargetId);
         var googleLogin = new GoogleLoginCdpBrowser(session.Client, session.SessionId, session.TargetId);
         return (ollamaPage, googleLogin);
+    }
+
+    /// <summary>
+    /// Connects to the managed Agnes AI keys page and returns the Agnes page plus
+    /// a factory for connecting to the Google login popup (separate CDP target).
+    /// The Agnes page and Google popup are distinct targets; they do NOT share a session.
+    /// </summary>
+    public async Task<(AgnesApiKeyCdpBrowser AgnesPage, Func<CancellationToken, Task<IGoogleLoginBrowser>> ConnectGooglePopupAsync)> ConnectAgnesFlowAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // Capture the set of target IDs BEFORE the Google button is clicked.
+        // This snapshot is used by the popup factory to exclude pre-existing targets.
+        var preClickTargets = await GetPageTargetIdsAsync(cancellationToken);
+
+        var agnesSession = await ConnectAnyTargetAsync(cancellationToken);
+        var agnesPage = new AgnesApiKeyCdpBrowser(agnesSession.Client, agnesSession.SessionId, agnesSession.TargetId);
+        _agnesTabTargetId = agnesSession.TargetId;
+
+        Func<CancellationToken, Task<IGoogleLoginBrowser>> connectGooglePopup = async (ct) =>
+        {
+            return await ConnectGooglePopupAsync(ct, preClickTargets);
+        };
+
+        return (agnesPage, connectGooglePopup);
+    }
+
+    /// <summary>
+    /// Gets all current page target IDs from the managed Chrome session.
+    /// Used to capture a snapshot before clicking the Google sign-in button.
+    /// </summary>
+    internal async Task<HashSet<string>> GetPageTargetIdsAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var client = new ChromeCdpClient(_devToolsBaseUri);
+        try
+        {
+            await client.ConnectAsync(cancellationToken);
+            var response = await client.CallAsync("Target.getTargets", null, cancellationToken);
+            var targets = ManagedChromeTargetConnector.ReadTargets(response);
+
+            var pageTargetIds = new HashSet<string>();
+            foreach (var t in targets)
+            {
+                if (t.Type == "page")
+                {
+                    pageTargetIds.Add(t.TargetId);
+                }
+            }
+            return pageTargetIds;
+        }
+        finally
+        {
+            await client.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Polls Target.getTargets for a page target whose URL host is accounts.google.com,
+    /// excluding the specified Agnes tab target and any targets that existed before the click.
+    /// Attaches to the first new Google popup (deterministic: first in Target.getTargets list order),
+    /// brings it to front, waits for document readyState=complete, and returns IGoogleLoginBrowser.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="preClickTargetIds">Snapshot of target IDs captured BEFORE the Google button click.
+    /// Any target in this set will be excluded from popup selection.</param>
+    /// <param name="popupTimeout">Optional override for the 30-second popup detection timeout (for testing).</param>
+    /// <exception cref="InvalidOperationException">No Google popup found within the timeout.</exception>
+    /// <exception cref="InvalidOperationException">Document readyState did not reach 'complete' within 10 seconds.</exception>
+    /// <exception cref="OperationCanceledException">The operation was cancelled.</exception>
+    public async Task<IGoogleLoginBrowser> ConnectGooglePopupAsync(
+        CancellationToken cancellationToken,
+        HashSet<string>? preClickTargetIds = null,
+        TimeSpan? popupTimeout = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var client = new ChromeCdpClient(_devToolsBaseUri);
+
+        try
+        {
+            await client.ConnectAsync(cancellationToken);
+
+            var deadline = DateTimeOffset.UtcNow + (popupTimeout ?? TimeSpan.FromSeconds(30));
+            string? popupTargetId = null;
+
+            while (DateTimeOffset.UtcNow < deadline && popupTargetId is null)
+            {
+                var response = await client.CallAsync("Target.getTargets", null, cancellationToken);
+                var targets = ManagedChromeTargetConnector.ReadTargets(response);
+
+                // Find accounts.google.com page targets, excluding the Agnes tab and pre-click targets
+                var googlePopups = new List<ManagedChromeTarget>();
+                foreach (var t in targets)
+                {
+                    if (t.Type != "page")
+                    {
+                        continue;
+                    }
+                    if (t.TargetId == _agnesTabTargetId)
+                    {
+                        continue;
+                    }
+                    // Exclude any target that existed before the click
+                    if (preClickTargetIds != null && preClickTargetIds.Contains(t.TargetId))
+                    {
+                        continue;
+                    }
+                    if (!Uri.TryCreate(t.Url, UriKind.Absolute, out var uri))
+                    {
+                        continue;
+                    }
+                    if (uri.Host == "platform.agnes-ai.com")
+                    {
+                        continue; // exclude Agnes tab
+                    }
+                    if (uri.Host != "accounts.google.com")
+                    {
+                        continue;
+                    }
+                    googlePopups.Add(t);
+                }
+                // Deterministic: first in Target.getTargets list order (no TargetId ordering)
+                // List order from Target.getTargets is deterministic and stable
+
+                if (googlePopups.Count > 0)
+                {
+                    popupTargetId = googlePopups[0].TargetId;
+                    break;
+                }
+
+                await Task.Delay(100, cancellationToken);
+            }
+
+            if (popupTargetId is null)
+            {
+                var timeoutSeconds = (popupTimeout ?? TimeSpan.FromSeconds(30)).TotalSeconds;
+                throw new InvalidOperationException($"Google login popup (accounts.google.com) did not appear within {timeoutSeconds:F0} seconds.");
+            }
+
+            // Attach to the popup
+            var attachResponse = await client.CallAsync(
+                "Target.attachToTarget",
+                new { targetId = popupTargetId, flatten = true },
+                cancellationToken);
+            var sessionId = attachResponse.GetProperty("sessionId").GetString();
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                throw new InvalidOperationException("CDP attach response did not contain a session identifier for Google popup.");
+            }
+
+            await client.CallAsync("Page.bringToFront", null, cancellationToken, sessionId);
+
+            // Wait for document to be ready (readyState = complete)
+            var docDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+            bool documentReady = false;
+            while (DateTimeOffset.UtcNow < docDeadline)
+            {
+                try
+                {
+                    var result = await client.CallAsync("Runtime.evaluate", new
+                    {
+                        expression = "document.readyState",
+                        returnByValue = true,
+                        awaitPromise = false
+                    }, cancellationToken, sessionId);
+
+                    if (result.TryGetProperty("result", out var remoteObject)
+                        && remoteObject.TryGetProperty("value", out var value)
+                        && value.GetString() == "complete")
+                    {
+                        documentReady = true;
+                        break;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw; // Do not swallow cancellation
+                }
+                catch
+                {
+                    // Context may not be ready yet
+                }
+                await Task.Delay(100, cancellationToken);
+            }
+
+            if (!documentReady)
+            {
+                throw new InvalidOperationException("Google login popup document did not reach readyState 'complete' within 10 seconds.");
+            }
+
+            var cdpBrowser = new GoogleLoginCdpBrowser(client, sessionId, popupTargetId);
+            return new GoogleLoginPopupBrowser(client, cdpBrowser);
+        }
+        catch
+        {
+            await client.DisposeAsync();
+            throw;
+        }
     }
 
     public async ValueTask DisposeAsync()

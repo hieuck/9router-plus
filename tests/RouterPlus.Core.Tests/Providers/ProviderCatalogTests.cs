@@ -11,6 +11,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Ollama, "/dashboard/providers/ollama", "https://ollama.com/settings/keys")]
     [InlineData(ProviderKind.Nous, "/dashboard/providers/nous", "https://portal.nousresearch.com")]
     [InlineData(ProviderKind.GitHub, "/dashboard/providers/github", "https://github.com")]
+    [InlineData(ProviderKind.Agnes, "/dashboard/providers/agnes", "https://platform.agnes-ai.com/settings/apiKeys")]
     public void Catalog_exposes_dashboard_and_quick_link_urls(
         ProviderKind kind,
         string dashboardPath,
@@ -28,6 +29,7 @@ public sealed class ProviderCatalogTests
     {
         Assert.Equal(WorkflowKind.ApiKey, ProviderCatalog.Get(ProviderKind.OpenRouter).Workflow);
         Assert.Equal(WorkflowKind.ApiKey, ProviderCatalog.Get(ProviderKind.Ollama).Workflow);
+        Assert.Equal(WorkflowKind.ApiKey, ProviderCatalog.Get(ProviderKind.Agnes).Workflow);
         Assert.Equal(WorkflowKind.OAuth, ProviderCatalog.Get(ProviderKind.Codex).Workflow);
         Assert.Equal(WorkflowKind.DeviceCode, ProviderCatalog.Get(ProviderKind.Kiro).Workflow);
         Assert.Equal(WorkflowKind.DeviceCode, ProviderCatalog.Get(ProviderKind.Nous).Workflow);
@@ -40,6 +42,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Ollama, "Ollama", "🦙")]
     [InlineData(ProviderKind.Nous, "Nous", "🔭")]
     [InlineData(ProviderKind.GitHub, "GitHub", "🐙")]
+    [InlineData(ProviderKind.Agnes, "Agnes", "✨")]
     public void Catalog_exposes_provider_short_names_and_glyphs(
         ProviderKind kind,
         string expectedShortName,
@@ -160,6 +163,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.Ollama, "ollama", "Ollama", "🦙", "OL")]
     [InlineData(ProviderKind.Nous, "nous", "Nous", "🔭", "NS")]
     [InlineData(ProviderKind.GitHub, "github", "GitHub", "🐙", "GH")]
+    [InlineData(ProviderKind.Agnes, "agnes", "Agnes", "✨", "AG")]
     public void Catalog_exposes_exact_provider_metadata(
         ProviderKind kind,
         string expectedApiAlias,
@@ -188,6 +192,7 @@ public sealed class ProviderCatalogTests
     [InlineData(ProviderKind.OpenRouter, "https://openrouter.ai/")]
     [InlineData(ProviderKind.Nous, "https://portal.nousresearch.com/")]
     [InlineData(ProviderKind.GitHub, "https://github.com/login")]
+    [InlineData(ProviderKind.Agnes, "https://platform.agnes-ai.com/settings/apiKeys")]
     public void GetDirectLoginStartUri_returns_expected_url(ProviderKind kind, string expected)
     {
         var uri = ProviderCatalog.GetDirectLoginStartUri(kind);
@@ -220,9 +225,22 @@ public sealed class ProviderCatalogTests
     }
 
     [Fact]
+    public void All_contains_Agnes()
+    {
+        Assert.Contains(ProviderCatalog.All, definition => definition.Kind == ProviderKind.Agnes);
+    }
+
+    [Fact]
     public void TryGetByApiAlias_returns_GitHub_for_github()
     {
         Assert.True(ProviderCatalog.TryGetByApiAlias("github", out var kind));
         Assert.Equal(ProviderKind.GitHub, kind);
+    }
+
+    [Fact]
+    public void TryGetByApiAlias_returns_Agnes_for_agnes()
+    {
+        Assert.True(ProviderCatalog.TryGetByApiAlias("agnes", out var kind));
+        Assert.Equal(ProviderKind.Agnes, kind);
     }
 }

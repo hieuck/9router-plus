@@ -21,7 +21,7 @@ public sealed class ManagedChromeTargetConnectorCdpTests
         {
             try
             {
-                var webSocket = await server.WebSocketTask.WaitAsync(cts.Token);
+                var webSocket = await server.WaitForNextWebSocketAsync(cts.Token);
                 while (!cts.IsCancellationRequested)
                 {
                     var request = await server.ReceiveJsonAsync(cts.Token);
@@ -86,7 +86,7 @@ public sealed class ManagedChromeTargetConnectorCdpTests
         {
             try
             {
-                var webSocket = await server.WebSocketTask.WaitAsync(cts.Token);
+                var webSocket = await server.WaitForNextWebSocketAsync(cts.Token);
                 while (!cts.IsCancellationRequested)
                 {
                     var request = await server.ReceiveJsonAsync(cts.Token);

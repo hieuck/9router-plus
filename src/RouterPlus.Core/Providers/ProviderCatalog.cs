@@ -75,7 +75,19 @@ public static class ProviderCatalog
                 "GitHub",
                 "🐙",
                 "GH",
-                "https://github.com/login")
+                "https://github.com/login"),
+            [ProviderKind.Agnes] = new(
+                ProviderKind.Agnes,
+                "Agnes AI",
+                "/dashboard/providers/agnes",
+                "https://platform.agnes-ai.com/settings/apiKeys",
+                WorkflowKind.ApiKey,
+                true,
+                "agnes",
+                "Agnes",
+                "✨",
+                "AG",
+                "https://platform.agnes-ai.com/settings/apiKeys")
         };
 
     private static readonly IReadOnlyDictionary<string, ProviderKind> ApiAliases =
