@@ -522,7 +522,32 @@ public sealed class ChromeLauncher
 
             if (killedCount > 0)
             {
-                await Task.Delay(1500, cancellationToken);
+                // Poll for actual process exit instead of fixed sleep
+                var exitDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+                while (DateTimeOffset.UtcNow < exitDeadline)
+                {
+                    var stillAlive = false;
+                    foreach (var p in Process.GetProcessesByName("chrome"))
+                    {
+                        try
+                        {
+                            if (!p.HasExited)
+                            {
+                                stillAlive = true;
+                            }
+                        }
+                        finally
+                        {
+                            p.Dispose();
+                        }
+                    }
+                    if (!stillAlive)
+                    {
+                        return true;
+                    }
+                    await Task.Delay(100, cancellationToken);
+                }
+                // Timeout: assume exit completed or remaining are crashpad handlers
                 return true;
             }
 
@@ -610,8 +635,32 @@ public sealed class ChromeLauncher
                     "WindowsClosed",
                     "Sent WM_CLOSE to browser windows",
                     new { closed_count = closedCount });
-                // Wait for graceful shutdown before force-killing remaining processes
-                await Task.Delay(2000, cancellationToken);
+                // Poll for actual window close instead of fixed sleep
+                var closeDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
+                while (DateTimeOffset.UtcNow < closeDeadline)
+                {
+                    var stillOpen = false;
+                    foreach (var p in processes)
+                    {
+                        try
+                        {
+                            if (p.MainWindowHandle != IntPtr.Zero)
+                            {
+                                stillOpen = true;
+                                break;
+                            }
+                        }
+                        catch
+                        {
+                            // Process might have exited
+                        }
+                    }
+                    if (!stillOpen)
+                    {
+                        break;
+                    }
+                    await Task.Delay(100, cancellationToken);
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
