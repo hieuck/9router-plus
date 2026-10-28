@@ -236,6 +236,85 @@ public sealed class AgnesKeyFlowOrchestratorTests
     }
 
     [Fact]
+    public async Task CreateKeyAsync_returns_error_when_not_on_keys_page()
+    {
+        // We need to test CreateKeyAsync directly - it's private, so we test via RunAsync 
+        // but with a browser that passes EnsureSignedInAsync but is on login page
+        var events = new List<string>();
+        var browserWithSequence = new FakeAgnesBrowserWithStateSequence
+        {
+            State = new AgnesApiKeyPageState(
+                KeysPageUri,
+                IsOnKeysPage: true,  // Phase 1: appears to be on keys page
+                IsOnLoginPage: false,
+                HasGoogleSignIn: false,
+                ExistingKeyCount: 0,
+                HasNewKeyButton: true,
+                HasNewKeyNameInput: false,
+                HasCreatedKeyPanel: false,
+                ApiKey: string.Empty),
+            Events = events,
+            StateSequence = new Queue<AgnesApiKeyPageState>(new[]
+            {
+                // Phase 1: keys page (signed in)
+                new AgnesApiKeyPageState(
+                    KeysPageUri,
+                    IsOnKeysPage: true,
+                    IsOnLoginPage: false,
+                    HasGoogleSignIn: false,
+                    ExistingKeyCount: 0,
+                    HasNewKeyButton: true,
+                    HasNewKeyNameInput: false,
+                    HasCreatedKeyPanel: false,
+                    ApiKey: string.Empty),
+                // Phase 3 (after "auth"): redirected to login page (simulating race condition)
+                new AgnesApiKeyPageState(
+                    new Uri("https://platform.agnes-ai.com/login"),
+                    IsOnKeysPage: false,
+                    IsOnLoginPage: true,
+                    HasGoogleSignIn: true,
+                    ExistingKeyCount: 0,
+                    HasNewKeyButton: false,
+                    HasNewKeyNameInput: false,
+                    HasCreatedKeyPanel: false,
+                    ApiKey: string.Empty)
+            })
+        };
+        
+        var popupGoogleBrowser = new FakePopupGoogleLoginBrowser();
+        var authentication = new RecordingGoogleAuthenticationService 
+        { 
+            Events = events,
+            Result = GoogleLoginResult.Success()
+        };
+
+        browserWithSequence.PopupFactory = (ct) =>
+        {
+            browserWithSequence.Events.Add("popup_factory_called");
+            return Task.FromResult<IGoogleLoginBrowser>(popupGoogleBrowser);
+        };
+
+        var credential = new GoogleLoginCredential(
+            profileId: "test-profile",
+            email: "user@example.com",
+            password: "pw",
+            totpSecret: "JBSWY3DPEHPK3PXP");
+
+        var result = await AgnesKeyFlowOrchestrator.RunAsync(
+            browserWithSequence,
+            credential,
+            browserWithSequence.PopupFactory!,
+            CancellationToken.None,
+            authentication);
+
+        // Should fail because CreateKeyAsync detects it's not on keys page
+        Assert.False(result.Success);
+        Assert.Contains("Not on the Agnes AI keys page", result.ErrorMessage);
+        Assert.Contains("IsOnKeysPage: False", result.ErrorMessage);
+        Assert.Contains("IsOnLoginPage: True", result.ErrorMessage);
+    }
+
+    [Fact]
     public async Task RunAsync_uses_email_for_key_name_not_profile_id()
     {
         var events = new List<string>();
@@ -451,6 +530,11 @@ public sealed class AgnesKeyFlowOrchestratorTests
             return Task.FromResult(true);
         }
 
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(true);
+        }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
@@ -502,6 +586,11 @@ public sealed class AgnesKeyFlowOrchestratorTests
         {
             NavigateToKeysPageCalled = true;
             State = OnKeysPage(hasNewKeyButton: true);
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
             return Task.FromResult(true);
         }
 
@@ -575,6 +664,11 @@ public sealed class AgnesKeyFlowOrchestratorTests
             return Task.FromResult(true);
         }
 
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(true);
+        }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
@@ -588,6 +682,7 @@ public sealed class AgnesKeyFlowOrchestratorTests
         public List<string> Events { get; set; } = new();
         public Queue<AgnesApiKeyPageState>? StateSequence { get; set; }
         public bool NavigateToKeysPageCalled { get; private set; }
+        public bool NavigateToLoginPageCalled { get; private set; }
         public string? NavigatedUrl { get; private set; }
         public Func<CancellationToken, Task<IGoogleLoginBrowser>>? PopupFactory { get; set; }
 
@@ -654,14 +749,20 @@ public sealed class AgnesKeyFlowOrchestratorTests
             return Task.FromResult(true);
         }
 
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
+            NavigateToLoginPageCalled = true;
+            return Task.FromResult(true);
+        }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private static AgnesApiKeyPageState OnSignInPage() =>
         new(
             KeysPageUri,
-            IsOnKeysPage: true,
-            IsOnLoginPage: false,
+            IsOnKeysPage: false,  // No "Create new secret key" button -> not keys page
+            IsOnLoginPage: true,  // Has Google button -> login page
             HasGoogleSignIn: true,
             ExistingKeyCount: 0,
             HasNewKeyButton: false,
@@ -845,6 +946,11 @@ public sealed class AgnesKeyFlowOrchestratorTests
             NavigateToKeysPageCalled = true;
             NavigatedUrl = "https://platform.agnes-ai.com/settings/apiKeys";
             State = OnKeysPage(hasNewKeyButton: true);
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
             return Task.FromResult(true);
         }
 
@@ -1879,6 +1985,11 @@ public sealed class AgnesKeyFlowOrchestratorTests
             return Task.FromResult(true);
         }
 
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(true);
+        }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
@@ -1982,6 +2093,11 @@ public sealed class AgnesKeyFlowOrchestratorTests
             return Task.FromResult(false);
         }
 
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(true);
+        }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
@@ -2066,6 +2182,11 @@ public sealed class AgnesKeyFlowOrchestratorTests
             NavigateToKeysPageCalled = true;
             NavigatedUrl = "https://platform.agnes-ai.com/settings/apiKeys";
             // Navigation succeeds - state will be checked on next WaitForKeysPageAsync call
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
             return Task.FromResult(true);
         }
 
@@ -2162,8 +2283,8 @@ public sealed class AgnesKeyFlowOrchestratorTests
         Assert.True(browser.ClickedSignInWithGoogle);
         Assert.Equal(1, authentication.CallCount);
         
-        // Verify NavigateToKeysPageAsync was called (to go to /login)
-        Assert.True(browser.NavigateToKeysPageCalled);
+        // Verify NavigateToLoginPageAsync was called (to go to /login)
+        Assert.True(browser.NavigateToLoginPageCalled);
         
         // Events: "google" (click on login page), "popup_factory_called", "google" (auth), "create"
         Assert.Equal(new[] { "google", "popup_factory_called", "google", "create" }, browser.Events);
@@ -2466,6 +2587,11 @@ public sealed class AgnesKeyFlowOrchestratorTests
             NavigateToKeysPageCalled = true;
             NavigatedUrl = "https://platform.agnes-ai.com/settings/apiKeys";
             // Don't update State here - it should come from Phase3StateSequence via ReadStateAsync
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+        {
             return Task.FromResult(true);
         }
 

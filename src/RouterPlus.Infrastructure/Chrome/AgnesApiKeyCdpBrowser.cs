@@ -42,14 +42,12 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
 
     const url = window.location.href;
     
-    // Content-based detection for keys page: has 'Create new secret key' button OR keys table
+    // Content-based detection for keys page: ONLY 'Create new secret key' button (hasKeysTable removed - login page may contain a table)
     const newKeyKeywords = ['create new secret key', 'create new key', 'new secret key', 'new key', 'create key', 'add key', 'create api key', '+ create', 'add api key', 'generate api key'];
     const hasNewKeyButton = Array.from(document.querySelectorAll('button, [role=""button""]')).some(el =>
         isVisible(el) && newKeyKeywords.some(k => textOf(el).includes(k)));
     
-    const hasKeysTable = Array.from(document.querySelectorAll('[data-testid=""api-key-item""], .api-key-row, [data-key], table tbody tr')).filter(isVisible).length > 0;
-    
-    const isOnKeysPage = hasNewKeyButton || hasKeysTable;
+    const isOnKeysPage = hasNewKeyButton;
 
     // Content-based detection for login page: sign in/forgot password/password input
     const hasSignInText = Array.from(document.querySelectorAll('button, [role=""button""], a, h1, h2, h3, p, span, label')).some(el =>
@@ -59,18 +57,42 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
     const hasPasswordInput = !!document.querySelector('input[type=""password""]');
     const isOnLoginPage = hasSignInText || hasForgotPassword || hasPasswordInput;
 
-    // Enhanced Google sign-in detection
+    // Enhanced Google sign-in detection: search ALL elements (button, div, a, span, [role=""button""])
+    // whose text or aria-label contains Google login phrases, or has a Google icon (img src/alt contains google)
     const googleKeywords = ['continue with google', 'sign in with google', 'log in with google', 'tiếp tục với google', 'đăng nhập bằng google'];
-    const hasGoogleSignIn = Array.from(document.querySelectorAll('button, [role=""button""], a, [aria-label*=""google"" i], [aria-label*=""Google"" i]')).some(el =>
-        isVisible(el) && (
-            googleKeywords.some(k => textOf(el).includes(k)) ||
-            (el.getAttribute('aria-label') || '').toLowerCase().includes('google')
-        ));
+    const googleSignInSelectors = 'button, div, a, span, [role=""button""]';
+    const hasGoogleSignIn = Array.from(document.querySelectorAll(googleSignInSelectors)).some(el => {
+        if (!isVisible(el)) return false;
+        const text = textOf(el);
+        const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+        
+        // Check text/aria-label for Google login phrases
+        if (googleKeywords.some(k => text.includes(k) || ariaLabel.includes(k))) {
+            return true;
+        }
+        
+        // Check for Google icon (img with src/alt containing google)
+        const img = el.querySelector('img[src*=""google"" i], img[alt*=""google"" i]');
+        if (img && isVisible(img)) {
+            return true;
+        }
+        
+        // Check for Google SVG/icon classes
+        const className = (el.className || '').toLowerCase();
+        if (className.includes('google') && (className.includes('btn') || className.includes('sign') || className.includes('login'))) {
+            return true;
+        }
+        
+        return false;
+    });
+
+    // Login page if any login indicator OR Google sign-in button present
+    const isOnLoginPageFinal = isOnLoginPage || hasGoogleSignIn;
 
     const existingKeys = Array.from(document.querySelectorAll('[data-testid=""api-key-item""], .api-key-row, [data-key]')).filter(isVisible).length;
 
-    // Collect up to 15 visible button/a/[role=button] candidates for debugging
-    const candidates = Array.from(document.querySelectorAll('button, a, [role=""button""]')).filter(isVisible);
+    // Collect up to 15 visible button/div/a/span/[role=button] candidates for debugging
+    const candidates = Array.from(document.querySelectorAll('button, div, a, span, [role=""button""]')).filter(isVisible);
     const debugCandidates = candidates.slice(0, 15).map(el => {
         const t = textOf(el);
         const role = el.getAttribute('role') || (el.tagName === 'A' ? 'link' : 'button');
@@ -92,7 +114,7 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
     return {
         url: url,
         isOnKeysPage: isOnKeysPage,
-        isOnLoginPage: isOnLoginPage,
+        isOnLoginPage: isOnLoginPageFinal,
         hasGoogleSignIn: hasGoogleSignIn,
         existingKeyCount: existingKeys,
         hasNewKeyButton: hasNewKeyButton,
@@ -359,7 +381,7 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
         return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
     }};
     const textOf = el => ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('href') || '')).toLowerCase();
-    const candidates = Array.from(document.querySelectorAll('button, a, [role=""button""]')).filter(isVisible);
+    const candidates = Array.from(document.querySelectorAll('button, div, a, span, [role=""button""]')).filter(isVisible);
     const matches = candidates.filter(el => keywords.some(k => textOf(el).includes(k)));
     
     // Collect debug info for candidates (up to 15)
@@ -488,6 +510,19 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
         var script = @"
 (function() {
     window.location.href = 'https://platform.agnes-ai.com/settings/apiKeys';
+    return true;
+})()
+";
+        return await EvaluateBoolAsync(script, cancellationToken);
+    }
+
+    public async Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        var script = @"
+(function() {
+    window.location.href = 'https://platform.agnes-ai.com/login';
     return true;
 })()
 ";

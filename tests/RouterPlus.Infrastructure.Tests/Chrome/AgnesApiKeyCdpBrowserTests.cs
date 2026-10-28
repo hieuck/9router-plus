@@ -700,9 +700,10 @@ public sealed class AgnesApiKeyCdpBrowserTests
     }
 
     [Fact]
-    public async Task ReadStateAsync_content_based_keys_page_true_when_keys_table_present()
+    public async Task ReadStateAsync_content_based_keys_page_false_when_only_keys_table_no_new_key_button()
     {
-        // Content-based: IsOnKeysPage=true when keys table is present (even if URL is keys page)
+        // Content-based: IsOnKeysPage=false when only keys table is present but no "Create new secret key" button
+        // (login page may contain a table - must not trigger keys page detection)
         await using var server = await LoopbackCdpServer.CreateAsync();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
@@ -721,7 +722,7 @@ public sealed class AgnesApiKeyCdpBrowserTests
                     {
                         // Return state with keys table present but no new key button
                         await LoopbackCdpServer.SendJsonAsync(webSocket,
-                            $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{{\"url\":\"https://platform.agnes-ai.com/settings/apiKeys\",\"isOnKeysPage\":true,\"isOnLoginPage\":false,\"hasGoogleSignIn\":false,\"existingKeyCount\":2,\"hasNewKeyButton\":false,\"hasNewKeyNameInput\":false,\"hasCreatedKeyPanel\":false,\"apiKey\":\"\"}}}}}}}}",
+                            $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{{\"url\":\"https://platform.agnes-ai.com/settings/apiKeys\",\"isOnKeysPage\":false,\"isOnLoginPage\":false,\"hasGoogleSignIn\":false,\"existingKeyCount\":2,\"hasNewKeyButton\":false,\"hasNewKeyNameInput\":false,\"hasCreatedKeyPanel\":false,\"apiKey\":\"\"}}}}}}}}",
                             cts.Token);
                     }
                     else if (method == "Target.getTargets")
@@ -746,7 +747,7 @@ public sealed class AgnesApiKeyCdpBrowserTests
         cts.Cancel();
         try { await responder; } catch { }
 
-        Assert.True(state.IsOnKeysPage);
+        Assert.False(state.IsOnKeysPage);
         Assert.False(state.HasNewKeyButton);
         Assert.Equal(2, state.ExistingKeyCount);
     }

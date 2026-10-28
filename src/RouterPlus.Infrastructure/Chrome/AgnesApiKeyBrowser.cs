@@ -36,4 +36,6 @@ public interface IAgnesApiKeyBrowser : IAsyncDisposable
     Task<bool> TryCreateKeyAsync(string name, CancellationToken cancellationToken);
 
     Task<bool> NavigateToKeysPageAsync(CancellationToken cancellationToken);
+
+    Task<bool> NavigateToLoginPageAsync(CancellationToken cancellationToken);
 }

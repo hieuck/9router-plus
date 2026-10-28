@@ -86,38 +86,32 @@ public static class AgnesKeyFlowOrchestrator
         var overallDeadline = DateTimeOffset.UtcNow + (timeout ?? TimeSpan.FromSeconds(60));
         AgnesApiKeyPageState? state = null;
 
-        // Phase 1: Wait for either keys page (content-based) or login page
+        // Phase 1: Poll until we can determine the page state
         while (DateTimeOffset.UtcNow < overallDeadline)
         {
             try
             {
                 state = await page.ReadStateAsync(cancellationToken);
                 
-                // If on keys page (content-based), check if signed in
-                if (state.IsOnKeysPage)
+                // If Google sign-in button is visible, we're on a login page (or keys page showing login)
+                // Treat as login page - do not proceed to key creation
+                if (state.HasGoogleSignIn)
                 {
-                    if (!state.HasGoogleSignIn)
-                    {
-                        // Already signed in (on keys page, no Google button visible)
-                        return null;
-                    }
-                    // On keys page with Google button - need to sign in
                     break;
                 }
                 
-                // If on login page, check for Google button
+                // If on keys page (content-based: has "Create new secret key" button) and no Google button
+                // We're signed in - but don't return immediately; let Phase 2 verify
+                if (state.IsOnKeysPage && !state.HasGoogleSignIn)
+                {
+                    break;
+                }
+                
+                // If on login page (sign in/forgot password/password input) without Google button
+                // Navigate to /login to find Google button
                 if (state.IsOnLoginPage)
                 {
-                    if (state.HasGoogleSignIn)
-                    {
-                        // Login page with Google button - click it
-                        break;
-                    }
-                    else
-                    {
-                        // Login page WITHOUT Google button - navigate to /login and try there
-                        break;
-                    }
+                    break;
                 }
                 
                 // If not on keys page and not on login page (e.g., dashboard, about:blank)
@@ -148,6 +142,12 @@ public static class AgnesKeyFlowOrchestrator
         }
 
         // Phase 2: Handle the detected state
+        // If on keys page with content (HasNewKeyButton) and no Google button, we're signed in
+        if (state.IsOnKeysPage && !state.HasGoogleSignIn)
+        {
+            return null;
+        }
+        
         // If on login page without Google, navigate to /login
         if (state.IsOnLoginPage && !state.HasGoogleSignIn)
         {
@@ -158,7 +158,8 @@ public static class AgnesKeyFlowOrchestrator
                 "Login page detected without Google button, navigating to /login",
                 new { currentUrl = state.PageUri.ToString() });
             
-            await page.NavigateToKeysPageAsync(cancellationToken); // This navigates to /settings/apiKeys
+            await page.NavigateToLoginPageAsync(cancellationToken);
+            
             // Wait a bit for navigation
             await Task.Delay(1000, cancellationToken);
             
@@ -309,6 +310,16 @@ public static class AgnesKeyFlowOrchestrator
         string profileEmail,
         CancellationToken cancellationToken)
     {
+        // Guard: ensure we're on the keys page before trying to click "Create new secret key"
+        var state = await page.ReadStateAsync(cancellationToken);
+        if (!state.IsOnKeysPage)
+        {
+            return new AgnesKeyFlowResult(
+                false,
+                null,
+                $"Not on the Agnes AI keys page. Current URL: {state.PageUri} (IsOnKeysPage: {state.IsOnKeysPage}, IsOnLoginPage: {state.IsOnLoginPage}, HasGoogleSignIn: {state.HasGoogleSignIn})");
+        }
+
         // Click "Create new secret key"
         var clickedNewKey = await page.TryClickNewKeyAsync(cancellationToken);
         if (!clickedNewKey)
@@ -324,8 +335,8 @@ public static class AgnesKeyFlowOrchestrator
         bool hasNameInput = false;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var state = await page.ReadStateAsync(cancellationToken);
-            if (state.HasNewKeyNameInput)
+            var keyState = await page.ReadStateAsync(cancellationToken);
+            if (keyState.HasNewKeyNameInput)
             {
                 hasNameInput = true;
                 break;
@@ -357,10 +368,10 @@ public static class AgnesKeyFlowOrchestrator
         string? apiKey = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var state = await page.ReadStateAsync(cancellationToken);
-            if (state.HasCreatedKeyPanel && !string.IsNullOrWhiteSpace(state.ApiKey))
+            var keyState = await page.ReadStateAsync(cancellationToken);
+            if (keyState.HasCreatedKeyPanel && !string.IsNullOrWhiteSpace(keyState.ApiKey))
             {
-                apiKey = state.ApiKey;
+                apiKey = keyState.ApiKey;
                 break;
             }
             await Task.Delay(500, cancellationToken);
