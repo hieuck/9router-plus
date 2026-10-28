@@ -21,8 +21,12 @@ public sealed class ProfileRowViewModelTests
         _providers = new List<ProviderDefinition>
         {
             new ProviderDefinition(ProviderKind.Codex, "Codex", "/dashboard", "https://codex.example", WorkflowKind.OAuth, false, "codex", "Codex", "✨", "CX"),
+            new ProviderDefinition(ProviderKind.Kiro, "Kiro", "/dashboard", "https://kiro.example", WorkflowKind.DeviceCode, false, "kiro", "Kiro", "🚀", "KI"),
             new ProviderDefinition(ProviderKind.OpenRouter, "OpenRouter", "/dashboard", "https://openrouter.example", WorkflowKind.ApiKey, false, "openrouter", "OpenR", "🧠", "OR"),
-            new ProviderDefinition(ProviderKind.Kiro, "Kiro", "/dashboard", "https://kiro.example", WorkflowKind.DeviceCode, false, "kiro", "Kiro", "🚀", "KI")
+            new ProviderDefinition(ProviderKind.Ollama, "Ollama Cloud", "/dashboard", "https://ollama.example", WorkflowKind.ApiKey, false, "ollama", "Ollama", "🦙", "OL"),
+            new ProviderDefinition(ProviderKind.Nous, "Nous", "/dashboard", "https://nous.example", WorkflowKind.DeviceCode, false, "nous", "Nous", "🔭", "NS"),
+            new ProviderDefinition(ProviderKind.GitHub, "GitHub", "/dashboard", "https://github.example", WorkflowKind.OAuth, false, "github", "GitHub", "🐙", "GH"),
+            new ProviderDefinition(ProviderKind.Agnes, "Agnes AI", "/dashboard", "https://agnes.example", WorkflowKind.ApiKey, false, "agnes", "Agnes", "✨", "AG")
         };
     }
 
@@ -45,7 +49,7 @@ public sealed class ProfileRowViewModelTests
         Assert.Equal(_testProfile, viewModel.Profile);
         Assert.Equal("Profile 1", viewModel.Name);
         Assert.Equal("Default", viewModel.DirectoryName);
-        Assert.Equal(3, viewModel.ProviderStatuses.Count);
+        Assert.Equal(7, viewModel.ProviderStatuses.Count);
     }
 
     [Fact]

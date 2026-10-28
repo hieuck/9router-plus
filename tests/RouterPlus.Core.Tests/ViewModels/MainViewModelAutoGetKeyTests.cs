@@ -37,19 +37,9 @@ public sealed class MainViewModelAutoGetKeyTests
             Assert.True(ok);
             Assert.Contains("POST /api/providers", handler.Requests);
             var postIndices = handler.Requests.Select((r, i) => (r, i)).Where(t => t.r == "POST /api/providers").ToList();
-            for (int i = 0; i < postIndices.Count; i++)
-            {
-                var idx = postIndices[i].i;
-                System.Console.WriteLine($"POST body {i}: {handler.Bodies[idx]}");
-            }
-            // Find the POST body that contains agnes
-            var agnesBody = handler.Bodies.FirstOrDefault(b => b.Contains("\"provider\":\"agnes\""));
-            if (agnesBody is null)
-            {
-                // Fallback to first POST body
-                var postIdx = postIndices[0].i;
-                agnesBody = handler.Bodies[postIdx];
-            }
+            Assert.Single(postIndices);
+
+            var agnesBody = handler.Bodies[postIndices[0].i];
             using var doc = System.Text.Json.JsonDocument.Parse(agnesBody);
             var root = doc.RootElement;
             Assert.Equal("agnes", root.GetProperty("provider").GetString());
@@ -57,7 +47,6 @@ public sealed class MainViewModelAutoGetKeyTests
             Assert.Equal("agnes-api-key-created", root.GetProperty("apiKey").GetString());
 
             // Assert the parsed/returned connection provider is Agnes and name profile
-            // Check that we got the agnes connection returned
             var getReqs = handler.Requests.Where(r => r.Contains("GET /api/providers")).ToList();
             Assert.True(getReqs.Count >= 1);
             // The handler returns agnes connection for agnes POST
@@ -69,7 +58,7 @@ public sealed class MainViewModelAutoGetKeyTests
     }
 
     [Fact]
-    public async Task AutoGetKey_Agnes_failure_asserts_no_POST_and_no_connection()
+    public async Task AutoGetKey_Agnes_failure_asserts_no_requests_and_no_connection()
     {
         var profile = Profile();
         var handler = new SaveKeyHandler();
@@ -90,7 +79,7 @@ public sealed class MainViewModelAutoGetKeyTests
         var ok = await vm.AutoGetKeyAsync(ProviderKind.Agnes);
 
         Assert.False(ok);
-        Assert.DoesNotContain(handler.Requests, r => r.Contains("POST"));
+        Assert.Empty(handler.Requests);
     }
 
     private static AgnesKeyFlowOrchestrator.AgnesKeyFlowResult AgnesSuccess(string apiKey) =>
