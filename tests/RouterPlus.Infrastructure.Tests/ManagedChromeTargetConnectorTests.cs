@@ -141,4 +141,115 @@ public sealed class ManagedChromeTargetConnectorTests
 
         Assert.Equal("target-1", selected);
     }
+
+    // ===== SelectMarkedAgnesPage tests =====
+
+    [Fact]
+    public void SelectMarkedAgnesPage_selects_marked_target_over_unmarked()
+    {
+        var sessionMarker = "__9rp_session_test123";
+        var targets = new List<ManagedChromeTarget>
+        {
+            new("unmarked-1", "page", "https://platform.agnes-ai.com/settings/apiKeys"),
+            new("marked-1", "page", $"https://platform.agnes-ai.com/settings/apiKeys#{sessionMarker}"),
+        };
+
+        var selected = ManagedChromeTargetConnector.SelectMarkedAgnesPage(targets, sessionMarker);
+
+        Assert.Equal("marked-1", selected);
+    }
+
+    [Fact]
+    public void SelectMarkedAgnesPage_throws_when_no_marked_target()
+    {
+        var sessionMarker = "__9rp_session_test123";
+        var targets = new List<ManagedChromeTarget>
+        {
+            new("unmarked-1", "page", "https://platform.agnes-ai.com/settings/apiKeys"),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ManagedChromeTargetConnector.SelectMarkedAgnesPage(targets, sessionMarker));
+
+        Assert.Contains("No Agnes target with session marker found", ex.Message);
+    }
+
+    [Fact]
+    public void SelectMarkedAgnesPage_throws_on_multiple_marked_targets()
+    {
+        var sessionMarker = "__9rp_session_test123";
+        var targets = new List<ManagedChromeTarget>
+        {
+            new("marked-1", "page", $"https://platform.agnes-ai.com/settings/apiKeys#{sessionMarker}"),
+            new("marked-2", "page", $"https://platform.agnes-ai.com/login#{sessionMarker}"),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ManagedChromeTargetConnector.SelectMarkedAgnesPage(targets, sessionMarker));
+
+        Assert.Contains("Multiple Agnes targets with session marker found", ex.Message);
+    }
+
+    [Fact]
+    public void SelectMarkedAgnesPage_excludes_non_agnes_hosts_throws_when_no_marked()
+    {
+        var sessionMarker = "__9rp_session_test123";
+        var targets = new List<ManagedChromeTarget>
+        {
+            new("evil-1", "page", "https://evil.com/settings/apiKeys"),
+            new("agnes-1", "page", "https://platform.agnes-ai.com/settings/apiKeys"),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ManagedChromeTargetConnector.SelectMarkedAgnesPage(targets, sessionMarker));
+
+        Assert.Contains("No Agnes target with session marker found", ex.Message);
+    }
+
+    [Fact]
+    public void SelectMarkedAgnesPage_excludes_background_pages_throws_when_no_marked()
+    {
+        var sessionMarker = "__9rp_session_test123";
+        var targets = new List<ManagedChromeTarget>
+        {
+            new("bg-1", "background_page", "chrome-extension://abc"),
+            new("agnes-1", "page", "https://platform.agnes-ai.com/settings/apiKeys"),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ManagedChromeTargetConnector.SelectMarkedAgnesPage(targets, sessionMarker));
+
+        Assert.Contains("No Agnes target with session marker found", ex.Message);
+    }
+
+    [Fact]
+    public void SelectMarkedAgnesPage_stale_first_page_plus_marked_tab_selects_marked()
+    {
+        var sessionMarker = "__9rp_session_test123";
+        var targets = new List<ManagedChromeTarget>
+        {
+            new("stale-1", "page", "about:blank"),
+            new("agnes-unmarked", "page", "https://platform.agnes-ai.com/settings/apiKeys"),
+            new("agnes-marked", "page", $"https://platform.agnes-ai.com/settings/apiKeys#{sessionMarker}"),
+        };
+
+        var selected = ManagedChromeTargetConnector.SelectMarkedAgnesPage(targets, sessionMarker);
+
+        Assert.Equal("agnes-marked", selected);
+    }
+
+    [Fact]
+    public void SelectMarkedAgnesPage_no_marker_throws_clear_error()
+    {
+        var sessionMarker = "__9rp_session_test123";
+        var targets = new List<ManagedChromeTarget>
+        {
+            new("agnes-1", "page", "https://platform.agnes-ai.com/settings/apiKeys"),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ManagedChromeTargetConnector.SelectMarkedAgnesPage(targets, sessionMarker));
+
+        Assert.Contains("session marker found", ex.Message);
+    }
 }

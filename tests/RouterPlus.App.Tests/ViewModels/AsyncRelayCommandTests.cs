@@ -75,19 +75,30 @@ public sealed class AsyncRelayCommandTests
     public async Task CanExecute_ReturnsFalseWhileRunning()
     {
         // Arrange
-        var tcs = new TaskCompletionSource<bool>();
-        var command = new AsyncRelayCommand(async () => await tcs.Task);
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var command = new AsyncRelayCommand(async () =>
+        {
+            started.SetResult(true);
+            await release.Task;
+        });
 
         // Act
         command.Execute(null);
-        await Task.Delay(10); // Let execution start
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert - should be false while running
         Assert.False(command.CanExecute(null));
 
         // Complete the task
-        tcs.SetResult(true);
-        await Task.Delay(10); // Let execution complete
+        release.SetResult(true);
+
+        // Wait for CanExecuteChanged to fire (completion)
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!command.CanExecute(null) && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
 
         // Assert - should be true after completion
         Assert.True(command.CanExecute(null));
@@ -256,19 +267,30 @@ public sealed class AsyncRelayCommandGenericTests
     public async Task CanExecute_ReturnsFalseWhileRunning()
     {
         // Arrange
-        var tcs = new TaskCompletionSource<bool>();
-        var command = new AsyncRelayCommand<string>(async s => await tcs.Task);
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var command = new AsyncRelayCommand<string>(async s =>
+        {
+            started.SetResult(true);
+            await release.Task;
+        });
 
         // Act
         command.Execute("test");
-        await Task.Delay(10); // Let execution start
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert - should be false while running
         Assert.False(command.CanExecute("test"));
 
         // Complete the task
-        tcs.SetResult(true);
-        await Task.Delay(10); // Let execution complete
+        release.SetResult(true);
+
+        // Wait for CanExecuteChanged to fire (completion)
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!command.CanExecute("test") && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
 
         // Assert - should be true after completion
         Assert.True(command.CanExecute("test"));

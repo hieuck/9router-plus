@@ -125,6 +125,41 @@ internal sealed class ManagedChromeTargetConnector
                 || uri.Host == "myaccount.google.com"
                 || uri.Host == "www.google.com");
     }
+
+    internal static string? SelectMarkedAgnesPage(
+        IReadOnlyList<ManagedChromeTarget> targets,
+        string sessionMarker)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionMarker);
+
+        var agnesTargets = targets
+            .Where(target => target.Type == "page" && IsAgnesHost(target.Url))
+            .ToList();
+        var markedTargets = agnesTargets
+            .Where(target => target.Url.Contains(sessionMarker, StringComparison.Ordinal))
+            .ToList();
+
+        if (markedTargets.Count > 1)
+        {
+            throw new InvalidOperationException(
+                "Multiple Agnes targets with session marker found; exactly one is required.");
+        }
+
+        if (markedTargets.Count == 1)
+        {
+            return markedTargets[0].TargetId;
+        }
+
+        // No marked target found - throw clear error instead of fallback
+        throw new InvalidOperationException(
+            "No Agnes target with session marker found. The Agnes tab may not have loaded yet or the session marker is incorrect.");
+    }
+
+    private static bool IsAgnesHost(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && uri.Host == "platform.agnes-ai.com";
+    }
 }
 
 internal sealed record ManagedChromeTarget(string TargetId, string Type, string Url);

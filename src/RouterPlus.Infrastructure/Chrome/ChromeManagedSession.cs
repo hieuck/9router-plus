@@ -185,7 +185,12 @@ public sealed class ChromeManagedSession : IAsyncDisposable
         // This snapshot is used by the popup factory to exclude pre-existing targets.
         var preClickTargets = await GetPageTargetIdsAsync(cancellationToken);
 
-        var agnesSession = await ConnectAnyTargetAsync(cancellationToken);
+        // Connect to the marked Agnes tab (platform.agnes-ai.com with session marker)
+        var agnesSession = await _targetConnector.ConnectAsync(
+            targets => ManagedChromeTargetConnector.SelectMarkedAgnesPage(targets, _sessionMarker),
+            "No platform.agnes-ai.com target with session marker found in the managed session.",
+            cancellationToken);
+
         var agnesPage = new AgnesApiKeyCdpBrowser(agnesSession.Client, agnesSession.SessionId, agnesSession.TargetId);
         _agnesTabTargetId = agnesSession.TargetId;
 
