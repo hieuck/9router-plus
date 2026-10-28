@@ -101,10 +101,24 @@ public static class AgnesKeyFlowOrchestrator
                 }
                 
                 // If on keys page (content-based: has "Create new secret key" button) and no Google button
-                // We're signed in - but don't return immediately; let Phase 2 verify
+                // We're signed in - but don't return immediately; let Phase 2 verify.
+                // Guard against transient state: wait 500ms and re-check before committing.
                 if (state.IsOnKeysPage && !state.HasGoogleSignIn)
                 {
-                    break;
+                    await Task.Delay(500, cancellationToken);
+                    try
+                    {
+                        state = await page.ReadStateAsync(cancellationToken);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Execution context may not be ready; keep polling
+                    }
+                    if (state is not null && state.IsOnKeysPage && !state.HasGoogleSignIn)
+                    {
+                        break;
+                    }
+                    continue;
                 }
                 
                 // If on login page (sign in/forgot password/password input) without Google button

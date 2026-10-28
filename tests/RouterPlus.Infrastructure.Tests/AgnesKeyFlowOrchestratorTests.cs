@@ -256,7 +256,7 @@ public sealed class AgnesKeyFlowOrchestratorTests
             Events = events,
             StateSequence = new Queue<AgnesApiKeyPageState>(new[]
             {
-                // Phase 1: keys page (signed in)
+                // Phase 1: keys page (signed in) - first read
                 new AgnesApiKeyPageState(
                     KeysPageUri,
                     IsOnKeysPage: true,
@@ -267,7 +267,18 @@ public sealed class AgnesKeyFlowOrchestratorTests
                     HasNewKeyNameInput: false,
                     HasCreatedKeyPanel: false,
                     ApiKey: string.Empty),
-                // Phase 3 (after "auth"): redirected to login page (simulating race condition)
+                // Phase 1 re-check (transient guard): still keys page
+                new AgnesApiKeyPageState(
+                    KeysPageUri,
+                    IsOnKeysPage: true,
+                    IsOnLoginPage: false,
+                    HasGoogleSignIn: false,
+                    ExistingKeyCount: 0,
+                    HasNewKeyButton: true,
+                    HasNewKeyNameInput: false,
+                    HasCreatedKeyPanel: false,
+                    ApiKey: string.Empty),
+                // CreateKeyAsync read: redirected to login page (simulating race condition)
                 new AgnesApiKeyPageState(
                     new Uri("https://platform.agnes-ai.com/login"),
                     IsOnKeysPage: false,

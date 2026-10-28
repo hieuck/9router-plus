@@ -251,17 +251,110 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
     public async Task<bool> TryClickSignInWithGoogleAsync(CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return await ClickByKeywordsAsync(
-            new[]
+
+        var deadline = DateTimeOffset.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
+        const string keywordsJson = "[\"continue with google\",\"sign in with google\",\"log in with google\",\"tiếp tục với google\",\"đăng nhập bằng google\"]";
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
             {
-                "continue with google",
-                "sign in with google",
-                "log in with google",
-                "tiếp tục với google",
-                "đăng nhập bằng google"
-            },
-            cancellationToken,
-            timeout ?? TimeSpan.FromSeconds(10));
+                const string script = @"
+(function() {
+    const keywords = " + keywordsJson + @";
+    const isVisible = el => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return el.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+    };
+    const textOf = el => ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')).toLowerCase();
+    const candidates = Array.from(document.querySelectorAll('button, div, a, span, [role=""button""]')).filter(isVisible);
+    const matches = candidates.filter(el => keywords.some(k => textOf(el).includes(k)));
+    if (matches.length > 0) {
+        const btn = matches[0];
+        btn.scrollIntoView({ block: 'center', inline: 'center' });
+        const rect = btn.getBoundingClientRect();
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+                 width: rect.width, height: rect.height, viewportWidth: viewportWidth, viewportHeight: viewportHeight };
+    }
+    return { found: false };
+})()
+";
+                var result = await _client.CallAsync("Runtime.evaluate", new
+                {
+                    expression = script,
+                    returnByValue = true,
+                    awaitPromise = false
+                }, cancellationToken, _sessionId);
+
+                if (result.TryGetProperty("result", out var remote) && remote.TryGetProperty("value", out var value)
+                    && value.ValueKind == JsonValueKind.Object
+                    && value.TryGetProperty("found", out var foundProp) && foundProp.GetBoolean()
+                    && value.TryGetProperty("x", out var xProp) && xProp.ValueKind == JsonValueKind.Number
+                    && value.TryGetProperty("y", out var yProp) && yProp.ValueKind == JsonValueKind.Number)
+                {
+                    double x = xProp.GetDouble();
+                    double y = yProp.GetDouble();
+                    double viewportWidth = value.TryGetProperty("viewportWidth", out var vwProp) && vwProp.ValueKind == JsonValueKind.Number ? vwProp.GetDouble() : 0;
+                    double viewportHeight = value.TryGetProperty("viewportHeight", out var vhProp) && vhProp.ValueKind == JsonValueKind.Number ? vhProp.GetDouble() : 0;
+                    bool hasWidth = value.TryGetProperty("width", out var wProp) && wProp.ValueKind == JsonValueKind.Number;
+                    double width = hasWidth ? wProp.GetDouble() : 0;
+                    bool hasHeight = value.TryGetProperty("height", out var hProp) && hProp.ValueKind == JsonValueKind.Number;
+                    double height = hasHeight ? hProp.GetDouble() : 0;
+
+                    if (x > 0 && y > 0
+                        && (viewportWidth <= 0 || x <= viewportWidth)
+                        && (viewportHeight <= 0 || y <= viewportHeight)
+                        && (!hasWidth || width > 0)
+                        && (!hasHeight || height > 0))
+                    {
+                        // Trusted CDP click
+                        await _client.CallAsync("Input.dispatchMouseEvent", new
+                        {
+                            type = "mouseMoved",
+                            x,
+                            y,
+                            button = "none",
+                            buttons = 0
+                        }, cancellationToken, _sessionId);
+
+                        await _client.CallAsync("Input.dispatchMouseEvent", new
+                        {
+                            type = "mousePressed",
+                            x,
+                            y,
+                            button = "left",
+                            buttons = 1,
+                            clickCount = 1
+                        }, cancellationToken, _sessionId);
+
+                        await Task.Delay(50, cancellationToken);
+
+                        await _client.CallAsync("Input.dispatchMouseEvent", new
+                        {
+                            type = "mouseReleased",
+                            x,
+                            y,
+                            button = "left",
+                            buttons = 0,
+                            clickCount = 1
+                        }, cancellationToken, _sessionId);
+
+                        return true;
+                    }
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Execution context may not be ready; keep polling
+            }
+
+            await Task.Delay(500, cancellationToken);
+        }
+
+        return false;
     }
 
     public async Task<bool> TryDeleteOneExistingKeyAsync(CancellationToken cancellationToken)

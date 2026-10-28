@@ -360,7 +360,7 @@ public sealed class AgnesApiKeyCdpBrowserTests
         await using var server = await LoopbackCdpServer.CreateAsync();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-        int callCount = 0;
+        var dispatchEvents = new List<string>();
         var responder = Task.Run(async () =>
         {
             try
@@ -374,21 +374,21 @@ public sealed class AgnesApiKeyCdpBrowserTests
 
                     if (method == "Runtime.evaluate")
                     {
-                        callCount++;
-                        if (callCount == 1)
-                        {
-                            // First call: ReadStateAsync - return full state with proper candidates array
-                            await LoopbackCdpServer.SendJsonAsync(webSocket,
-                                $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{{\"url\":\"https://platform.agnes-ai.com/settings/apiKeys\",\"isOnKeysPage\":true,\"isOnLoginPage\":false,\"hasGoogleSignIn\":false,\"existingKeyCount\":0,\"hasNewKeyButton\":true,\"hasNewKeyNameInput\":false,\"hasCreatedKeyPanel\":false,\"apiKey\":\"\",\"candidates\":[{{\"role\":\"button\",\"tag\":\"button\",\"text\":\"continue with google\",\"ariaLabel\":\"\",\"className\":\"\"}}]}}}}}}}}",
-                                cts.Token);
-                        }
-                        else
-                        {
-                            // Second call: ClickByKeywordsAsync - returns clicked=true with candidates
-                            await LoopbackCdpServer.SendJsonAsync(webSocket,
-                                $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{{\"clicked\":true,\"candidates\":[{{\"role\":\"button\",\"tag\":\"button\",\"text\":\"continue with google\",\"ariaLabel\":\"\",\"className\":\"\"}}],\"url\":\"https://platform.agnes-ai.com/settings/apiKeys\",\"isOnKeysPage\":true,\"hasNewKeyButton\":true}}}}}}}}",
-                                cts.Token);
-                        }
+                        await LoopbackCdpServer.SendJsonAsync(webSocket,
+                            $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{{\"found\":true,\"x\":10,\"y\":20,\"width\":100,\"height\":20,\"viewportWidth\":200,\"viewportHeight\":200}}}}}}}}",
+                            cts.Token);
+                    }
+                    else if (method == "Input.dispatchMouseEvent")
+                    {
+                        var p = request.GetProperty("params");
+                        var type = p.GetProperty("type").GetString() ?? string.Empty;
+                        var button = p.TryGetProperty("button", out var b) ? (b.GetString() ?? string.Empty) : string.Empty;
+                        var buttons = p.TryGetProperty("buttons", out var bs) ? bs.GetInt32().ToString() : string.Empty;
+                        var clickCount = p.TryGetProperty("clickCount", out var cc) ? cc.GetInt32().ToString() : string.Empty;
+                        dispatchEvents.Add($"{type}|{button}|{buttons}|{clickCount}");
+                        await LoopbackCdpServer.SendJsonAsync(webSocket,
+                            $"{{\"id\":{id},\"result\":{{}}}}",
+                            cts.Token);
                     }
                     else if (method == "Target.getTargets")
                     {
@@ -413,6 +413,10 @@ public sealed class AgnesApiKeyCdpBrowserTests
         try { await responder; } catch { }
 
         Assert.True(clicked);
+        Assert.Equal(3, dispatchEvents.Count);
+        Assert.Equal("mouseMoved|none|0|", dispatchEvents[0]);
+        Assert.Equal("mousePressed|left|1|1", dispatchEvents[1]);
+        Assert.Equal("mouseReleased|left|0|1", dispatchEvents[2]);
     }
 
     [Fact]
@@ -490,20 +494,10 @@ public sealed class AgnesApiKeyCdpBrowserTests
                     if (method == "Runtime.evaluate")
                     {
                         callCount++;
-                        if (callCount == 1)
-                        {
-                            // First call: ReadStateAsync - return full state with proper candidates array
-                            await LoopbackCdpServer.SendJsonAsync(webSocket,
-                                $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{{\"url\":\"https://platform.agnes-ai.com/settings/apiKeys\",\"isOnKeysPage\":true,\"isOnLoginPage\":false,\"hasGoogleSignIn\":false,\"existingKeyCount\":0,\"hasNewKeyButton\":true,\"hasNewKeyNameInput\":false,\"hasCreatedKeyPanel\":false,\"apiKey\":\"\",\"candidates\":[{{\"role\":\"button\",\"tag\":\"button\",\"text\":\"sign in\",\"ariaLabel\":\"\",\"className\":\"\"}},{{\"role\":\"button\",\"tag\":\"button\",\"text\":\"create new key\",\"ariaLabel\":\"\",\"className\":\"\"}}]}}}}}}}}",
-                                cts.Token);
-                        }
-                        else
-                        {
-                            // Subsequent calls: ClickByKeywordsAsync - returns clicked=false with candidates
-                            await LoopbackCdpServer.SendJsonAsync(webSocket,
-                                $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{{\"clicked\":false,\"candidates\":[{{\"role\":\"button\",\"tag\":\"button\",\"text\":\"sign in\",\"ariaLabel\":\"\",\"className\":\"\"}},{{\"role\":\"button\",\"tag\":\"button\",\"text\":\"create new key\",\"ariaLabel\":\"\",\"className\":\"\"}}],\"url\":\"https://platform.agnes-ai.com/settings/apiKeys\",\"isOnKeysPage\":true,\"hasNewKeyButton\":true}}}}}}}}",
-                                cts.Token);
-                        }
+                        // Return found:false so TryClickSignInWithGoogleAsync times out
+                        await LoopbackCdpServer.SendJsonAsync(webSocket,
+                            $"{{\"id\":{id},\"result\":{{\"result\":{{\"value\":{{\"found\":false}}}}}}}}",
+                            cts.Token);
                     }
                     else if (method == "Target.getTargets")
                     {
