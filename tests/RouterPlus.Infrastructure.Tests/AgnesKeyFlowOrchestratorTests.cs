@@ -82,7 +82,8 @@ public sealed class AgnesKeyFlowOrchestratorTests
             StateSequence = new Queue<AgnesApiKeyPageState>(new[]
             {
                 OnSignInPage(),
-                OnKeysPage(hasNewKeyButton: true)
+                // Auth failed, so the tab stays signed out (still shows the Google button).
+                OnSignInPage()
             })
         };
         var google = new FakeGoogleLoginBrowser { Fail = true };

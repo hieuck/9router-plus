@@ -87,7 +87,31 @@ public static class ProviderCatalog
                 "Agnes",
                 "✨",
                 "AG",
-                "https://platform.agnes-ai.com/settings/apiKeys")
+                "https://platform.agnes-ai.com/settings/apiKeys"),
+            [ProviderKind.Poolside] = new(
+                ProviderKind.Poolside,
+                "Poolside",
+                "/dashboard/providers/poolside",
+                "https://platform.poolside.ai/api-keys",
+                WorkflowKind.ApiKey,
+                true,
+                "poolside",
+                "Poolside",
+                "🏊",
+                "PS",
+                "https://platform.poolside.ai/api-keys"),
+            [ProviderKind.Bazaarlink] = new(
+                ProviderKind.Bazaarlink,
+                "Bazaarlink",
+                "http://localhost:20128/dashboard/providers/bazaarlink",
+                "https://bazaarlink.ai/keys",
+                WorkflowKind.ApiKey,
+                true,
+                "bazaarlink",
+                "Bazaarlink",
+                "🛒",
+                "BZ",
+                "https://bazaarlink.ai/keys")
         };
 
     private static readonly IReadOnlyDictionary<string, ProviderKind> ApiAliases =

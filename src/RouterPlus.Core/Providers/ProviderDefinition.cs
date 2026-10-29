@@ -9,7 +9,9 @@ public enum ProviderKind
     Ollama,
     // Value 5 is reserved; never reuse.
     Nous = 6,
-    Agnes = 7
+    Agnes = 7,
+    Poolside = 8,
+    Bazaarlink = 9
 }
 
 public enum WorkflowKind

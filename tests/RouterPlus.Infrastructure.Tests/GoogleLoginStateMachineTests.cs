@@ -144,6 +144,25 @@ public sealed class GoogleLoginStateMachineTests
         Assert.Empty(browser.SubmittedFields);
     }
 
+    [Fact]
+    public async Task RunAsync_selects_matching_account_on_chooser_then_clicks_consent()
+    {
+        // Arrange: an existing Google session shows the account chooser first.
+        var browser = new FakeGoogleLoginBrowser { ConsentClickResult = true }
+            .ReturnState(State("/v3/signin/accountchooser", accountChooser: true))
+            .ReturnState(State("/v3/signin/consent", consent: true))
+            .ReturnState(State("/", completion: true));
+
+        // Act
+        var result = await GoogleLoginStateMachine.RunAsync(browser, Credential(), CancellationToken.None);
+
+        // Assert
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
+        Assert.Equal("synthetic@example.com", browser.AccountSelectionEmail);
+        Assert.Equal(1, browser.ConsentClickCount);
+        Assert.Empty(browser.FilledFields);
+    }
+
     private static GoogleLoginCredential Credential()
         => new("profile-1", "synthetic@example.com", "synthetic-password", "JBSWY3DPEHPK3PXP");
 
@@ -155,7 +174,9 @@ public sealed class GoogleLoginStateMachineTests
         bool totpError = false,
         bool methodPicker = false,
         bool completion = false,
-        bool manualChallenge = false)
+        bool manualChallenge = false,
+        bool accountChooser = false,
+        bool consent = false)
         => new(
             new Uri($"https://accounts.google.com{path}"),
             HasEmailField: email,
@@ -164,7 +185,9 @@ public sealed class GoogleLoginStateMachineTests
             HasTotpError: totpError,
             Has2FAMethodPicker: methodPicker,
             HasCompletionSignal: completion,
-            HasManualChallenge: manualChallenge);
+            HasManualChallenge: manualChallenge,
+            HasAccountChooser: accountChooser,
+            HasConsentScreen: consent);
 
     private sealed class FakeGoogleLoginBrowser : IGoogleLoginBrowser
     {
@@ -175,6 +198,23 @@ public sealed class GoogleLoginStateMachineTests
         public int AuthenticatorSelectionCount { get; private set; }
         public bool AuthenticatorSelectionResult { get; init; } = true;
         public Exception? FillException { get; init; }
+        public string? AccountSelectionEmail { get; private set; }
+        public int ConsentClickCount { get; private set; }
+        public bool ConsentClickResult { get; init; }
+
+        public Task<bool> TrySelectAccountOnChooserAsync(string? email, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AccountSelectionEmail = email;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> TryClickConsentContinueAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ConsentClickCount++;
+            return Task.FromResult(ConsentClickResult);
+        }
 
         public FakeGoogleLoginBrowser ReturnState(GoogleLoginPageState state)
         {

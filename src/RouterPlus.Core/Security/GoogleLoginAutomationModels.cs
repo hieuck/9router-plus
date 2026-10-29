@@ -11,7 +11,9 @@ public sealed record GoogleLoginPageState(
     bool HasTotpError,
     bool Has2FAMethodPicker,
     bool HasCompletionSignal,
-    bool HasManualChallenge);
+    bool HasManualChallenge,
+    bool HasAccountChooser = false,
+    bool HasConsentScreen = false);
 
 /// <summary>
 /// Semantic field identifiers for Google login form.

@@ -27,7 +27,6 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     {
         using var renderCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         renderCts.CancelAfter(TimeSpan.FromSeconds(30));
-        var triedAddAccount = false;
         var triedSkipPasskey = false;
         var triedSkipHomeAddress = false;
         var triedConfirmIdentifier = false;
@@ -73,7 +72,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 }
 
                 if (state.HasEmailField || state.HasPasswordField || state.HasTotpField ||
-                    state.HasCompletionSignal || state.HasManualChallenge)
+                    state.HasCompletionSignal || state.HasManualChallenge || state.HasAccountChooser || state.HasConsentScreen)
                 {
                     return state;
                 }
@@ -95,15 +94,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                     continue;
                 }
 
-                // Google account chooser page renders no email field. Navigate
-                // directly to the identifier entry page to bypass it.
-                if (!triedAddAccount && state.PageUri.Host == "accounts.google.com")
-                {
-                    if (await TryBypassAccountChooserAsync(renderCts.Token))
-                    {
-                        triedAddAccount = true;
-                    }
-                }
+                // Google account chooser and OAuth consent handling lives in
+                // GoogleLoginStateMachine, which knows the expected email address.
+                // Both states are returned above, so nothing to do here.
 
                 // Google v3 confirmidentifier page - email already filled, just need to click Continue
                 if (!triedConfirmIdentifier && state.PageUri.Host == "accounts.google.com" &&
@@ -226,7 +219,29 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         (window.location.host === 'gds.google.com' && window.location.pathname.includes('/web/landing'));
     const isSignInPage = window.location.pathname.includes('/signin') ||
                          !!document.querySelector('input[type=""email""], input[type=""password""]');
-    const hasCompletionSignal = hasSignedInMarker && !isSignInPage;
+    const path = window.location.pathname.toLowerCase();
+    const bodyText = (document.body && document.body.innerText || '').toLowerCase();
+    const hasNoCredentialField = !hasEmailField && !hasPasswordField && !hasTotpField;
+    // data-profile-identifier is Google's signed-in avatar marker and shows up on every
+    // signed-in Google page, so it must not be treated as an account-chooser row.
+    const hasAccountChooser = window.location.host === 'accounts.google.com' && hasNoCredentialField &&
+        (path.includes('accountchooser') || path.includes('account-chooser') ||
+         !!document.querySelector('li[data-authuser], [data-authuser], li[data-identifier], [data-identifier][data-email], [data-account]') ||
+         Array.from(document.querySelectorAll('div[role=""button""], li[role=""button""]')).some(el => {
+             const t = ((el.innerText || el.getAttribute('aria-label') || '')).toLowerCase();
+             return (t.includes('@') && t.includes('gmail')) || el.querySelector('[data-identifier], [data-email]');
+         }));
+    const hasConsentScreen = window.location.host === 'accounts.google.com' && hasNoCredentialField &&
+        (path.includes('consent') || path.includes('oauth') ||
+         bodyText.includes('choose what to allow') || bodyText.includes('muốn cho phép') ||
+         bodyText.includes('continue to') || bodyText.includes('tiếp tục đến') ||
+         bodyText.includes('truy cập vào') || bodyText.includes('share your') ||
+         bodyText.includes('chỉ định') || bodyText.includes('xem và quản lý') ||
+         Array.from(document.querySelectorAll('button, [role=""button""]')).some(b => {
+            const t = ((b.innerText || b.getAttribute('aria-label') || '')).toLowerCase();
+            return (t.includes('allow') || t.includes('cho phép') || t.includes('đồng ý') || t.includes('accept')) && !t.includes('cancel') && !t.includes('hủy');
+        }));
+    const hasCompletionSignal = hasSignedInMarker && !isSignInPage && !hasAccountChooser && !hasConsentScreen;
     const hasChallengeElement = !!document.querySelector('[data-challenge-id], .captcha, #captcha');
     const hasManualChallenge = hasChallengeElement || window.location.pathname.includes('/challenge/recaptcha');
 
@@ -239,7 +254,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         has2FAMethodPicker: has2FAMethodPicker,
         hasCompletionSignal: hasCompletionSignal,
         hasManualChallenge: hasManualChallenge,
-        emailValue: emailValue
+        emailValue: emailValue,
+        hasAccountChooser: hasAccountChooser,
+        hasConsentScreen: hasConsentScreen
     };
 })({})
 ";
@@ -283,6 +300,8 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             var hasManualChallenge = IsManualChallenge(
                 pageUrl,
                 value.GetProperty("hasManualChallenge").GetBoolean());
+            var hasAccountChooser = value.TryGetProperty("hasAccountChooser", out var acct) && acct.GetBoolean();
+            var hasConsentScreen = value.TryGetProperty("hasConsentScreen", out var consent) && consent.GetBoolean();
 
             // Log TOTP error detection
             if (hasTotpError)
@@ -303,7 +322,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 hasTotpError,
                 has2FAMethodPicker,
                 hasCompletionSignal,
-                hasManualChallenge);
+                hasManualChallenge,
+                hasAccountChooser,
+                hasConsentScreen);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or UriFormatException)
         {
@@ -448,24 +469,126 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         }
     }
 
-    /// <summary>
-    /// When the Google account chooser page is shown, navigate directly to
-    /// the identifier entry page to bypass the chooser.
-    /// </summary>
-    private async Task<bool> TryBypassAccountChooserAsync(CancellationToken cancellationToken)
+    public async Task<bool> TrySelectAccountOnChooserAsync(string? email, CancellationToken cancellationToken)
     {
         try
         {
-            const string script = @"
+            var emailNormalized = string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
+            var emailJson = JsonSerializer.Serialize(emailNormalized);
+            var script = @"
 (function() {
-    const path = window.location.pathname;
-    if (path !== '/v3/signin/accountchooser' && path !== '/signin/accountchooser') {
-        return { navigated: false, path: path };
+    const wanted = " + emailJson + @";
+    const isVisible = element => {
+        const rect = element.getBoundingClientRect();
+        return element.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+    };
+    const area = el => { const r = el.getBoundingClientRect(); return r.width * r.height; };
+    const smallest = list => { list.sort((a, b) => area(a) - area(b)); return list[0] || null; };
+    const textOf = el => ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')).toLowerCase();
+    const attributesOf = el => {
+        const attrs = [];
+        const candidates = [el];
+        // Also check children for data attributes
+        try {
+            el.querySelectorAll('[data-identifier],[data-email],[data-authuser]').forEach(c => candidates.push(c));
+        } catch (e) {}
+        for (const node of candidates) {
+            const dId = (node.getAttribute('data-identifier') || '').trim().toLowerCase();
+            const dEmail = (node.getAttribute('data-email') || '').trim().toLowerCase();
+            const dAuth = (node.getAttribute('data-authuser') || '').trim().toLowerCase();
+            if (dId) attrs.push(dId);
+            if (dEmail) attrs.push(dEmail);
+            if (dAuth && dAuth.includes('@')) attrs.push(dAuth);
+        }
+        return attrs.filter(Boolean);
+    };
+
+    // Account rows. Try to find clickable account entries.
+    let rows = Array.from(document.querySelectorAll('[data-authuser], li[data-identifier], [data-identifier], [data-email], div[data-email], [role=""button""][data-account], [role=""link""][data-account]'))
+        .filter(el => isVisible(el));
+    
+    // Filter out elements that have li children (to get leaf-ish rows)
+    rows = rows.filter(el => el.querySelectorAll('li').length === 0);
+    
+    // Also look for common account chooser patterns
+    if (rows.length === 0) {
+        rows = Array.from(document.querySelectorAll('li[role=""button""], div[role=""button""], [jsname]'))
+            .filter(el => isVisible(el) && el.querySelectorAll('li').length === 0)
+            .filter(el => {
+                const t = textOf(el);
+                return t.includes('@') || el.querySelector('[data-identifier], [data-email]');
+            });
     }
-    const url = new URL(window.location.href);
-    url.pathname = '/v3/signin/identifier';
-    window.location.href = url.toString();
-    return { navigated: true };
+
+    let target = null;
+    let strategy = 'no_match';
+
+    if (wanted) {
+        // Try exact attribute match first (prefer exact email match if multiple)
+        target = rows.find(el => attributesOf(el).includes(wanted)) || null;
+        if (target) strategy = 'email_attribute';
+        if (!target) {
+            // Try text match - look for email as token
+            const byText = rows.filter(el => {
+                const t = (el.innerText || '').toLowerCase();
+                // Check if email appears as a word/token
+                const tokens = t.split(/[^a-z0-9@._+-]+/);
+                if (tokens.includes(wanted)) return true;
+                // Also check if it contains the full email
+                return t.includes(wanted);
+            });
+            if (byText.length > 0) {
+                target = smallest(byText);
+                strategy = 'email_text';
+            }
+        }
+    }
+
+    // No exact match: add the account explicitly instead of signing in a different one.
+    if (!target) {
+        const anotherCandidates = Array.from(document.querySelectorAll('button, [role=""button""], a, [role=""link""], li, div[jsname], [jsaction]'))
+            .filter(el => isVisible(el))
+            .filter(el => el.querySelectorAll('li').length === 0 || el.tagName === 'BUTTON' || el.getAttribute('role') === 'button')
+            .filter(el => {
+                const t = textOf(el);
+                return t.includes('use another account') || t.includes('tài khoản khác') || 
+                       t.includes('add account') || t.includes('thêm tài khoản') ||
+                       t.includes('sign in with different account');
+            });
+        if (anotherCandidates.length > 0) {
+            target = smallest(anotherCandidates);
+            if (target) strategy = 'use_another_account';
+        }
+    }
+
+    // Also try more specific selectors for 'Use another account'
+    if (!target && wanted) {
+        const moreSpecific = Array.from(document.querySelectorAll('div[role=""link""], li[role=""link""], [data-action=""add-account""]'))
+            .filter(el => isVisible(el))
+            .filter(el => {
+                const t = textOf(el);
+                return t.includes('use another') || t.includes('tài khoản khác') || t.includes('another account');
+            });
+        if (moreSpecific.length > 0) {
+            target = smallest(moreSpecific);
+            if (target) strategy = 'use_another_account';
+        }
+    }
+
+    // Caller supplied no email to match, so any listed account is acceptable.
+    if (!target && !wanted) {
+        if (rows.length > 0) {
+            target = smallest(rows.slice());
+            if (target) strategy = 'first_account';
+        }
+    }
+
+    if (!target) return { found: false, strategy: strategy };
+    const rect = target.getBoundingClientRect();
+    // Ensure element is in view and clickable
+    try { target.scrollIntoView({ block: 'center', inline: 'center' }); } catch(e) {}
+    const rect2 = target.getBoundingClientRect();
+    return { found: true, strategy: strategy, centerX: rect2.left + rect2.width / 2, centerY: rect2.top + rect2.height / 2 };
 })()
 ";
             var result = await _client.CallAsync("Runtime.evaluate", new
@@ -474,15 +597,54 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 returnByValue = true,
                 awaitPromise = false
             }, cancellationToken, _sessionId);
+            if (result.TryGetProperty("exceptionDetails", out var chooserException))
+            {
+                // A script error here would otherwise look like "no matching account".
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Error,
+                    "GoogleLogin",
+                    "AccountChooserScriptFailed",
+                    "Account chooser evaluation failed",
+                    new { error = GetCdpExceptionDescription(chooserException) });
+                return false;
+            }
 
-            if (!result.TryGetProperty("result", out var remoteObject)
-                || !remoteObject.TryGetProperty("value", out var value))
+            if (!result.TryGetProperty("result", out var remoteObject) || !remoteObject.TryGetProperty("value", out var value))
             {
                 return false;
             }
 
-            return value.TryGetProperty("navigated", out var navigated)
-                && navigated.ValueKind == JsonValueKind.True;
+            var strategy = value.TryGetProperty("strategy", out var strategyProp)
+                ? strategyProp.GetString() ?? "unknown"
+                : "unknown";
+
+            if (!(value.TryGetProperty("found", out var found) && found.ValueKind == JsonValueKind.True) ||
+                !value.TryGetProperty("centerX", out var cx) || !value.TryGetProperty("centerY", out var cy))
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "GoogleLogin",
+                    "AccountChooserNoTarget",
+                    "Account chooser shown but no account could be selected",
+                    new { strategy });
+                return false;
+            }
+
+            var x = cx.GetDouble();
+            var y = cy.GetDouble();
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "GoogleLogin",
+                "AccountChooserSelected",
+                "Account chooser target selected",
+                new { strategy, x, y });
+
+            await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mouseMoved", x, y, button = "none", buttons = 0 }, cancellationToken, _sessionId);
+            await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mousePressed", x, y, button = "left", clickCount = 1 }, cancellationToken, _sessionId);
+            await Task.Delay(50, cancellationToken);
+            await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }, cancellationToken, _sessionId);
+            return true;
         }
         catch
         {
@@ -1062,6 +1224,54 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             _ => throw new ArgumentOutOfRangeException(nameof(field))
         };
 
+        var selectorJson = JsonSerializer.Serialize(selector);
+
+        // Wait (up to 10s) for the visible input field and a visible submit button
+        // to be present before evaluating submitExpression.
+        var submitWaitDeadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < submitWaitDeadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var submitReadyExpression = $"(() => {{ " +
+                "const elements = document.querySelectorAll(" + selectorJson + "); " +
+                "const fieldEl = Array.from(elements).find(e => {{ const r = e.getBoundingClientRect(); return e.getClientRects().length > 0 && r.width > 0 && r.height > 0; }}); " +
+                "if (!fieldEl) return false; " +
+                "const fieldKind = Array.from(elements).some(e => e.matches('input[type=\"password\"]')) ? 'password' : " +
+                "(Array.from(elements).some(e => e.matches('input[name=\"totpPin\"]')) ? 'totp' : 'email'); " +
+                "const nextButtonId = fieldKind === 'password' ? '#passwordNext' : " +
+                "fieldKind === 'totp' ? '#totpNext' : '#identifierNext'; " +
+                "const candidates = [nextButtonId, '[jsname=\\\"LgbsSe\\\"]', '[jsname=\\\"Njthtb\\\"]', " +
+                "'[data-primary-action-label]', 'button[type=\\\"submit\\\"]']; " +
+                "for (const candidateSelector of candidates) {{ const candidate = document.querySelector(candidateSelector); " +
+                "if (candidate && !candidate.disabled && candidate.getClientRects().length > 0) {{ const rect = candidate.getBoundingClientRect(); if (rect.width > 0 && rect.height > 0) return true; }} }} " +
+                "const labels = ['next', 'tiếp', 'continue', 'sign in', 'đăng nhập', 'submit']; " +
+                "for (const candidate of document.querySelectorAll('[role=\\\"button\\\"], button')) {{ " +
+                "const label = ((candidate.innerText || '') + ' ' + (candidate.getAttribute('aria-label') || '')).toLowerCase(); " +
+                "const rect = candidate.getBoundingClientRect(); " +
+                "if (!candidate.disabled && candidate.getClientRects().length > 0 && rect.width > 0 && rect.height > 0 && labels.some(item => label.includes(item))) return true; }} " +
+                "return false; })()";
+            try
+            {
+                var readyResult = await _client.CallAsync("Runtime.evaluate", new
+                {
+                    expression = submitReadyExpression,
+                    returnByValue = true,
+                    awaitPromise = false
+                }, cancellationToken, _sessionId);
+                if (readyResult.TryGetProperty("result", out var readyResultObj)
+                    && readyResultObj.TryGetProperty("value", out var readyValue)
+                    && readyValue.ValueKind == JsonValueKind.True)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                // Ignore transient evaluation failures while waiting
+            }
+            await Task.Delay(250, cancellationToken);
+        }
+
         // Wait a bit to ensure field is still visible after fill
         // DebugConsole.WriteLine($"[Submit] {field} - Waiting 300ms before submit...");
         await Task.Delay(300, cancellationToken);
@@ -1071,7 +1281,6 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
 
         // Google uses step-specific controls whose exact markup varies by
         // Chromium version and locale.
-        var selectorJson = JsonSerializer.Serialize(selector);
         var submitExpression = $"(() => {{ const elements = document.querySelectorAll({selectorJson}); " +
                                "const element = Array.from(elements).find(e => {{ const r = e.getBoundingClientRect(); return e.getClientRects().length > 0 && r.width > 0 && r.height > 0; }}); " +
                                "if (!element) {{ console.log('Submit: Field not found. Selector:', {selectorJson}, 'Elements found:', elements.length); throw new Error('Visible field not found'); }} " +
@@ -1115,10 +1324,21 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
             && submitted.ValueKind == JsonValueKind.True;
         var method = submitValue.TryGetProperty("method", out var m) ? m.GetString() : "none";
 
-        // DebugConsole.WriteLine($"[Submit] field={field} submittedByDom={submittedByDom} method={method}");
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Info,
+            "GoogleLogin",
+            "SubmitResult",
+            "Submit evaluated",
+            new { field = field.ToString(), submittedByDom, method, submitValue = submitValue.ToString() });
 
         if (submittedByDom)
         {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "GoogleLogin",
+                "DispatchMouseClickAttempt",
+                "Dispatching trusted mouse click on submit button",
+                new { field = field.ToString() });
             // Find the submit button location and dispatch real mouse events
             await DispatchMouseClickOnSubmitButtonAsync(field, cancellationToken);
             await Task.Delay(500, cancellationToken);
@@ -1210,14 +1430,20 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 {
                     GoogleLoginField.Email => !state.HasEmailField &&
                         (state.HasPasswordField || state.HasTotpField ||
-                         state.HasCompletionSignal || state.HasManualChallenge),
+                         state.HasCompletionSignal || state.HasManualChallenge ||
+                         // An existing Google session can skip straight to consent/chooser.
+                         state.HasAccountChooser || state.HasConsentScreen),
                     GoogleLoginField.Password =>
                         // Password advanced if: password field gone OR 2FA picker appeared (even if password field still visible for back navigation)
+                        // Also treat a consent/account chooser/interstitial page (no password/email fields) as advanced so OAuth can be handled.
                         (!state.HasPasswordField || state.Has2FAMethodPicker) &&
                         (state.HasTotpField || state.HasCompletionSignal ||
-                         state.HasManualChallenge || state.Has2FAMethodPicker),
+                         state.HasManualChallenge || state.Has2FAMethodPicker ||
+                         state.HasAccountChooser || state.HasConsentScreen ||
+                         (!state.HasPasswordField && !state.HasEmailField)),
                     GoogleLoginField.Totp => !state.HasTotpField &&
-                        (state.HasCompletionSignal || state.HasManualChallenge),
+                        (state.HasCompletionSignal || state.HasManualChallenge ||
+                         state.HasConsentScreen || state.HasAccountChooser),
                     _ => false
                 };
 
@@ -1274,8 +1500,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         var expression = $"(() => {{ const b = document.querySelector({selectorJson}); " +
                          "const r = b ? b.getBoundingClientRect() : null; " +
                          "const alerts = document.querySelectorAll('[role=\\\"alert\\\"], [aria-live=\\\"assertive\\\"]'); " +
+                         "const vb = Array.from(document.querySelectorAll('button, [role=button], [jsname]')).filter(e => { const rr = e.getBoundingClientRect(); return rr.width > 0 && rr.height > 0; }).map(e => { const rr = e.getBoundingClientRect(); return e.tagName.toLowerCase() + ':' + (e.id || '') + ':' + (e.getAttribute('jsname') || '') + ':' + (e.innerText || '').trim().replace(/\\|/g, '') + '@' + rr.left + ',' + rr.top; }).join('|'); " +
                          "return 'button=' + !!b + ';disabled=' + (!!b && !!b.disabled) + ';rect=' + " +
-                         "(!!r && r.width > 0 && r.height > 0) + ';alerts=' + alerts.length; })()";
+                         "(!!r && r.width > 0 && r.height > 0) + ';alerts=' + alerts.length + ';visibleButtons=' + vb; })()";
         var result = await _client.CallAsync("Runtime.evaluate", new
         {
             expression,
@@ -1327,7 +1554,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
     {
         try
         {
-            var fieldSelector = field switch
+            var primarySelector = field switch
             {
                 GoogleLoginField.Email => "#identifierNext",
                 GoogleLoginField.Password => "#passwordNext",
@@ -1335,10 +1562,21 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 _ => "button"
             };
 
-            var selectorJson = JsonSerializer.Serialize(fieldSelector);
-            var expression = "(() => { const b = document.querySelector(" + selectorJson + "); " +
-                             "if (!b) return null; const r = b.getBoundingClientRect(); " +
-                             "return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()";
+            var primarySelectorJson = JsonSerializer.Serialize(primarySelector);
+            var expression = "(() => {" +
+                             "const primary = " + primarySelectorJson + ";" +
+                             "const candidates = [primary, '[jsname=\"LgbsSe\"]', '[jsname=\"Njthtb\"]', '[data-primary-action-label]', 'button[type=\"submit\"]'];" +
+                             "let button = null;" +
+                             "for (const selector of candidates) { const candidate = document.querySelector(selector); if (candidate && !candidate.disabled && candidate.getClientRects().length > 0) { const rect = candidate.getBoundingClientRect(); if (rect.width > 0 && rect.height > 0) { button = candidate; break; } } }" +
+                             "if (!button) { const labels = ['next', 'tiếp', 'continue', 'sign in', 'đăng nhập', 'submit'];" +
+                             "for (const candidate of document.querySelectorAll('[role=\"button\"], button')) {" +
+                             "const label = ((candidate.innerText || '') + ' ' + (candidate.getAttribute('aria-label') || '')).toLowerCase();" +
+                             "const rect = candidate.getBoundingClientRect();" +
+                             "if (!candidate.disabled && candidate.getClientRects().length > 0 && rect.width > 0 && rect.height > 0 && labels.some(item => label.includes(item))) { button = candidate; break; } } }" +
+                             "if (!button) return null;" +
+                             "const r = button.getBoundingClientRect();" +
+                             "return { x: r.left + r.width / 2, y: r.top + r.height / 2, tag: button.tagName, text: (button.innerText || button.getAttribute('aria-label') || '').slice(0, 80) };" +
+                             "})()";
 
             var result = await _client.CallAsync("Runtime.evaluate", new
             {
@@ -1351,13 +1589,37 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 || !remoteObject.TryGetProperty("value", out var value)
                 || value.ValueKind != JsonValueKind.Object)
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "GoogleLogin",
+                    "DispatchMouseClickNoButton",
+                    "No submit button found for trusted click",
+                    new { field = field.ToString() });
                 return;
             }
 
             var x = value.GetProperty("x").GetDouble();
             var y = value.GetProperty("y").GetDouble();
+            var tag = value.TryGetProperty("tag", out var tagProp) ? tagProp.GetString() : "";
+            var text = value.TryGetProperty("text", out var textProp) ? textProp.GetString() : "";
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "GoogleLogin",
+                "DispatchMouseClickTarget",
+                "Trusted click target",
+                new { field = field.ToString(), x, y, tag, text });
 
             // Dispatch real mouse events
+            await _client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mouseMoved",
+                x = x,
+                y = y,
+                button = "none",
+                buttons = 0
+            }, cancellationToken, _sessionId);
+
             await _client.CallAsync("Input.dispatchMouseEvent", new
             {
                 type = "mousePressed",
@@ -1367,19 +1629,27 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
                 buttons = 1,
                 clickCount = 1
             }, cancellationToken, _sessionId);
+
+            await Task.Delay(50, cancellationToken);
+
             await _client.CallAsync("Input.dispatchMouseEvent", new
             {
                 type = "mouseReleased",
                 x = x,
                 y = y,
                 button = "left",
-                buttons = 1,
+                buttons = 0,
                 clickCount = 1
             }, cancellationToken, _sessionId);
         }
-        catch
+        catch (Exception ex)
         {
-            // Best effort
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Warning,
+                "GoogleLogin",
+                "DispatchMouseClickFailed",
+                "Trusted click failed",
+                new { field = field.ToString(), error = ex.Message });
         }
     }
 
@@ -1785,6 +2055,180 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
         catch (Exception)
         {
             // DebugConsole.WriteLine($"[Recaptcha] Exception: {ex.Message}");
+            return false;
+        }
+    }
+
+    public async Task<bool> TryClickConsentContinueAsync(CancellationToken cancellationToken)
+    {
+        // Must be on accounts.google.com consent/OAuth page
+        try
+        {
+            var checkPage = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = "(function(){const h=window.location.hostname.toLowerCase();const p=window.location.pathname.toLowerCase();const t=(document.body&&document.body.innerText||'').toLowerCase();const isGoogle=h==='accounts.google.com'||h==='myaccount.google.com';const isConsent=p.includes('/signin/oauth')||p.includes('/o/oauth2')||t.includes('continue to')||t.includes('choose what to allow')||t.includes('cho phép')||t.includes('đồng ý');return {ok:isGoogle&&isConsent,host:h,path:p};})()",
+                returnByValue = true,
+                awaitPromise = false
+            }, cancellationToken, _sessionId);
+            if (checkPage.TryGetProperty("result", out var cp) && cp.TryGetProperty("value", out var cv))
+            {
+                if (!(cv.TryGetProperty("ok", out var okp) && okp.ValueKind == JsonValueKind.True))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        // Wait up to 5s for loading spinner to disappear (same pattern as TrySelectAuthenticatorMethodAsync)
+        for (int waitAttempt = 1; waitAttempt <= 10; waitAttempt++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            try
+            {
+                const string checkLoadingScript = @"
+(function() {
+    const progressBars = Array.from(document.querySelectorAll('[role=""progressbar""], [aria-label*=""tải"" i], [aria-label*=""loading"" i]'));
+    const loadingTexts = Array.from(document.querySelectorAll('*')).filter(el => {
+        const text = (el.innerText || el.textContent || '').trim().toLowerCase();
+        return text === 'đang tải' || text === 'loading';
+    });
+    const isLoading = progressBars.length > 0 || loadingTexts.length > 0;
+    return { isLoading: isLoading, progressBars: progressBars.length, loadingTexts: loadingTexts.length };
+})()
+";
+                var checkResult = await _client.CallAsync("Runtime.evaluate", new
+                {
+                    expression = checkLoadingScript,
+                    returnByValue = true,
+                    awaitPromise = false
+                }, cancellationToken, _sessionId);
+
+                if (checkResult.TryGetProperty("result", out var checkResultObj)
+                    && checkResultObj.TryGetProperty("value", out var checkValue)
+                    && checkValue.TryGetProperty("isLoading", out var isLoadingProp)
+                    && isLoadingProp.ValueKind == JsonValueKind.False)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                // Intentionally swallow: spinner check is optional
+            }
+
+            await Task.Delay(500, cancellationToken);
+        }
+
+        try
+        {
+            const string script = @"
+(function() {
+    const isVisible = element => {
+        const rect = element.getBoundingClientRect();
+        return element.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+    };
+
+    const keywords = ['tiếp tục', 'continue', 'allow', 'cho phép', 'agree', 'authorize', 'accept'];
+    const avoid = ['try another way', 'cancel', 'thử cách khác', 'hủy'];
+
+    const candidates = Array.from(document.querySelectorAll('button, [role=""button""], a, [role=""link""]')).filter(el => {
+        if (!isVisible(el)) return false;
+        const text = ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+        if (avoid.some(a => text.includes(a))) return false;
+        return keywords.some(k => text.includes(k));
+    });
+
+    if (candidates.length === 0) {
+        return { found: false };
+    }
+
+    // Prefer jsname LgbsSe or role button
+    let best = candidates[0];
+    let bestScore = -1;
+    for (const el of candidates) {
+        let score = 0;
+        if (el.getAttribute('jsname') === 'LgbsSe') score += 2;
+        if (el.getAttribute('role') === 'button' || el.tagName.toLowerCase() === 'button') score += 1;
+        if (score > bestScore) { bestScore = score; best = el; }
+    }
+
+    const rect = best.getBoundingClientRect();
+    return {
+        found: true,
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2
+    };
+})()
+";
+            var result = await _client.CallAsync("Runtime.evaluate", new
+            {
+                expression = script,
+                returnByValue = true,
+                awaitPromise = false
+            }, cancellationToken, _sessionId);
+
+            if (!result.TryGetProperty("result", out var remoteObject)
+                || !remoteObject.TryGetProperty("value", out var value))
+            {
+                return false;
+            }
+
+            if (!(value.TryGetProperty("found", out var found) && found.ValueKind == JsonValueKind.True)
+                || !value.TryGetProperty("centerX", out var centerX)
+                || !value.TryGetProperty("centerY", out var centerY))
+            {
+                return false;
+            }
+
+            var x = centerX.GetDouble();
+            var y = centerY.GetDouble();
+
+            // mouseMoved before
+            await _client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mouseMoved",
+                x = x,
+                y = y,
+                button = "none",
+                buttons = 0
+            }, cancellationToken, _sessionId);
+
+            await _client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mousePressed",
+                x = x,
+                y = y,
+                button = "left",
+                clickCount = 1
+            }, cancellationToken, _sessionId);
+
+            await Task.Delay(50, cancellationToken);
+
+            await _client.CallAsync("Input.dispatchMouseEvent", new
+            {
+                type = "mouseReleased",
+                x = x,
+                y = y,
+                button = "left",
+                clickCount = 1
+            }, cancellationToken, _sessionId);
+
+            return true;
+        }
+        catch
+        {
             return false;
         }
     }

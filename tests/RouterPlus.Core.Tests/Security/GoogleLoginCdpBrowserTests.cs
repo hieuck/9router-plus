@@ -144,6 +144,48 @@ public sealed class GoogleLoginCdpBrowserTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => browser.ReadStateAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task TrySelectAccountOnChooserAsync_dispatches_trusted_click_for_selected_row()
+    {
+        var cdp = new FakeChromeCdpClient();
+        cdp.Enqueue(
+            "Runtime.evaluate",
+            Json("{\"result\":{\"value\":{\"found\":true,\"strategy\":\"email_text\",\"centerX\":10,\"centerY\":20}}}"),
+            "session-1");
+        cdp.Enqueue("Input.dispatchMouseEvent", EmptyResult(), "session-1");
+        cdp.Enqueue("Input.dispatchMouseEvent", EmptyResult(), "session-1");
+        cdp.Enqueue("Input.dispatchMouseEvent", EmptyResult(), "session-1");
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
+
+        var selected = await browser.TrySelectAccountOnChooserAsync("user@example.com", CancellationToken.None);
+
+        Assert.True(selected);
+        var clicks = cdp.Calls
+            .Where(call => call.Method == "Input.dispatchMouseEvent")
+            .Select(call => call.ParametersText)
+            .ToList();
+        Assert.Equal(3, clicks.Count);
+        Assert.Contains("mousePressed", clicks[1]);
+        cdp.AssertComplete();
+    }
+
+    [Fact]
+    public async Task TrySelectAccountOnChooserAsync_returns_false_when_no_row_matches()
+    {
+        var cdp = new FakeChromeCdpClient();
+        cdp.Enqueue(
+            "Runtime.evaluate",
+            Json("{\"result\":{\"value\":{\"found\":false,\"strategy\":\"no_match\"}}}"),
+            "session-1");
+        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
+
+        var selected = await browser.TrySelectAccountOnChooserAsync("user@example.com", CancellationToken.None);
+
+        Assert.False(selected);
+        Assert.DoesNotContain(cdp.Calls, call => call.Method == "Input.dispatchMouseEvent");
+        cdp.AssertComplete();
+    }
+
     private static JsonElement Targets(string url)
         => Json($"{{\"targetInfos\":[{{\"targetId\":\"target-1\",\"url\":\"{url}\"}}]}}");
 

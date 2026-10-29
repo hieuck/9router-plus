@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using RouterPlus.Core.Observability;
 using RouterPlus.Core.Security;
 
 namespace RouterPlus.Infrastructure.Chrome;
@@ -35,6 +36,12 @@ internal sealed class GoogleLoginPopupBrowser : IGoogleLoginBrowser, IAsyncDispo
 
     public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
         => _browser.TrySelectAuthenticatorMethodAsync(cancellationToken);
+
+    public Task<bool> TryClickConsentContinueAsync(CancellationToken cancellationToken)
+        => _browser.TryClickConsentContinueAsync(cancellationToken);
+
+    public Task<bool> TrySelectAccountOnChooserAsync(string? email, CancellationToken cancellationToken)
+        => _browser.TrySelectAccountOnChooserAsync(email, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {
@@ -261,11 +268,13 @@ public sealed class ChromeManagedSession : IAsyncDisposable
 
             var deadline = DateTimeOffset.UtcNow + (popupTimeout ?? TimeSpan.FromSeconds(30));
             string? popupTargetId = null;
+            int lastTargetsSeen = 0;
 
             while (DateTimeOffset.UtcNow < deadline && popupTargetId is null)
             {
                 var response = await client.CallAsync("Target.getTargets", null, cancellationToken);
                 var targets = ManagedChromeTargetConnector.ReadTargets(response);
+                lastTargetsSeen = targets.Count;
 
                 // Find accounts.google.com page targets, excluding the Agnes tab and pre-click targets
                 var googlePopups = new List<ManagedChromeTarget>();
@@ -304,6 +313,12 @@ public sealed class ChromeManagedSession : IAsyncDisposable
                 if (googlePopups.Count > 0)
                 {
                     popupTargetId = googlePopups[0].TargetId;
+                    ObservabilityHub.Instance.LogEvent(
+                        LogLevel.Info,
+                        "ChromeManagedSession",
+                        "GooglePopupFound",
+                        "Google popup target found",
+                        new { targetId = popupTargetId, url = googlePopups[0].Url });
                     break;
                 }
 
@@ -312,6 +327,13 @@ public sealed class ChromeManagedSession : IAsyncDisposable
 
             if (popupTargetId is null)
             {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Warning,
+                    "ChromeManagedSession",
+                    "GooglePopupTimeout",
+                    "Google popup not found within timeout",
+                    new { targetsSeen = lastTargetsSeen, targets_seen = lastTargetsSeen });
+
                 var timeoutSeconds = (popupTimeout ?? TimeSpan.FromSeconds(30)).TotalSeconds;
                 throw new InvalidOperationException($"Google login popup (accounts.google.com) did not appear within {timeoutSeconds:F0} seconds.");
             }

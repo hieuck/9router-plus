@@ -27,4 +27,18 @@ public interface IGoogleLoginBrowser : IAsyncDisposable
     /// Returns true if the click succeeded.
     /// </summary>
     Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Clicks a consent/continue/allow/authorize button if present.
+    /// Returns true if the click succeeded.
+    /// </summary>
+    Task<bool> TryClickConsentContinueAsync(CancellationToken cancellationToken) => Task.FromResult(false);
+
+    /// <summary>
+    /// Selects the account matching <paramref name="email"/> on Google's account chooser.
+    /// When no row matches, the "Use another account" option is clicked instead so the
+    /// credential is typed explicitly rather than signing in the wrong account.
+    /// Returns true if a click was dispatched.
+    /// </summary>
+    Task<bool> TrySelectAccountOnChooserAsync(string? email, CancellationToken cancellationToken) => Task.FromResult(false);
 }

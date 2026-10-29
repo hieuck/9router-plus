@@ -193,6 +193,15 @@ public static class AgnesKeyFlowOrchestrator
 
         // Click Google sign-in button
         var clicked = await page.TryClickSignInWithGoogleAsync(cancellationToken);
+        if (clicked)
+        {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "AgnesKeyFlow",
+                "GoogleClickDispatched",
+                "Google click dispatched",
+                new { currentUrl = state.PageUri.ToString() });
+        }
         if (!clicked)
         {
             return new AgnesKeyFlowResult(
@@ -228,6 +237,7 @@ public static class AgnesKeyFlowOrchestrator
                 "Google login popup did not appear: no popup connector provided.");
         }
 
+        GoogleLoginResult? loginResult = null;
         try
         {
             ObservabilityHub.Instance.LogEvent(
@@ -238,7 +248,7 @@ public static class AgnesKeyFlowOrchestrator
                 new { email = credential.Email });
 
             var googleAuthentication = googleAuthenticationService ?? new GoogleAuthenticationService();
-            var loginResult = await googleAuthentication.AuthenticateAsync(
+            loginResult = await googleAuthentication.AuthenticateAsync(
                 new GoogleAuthenticationRequest(credential, popup),
                 cancellationToken);
 
@@ -248,14 +258,6 @@ public static class AgnesKeyFlowOrchestrator
                 "GoogleAutoLoginCompleted",
                 "Google login completed",
                 new { category = loginResult.Category.ToString(), message = loginResult.Message });
-
-            if (loginResult.Category != GoogleLoginResultCategory.Success)
-            {
-                return new AgnesKeyFlowResult(
-                    false,
-                    null,
-                    $"Google sign-in failed: {loginResult.Message}");
-            }
         }
         finally
         {
@@ -265,58 +267,116 @@ public static class AgnesKeyFlowOrchestrator
             }
         }
 
-        // Phase 3: After auth, wait for keys page (content-based)
-        // Navigate to keys page to ensure we're on the right page
-        await page.NavigateToKeysPageAsync(cancellationToken);
-        
-        // Wait for keys page with generous timeout
-        var keysDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        bool onKeysPage = false;
-        
-        while (DateTimeOffset.UtcNow < keysDeadline)
+        if (loginResult.Category != GoogleLoginResultCategory.Success)
         {
+            // Check if already signed in on Agnes tab despite popup result
             try
             {
-                state = await page.ReadStateAsync(cancellationToken);
-                if (state.IsOnKeysPage)
-                {
-                    onKeysPage = true;
-                    break;
-                }
-            }
-            catch (InvalidOperationException)
-            {
-                // Context recreated during redirect
-            }
-            
-            await Task.Delay(1000, cancellationToken);
-        }
-
-        if (!onKeysPage)
-        {
-            // Final attempt - try navigating again
-            try
-            {
-                await page.NavigateToKeysPageAsync(cancellationToken);
-                await Task.Delay(1000, cancellationToken);
-                state = await page.ReadStateAsync(cancellationToken);
-                if (state.IsOnKeysPage)
+                var checkState = await page.ReadStateAsync(cancellationToken);
+                if (checkState.IsOnKeysPage && !checkState.HasGoogleSignIn)
                 {
                     return null;
                 }
             }
-            catch
-            {
-                // Ignore
-            }
+            catch { }
 
             return new AgnesKeyFlowResult(
                 false,
                 null,
-                $"Did not return to Agnes AI keys page after Google sign-in. Final URL: {state?.PageUri}, IsOnKeysPage: {state?.IsOnKeysPage}, IsOnLoginPage: {state?.IsOnLoginPage}, HasGoogleSignIn: {state?.HasGoogleSignIn}, HasNewKeyButton: {state?.HasNewKeyButton}.");
+                $"Google sign-in failed: {loginResult.Message}");
         }
 
-        return null;
+        // Phase 3: the popup cannot confirm the sign-in on its own - after consent Google
+        // redirects it back to the Agnes AI origin (or it closes itself), which the Google
+        // browser adapter rejects. The Agnes tab is the real source of truth, and it picks
+        // the new session up asynchronously.
+        // Follow redirects on the original Agnes tab - wait for navigation/session to update
+        await Task.Delay(2000, cancellationToken);
+        await page.NavigateToKeysPageAsync(cancellationToken);
+
+        var keysState = await WaitForKeysPageAsync(page, TimeSpan.FromSeconds(45), cancellationToken) ?? state;
+        state = keysState;
+        if (keysState.IsOnKeysPage)
+        {
+            return null;
+        }
+
+        // Final attempt - the first navigation may have raced the OAuth redirect.
+        await Task.Delay(1000, cancellationToken);
+        await page.NavigateToKeysPageAsync(cancellationToken);
+        keysState = await WaitForKeysPageAsync(page, TimeSpan.FromSeconds(10), cancellationToken) ?? keysState;
+        state = keysState;
+        if (keysState.IsOnKeysPage)
+        {
+            return null;
+        }
+
+        // One more attempt - reload/follow any pending redirects
+        try
+        {
+            await page.NavigateToKeysPageAsync(cancellationToken);
+            keysState = await WaitForKeysPageAsync(page, TimeSpan.FromSeconds(15), cancellationToken) ?? keysState;
+            state = keysState;
+            if (keysState.IsOnKeysPage)
+            {
+                return null;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return new AgnesKeyFlowResult(
+            false,
+            null,
+            $"Did not return to Agnes AI keys page after Google sign-in. Final URL: {state.PageUri}, " +
+            $"IsOnKeysPage: {state.IsOnKeysPage}, IsOnLoginPage: {state.IsOnLoginPage}, " +
+            $"HasGoogleSignIn: {state.HasGoogleSignIn}, HasNewKeyButton: {state.HasNewKeyButton}, " +
+            $"Google login: {loginResult?.Category} {loginResult?.Message}.");
+    }
+
+    /// <summary>
+    /// Polls the Agnes tab until it renders the keys page.
+    /// Returns the last observed state (keys page on success).
+    /// </summary>
+    private static async Task<AgnesApiKeyPageState?> WaitForKeysPageAsync(
+        IAgnesApiKeyBrowser page,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        AgnesApiKeyPageState? state = null;
+        var signedOutReads = 0;
+        var deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                state = await page.ReadStateAsync(cancellationToken);
+                if (state.IsOnKeysPage)
+                {
+                    return state;
+                }
+
+                // The sign-in button means the OAuth did not complete; require two
+                // consecutive reads so a transient signed-out render during session
+                // restore is not treated as a failure.
+                signedOutReads = state.HasGoogleSignIn ? signedOutReads + 1 : 0;
+                if (signedOutReads >= 2)
+                {
+                    return state;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Execution context recreated during the redirect.
+            }
+
+            await Task.Delay(1000, cancellationToken);
+        }
+
+        return state;
     }
 
     private static async Task<AgnesKeyFlowResult> CreateKeyAsync(

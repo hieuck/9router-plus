@@ -22,7 +22,8 @@ public static class GoogleLoginStateMachine
     {
         "accounts.google.com",
         "myaccount.google.com",
-        "www.google.com"
+        "www.google.com",
+        "gds.google.com"
     };
 
     /// <summary>
@@ -44,11 +45,26 @@ public static class GoogleLoginStateMachine
             // Read initial state
             var state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
 
-            // Validate entry page origin
+            // Validate entry page origin (allow OAuth consent/chooser only on Google hosts)
             if (!AllowedEntryHosts.Contains(state.PageUri.Host))
             {
-                return GoogleLoginResult.UnsupportedPage(
-                    $"Wrong origin: {state.PageUri.Host}. Expected accounts.google.com.");
+                if ((state.HasAccountChooser || state.HasConsentScreen) && 
+                    (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
+                     state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
+                     state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
+                     state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Continue processing only on known Google hosts
+                }
+                else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
+                {
+                    // Continue processing
+                }
+                else
+                {
+                    return GoogleLoginResult.UnsupportedPage(
+                        $"Wrong origin: {state.PageUri.Host}. Expected accounts.google.com.");
+                }
             }
 
             // Check for manual challenge and wait for the user to complete it
@@ -70,7 +86,7 @@ public static class GoogleLoginStateMachine
             }
 
             // Wait for page to render expected fields (identifier page may show email field after delay)
-            if (!state.HasEmailField && !state.HasPasswordField && !state.HasTotpField && !state.Has2FAMethodPicker)
+            if (!state.HasEmailField && !state.HasPasswordField && !state.HasTotpField && !state.Has2FAMethodPicker && !state.HasAccountChooser && !state.HasConsentScreen)
             {
                 var waitDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
                 while (DateTimeOffset.UtcNow < waitDeadline)
@@ -78,9 +94,46 @@ public static class GoogleLoginStateMachine
                     await Task.Delay(500, totalCts.Token);
                     state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
 
-                    if (state.HasEmailField || state.HasPasswordField || state.HasTotpField || state.Has2FAMethodPicker)
+                    if (state.HasEmailField || state.HasPasswordField || state.HasTotpField || state.Has2FAMethodPicker || state.HasAccountChooser || state.HasConsentScreen)
                     {
                         break;
+                    }
+                }
+            }
+
+            // Handle account chooser if present
+            if (state.HasAccountChooser)
+            {
+                if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
+                {
+                    await Task.Delay(1500, totalCts.Token);
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                }
+                else
+                {
+                    // If we couldn't select account, try again once
+                    await Task.Delay(500, totalCts.Token);
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                    if (state.HasAccountChooser)
+                    {
+                        await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token);
+                        await Task.Delay(1500, totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                    }
+                }
+            }
+
+            // Handle consent screen early
+            if (state.HasConsentScreen)
+            {
+                var consentClickedEarly = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                if (consentClickedEarly)
+                {
+                    await Task.Delay(1500, totalCts.Token);
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        return GoogleLoginResult.Success();
                     }
                 }
             }
@@ -97,8 +150,24 @@ public static class GoogleLoginStateMachine
                 // Validate we're still on allowed origin
                 if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
                 {
-                    return GoogleLoginResult.UnsupportedPage(
-                        $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                    // Allow OAuth redirects only on known Google hosts
+                    if ((state.HasAccountChooser || state.HasConsentScreen) &&
+                        (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
+                         state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
+                         state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
+                         state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        // Continue processing
+                    }
+                    else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        // Continue processing
+                    }
+                    else
+                    {
+                        return GoogleLoginResult.UnsupportedPage(
+                            $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                    }
                 }
 
                 // Check for manual challenge - wait for user to complete it
@@ -118,6 +187,54 @@ public static class GoogleLoginStateMachine
                 {
                     return GoogleLoginResult.Success();
                 }
+
+                if (state.HasAccountChooser)
+                {
+                    if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
+                    {
+                        await Task.Delay(1500, totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                    }
+                    else
+                    {
+                        await Task.Delay(500, totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        if (state.HasAccountChooser)
+                        {
+                            await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token);
+                            await Task.Delay(1500, totalCts.Token);
+                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        }
+                    }
+                }
+                if (state.HasConsentScreen)
+                {
+                    var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                    if (consentClicked)
+                    {
+                        await Task.Delay(1500, totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                        {
+                            return GoogleLoginResult.Success();
+                        }
+                    }
+                    else
+                    {
+                        await Task.Delay(1000, totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        if (state.HasConsentScreen)
+                        {
+                            await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                            await Task.Delay(1500, totalCts.Token);
+                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                            if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                            {
+                                return GoogleLoginResult.Success();
+                            }
+                        }
+                    }
+                }
             }
 
             // Password step
@@ -132,8 +249,23 @@ public static class GoogleLoginStateMachine
                 // Validate origin
                 if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
                 {
-                    return GoogleLoginResult.UnsupportedPage(
-                        $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                    if ((state.HasAccountChooser || state.HasConsentScreen) &&
+                        (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
+                         state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
+                         state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
+                         state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        // Continue processing
+                    }
+                    else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        // Continue processing
+                    }
+                    else
+                    {
+                        return GoogleLoginResult.UnsupportedPage(
+                            $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                    }
                 }
 
                 // Check for manual challenge - wait for user to complete it
@@ -178,6 +310,56 @@ public static class GoogleLoginStateMachine
                     {
                         return GoogleLoginResult.UnsupportedPage(
                             $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                    }
+                }
+
+                if (state.HasAccountChooser)
+                {
+                    if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
+                    {
+                        await Task.Delay(1500, totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                    }
+                    else
+                    {
+                        await Task.Delay(500, totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        if (state.HasAccountChooser)
+                        {
+                            await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token);
+                            await Task.Delay(1500, totalCts.Token);
+                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        }
+                    }
+                }
+
+                // Consent handling after password submission
+                if (!state.HasCompletionSignal && !state.Has2FAMethodPicker && !state.HasManualChallenge && !state.HasTotpField && !state.HasAccountChooser)
+                {
+                    var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                    if (consentClicked)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1), totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                        {
+                            return GoogleLoginResult.Success();
+                        }
+                    }
+                    else
+                    {
+                        await Task.Delay(1000, totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        if (state.HasConsentScreen)
+                        {
+                            await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                            await Task.Delay(1500, totalCts.Token);
+                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                            if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                            {
+                                return GoogleLoginResult.Success();
+                            }
+                        }
                     }
                 }
             }
@@ -292,6 +474,44 @@ public static class GoogleLoginStateMachine
                 if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
                 {
                     return GoogleLoginResult.Success();
+                }
+
+                // Consent handling after TOTP submission
+                if (!state.HasCompletionSignal && !state.HasManualChallenge)
+                {
+                    var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                    if (consentClicked)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1), totalCts.Token);
+                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                        if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                        {
+                            return GoogleLoginResult.Success();
+                        }
+                    }
+                }
+            }
+
+            // Handle account chooser/consent if still present
+            if (state.HasAccountChooser)
+            {
+                if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
+                {
+                    await Task.Delay(1000, totalCts.Token);
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                }
+            }
+            if (state.HasConsentScreen)
+            {
+                var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                if (consentClicked)
+                {
+                    await Task.Delay(1000, totalCts.Token);
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        return GoogleLoginResult.Success();
+                    }
                 }
             }
 
@@ -420,6 +640,21 @@ public static class GoogleLoginStateMachine
                     {
                         return GoogleLoginResult.Success();
                     }
+
+                    // Consent handling after TOTP submission
+                    if (!state.HasCompletionSignal && !state.HasManualChallenge)
+                    {
+                        var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                        if (consentClicked)
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(1), totalCts.Token);
+                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                            if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                            {
+                                return GoogleLoginResult.Success();
+                            }
+                        }
+                    }
                 }
             }
 
@@ -427,6 +662,35 @@ public static class GoogleLoginStateMachine
             if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
             {
                 return GoogleLoginResult.Success();
+            }
+
+            // Before final unsupported return, try the account chooser and consent once more
+            if (state.HasAccountChooser)
+            {
+                if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
+                {
+                    await Task.Delay(1000, totalCts.Token);
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        return GoogleLoginResult.Success();
+                    }
+                }
+            }
+            // Only click consent/continue when no credential field is on screen, so a
+            // stray "Continue"-labelled control cannot hijack the email/password step.
+            if (!state.HasEmailField && !state.HasPasswordField && !state.HasTotpField)
+            {
+                var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
+                if (consentClicked)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), totalCts.Token);
+                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
+                    {
+                        return GoogleLoginResult.Success();
+                    }
+                }
             }
 
             // Unrecognized field combination
@@ -490,6 +754,26 @@ public static class GoogleLoginStateMachine
         stepCts.CancelAfter(StepTimeout);
 
         return await browser.TrySelectAuthenticatorMethodAsync(stepCts.Token);
+    }
+
+    private static async Task<bool> TrySelectAccountWithTimeoutAsync(
+        IGoogleLoginBrowser browser,
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        stepCts.CancelAfter(StepTimeout);
+        return await browser.TrySelectAccountOnChooserAsync(email, stepCts.Token);
+    }
+
+    private static async Task<bool> TryClickConsentContinueWithTimeoutAsync(
+        IGoogleLoginBrowser browser,
+        CancellationToken cancellationToken)
+    {
+        using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        stepCts.CancelAfter(StepTimeout);
+
+        return await browser.TryClickConsentContinueAsync(stepCts.Token);
     }
 
     private static async Task SubmitWithTimeoutAsync(

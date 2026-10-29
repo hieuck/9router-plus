@@ -254,6 +254,7 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
 
         var deadline = DateTimeOffset.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
         const string keywordsJson = "[\"continue with google\",\"sign in with google\",\"log in with google\",\"tiếp tục với google\",\"đăng nhập bằng google\"]";
+        int lastCandidateCount = 0;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -270,16 +271,22 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
     const textOf = el => ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')).toLowerCase();
     const candidates = Array.from(document.querySelectorAll('button, div, a, span, [role=""button""]')).filter(isVisible);
     const matches = candidates.filter(el => keywords.some(k => textOf(el).includes(k)));
-    if (matches.length > 0) {
-        const btn = matches[0];
+    // Choose the smallest matching element (the actual button), not an ancestor container.
+    const btn = matches.length > 0 ? matches.reduce((best, el) => {
+        const bestRect = best.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        return (elRect.width * elRect.height) < (bestRect.width * bestRect.height) ? el : best;
+    }) : null;
+    if (btn) {
         btn.scrollIntoView({ block: 'center', inline: 'center' });
         const rect = btn.getBoundingClientRect();
         const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
         const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
         return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
-                 width: rect.width, height: rect.height, viewportWidth: viewportWidth, viewportHeight: viewportHeight };
+                 width: rect.width, height: rect.height, viewportWidth: viewportWidth, viewportHeight: viewportHeight,
+                 outerHTML: (btn.outerHTML || '').substring(0, 300) };
     }
-    return { found: false };
+    return { found: false, candidateCount: candidates.length };
 })()
 ";
                 var result = await _client.CallAsync("Runtime.evaluate", new
@@ -290,6 +297,15 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
                 }, cancellationToken, _sessionId);
 
                 if (result.TryGetProperty("result", out var remote) && remote.TryGetProperty("value", out var value)
+                    && value.ValueKind == JsonValueKind.Object)
+                {
+                    if (value.TryGetProperty("candidateCount", out var ccProp) && ccProp.ValueKind == JsonValueKind.Number)
+                    {
+                        lastCandidateCount = ccProp.GetInt32();
+                    }
+                }
+
+                if (result.TryGetProperty("result", out remote) && remote.TryGetProperty("value", out value)
                     && value.ValueKind == JsonValueKind.Object
                     && value.TryGetProperty("found", out var foundProp) && foundProp.GetBoolean()
                     && value.TryGetProperty("x", out var xProp) && xProp.ValueKind == JsonValueKind.Number
@@ -310,6 +326,21 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
                         && (!hasWidth || width > 0)
                         && (!hasHeight || height > 0))
                     {
+                        string outerHTML = value.TryGetProperty("outerHTML", out var ohProp) && ohProp.ValueKind == JsonValueKind.String
+                            ? (ohProp.GetString() ?? string.Empty)
+                            : string.Empty;
+                        if (outerHTML.Length > 300)
+                        {
+                            outerHTML = outerHTML.Substring(0, 300);
+                        }
+
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "AgnesApiKey",
+                            "GoogleButtonFound",
+                            "Google sign-in button found",
+                            new { x, y, width, height, viewportWidth, viewportHeight, outerHTML });
+
                         // Trusted CDP click
                         await _client.CallAsync("Input.dispatchMouseEvent", new
                         {
@@ -342,6 +373,13 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
                             clickCount = 1
                         }, cancellationToken, _sessionId);
 
+                        ObservabilityHub.Instance.LogEvent(
+                            LogLevel.Info,
+                            "AgnesApiKey",
+                            "GoogleButtonClicked",
+                            "Google sign-in button clicked",
+                            null);
+
                         return true;
                     }
                 }
@@ -353,6 +391,13 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
 
             await Task.Delay(500, cancellationToken);
         }
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Warning,
+            "AgnesApiKey",
+            "GoogleButtonNotFound",
+            "Google sign-in button not found",
+            new { candidateCount = lastCandidateCount, candidate_count = lastCandidateCount });
 
         return false;
     }
