@@ -2,7 +2,7 @@
 
 | Gate | Criteria | Evidence |
 |---|---|---|
-| G0 Intake | goal + scope + success criteria stated | intake note |
+| G0 Intake | goal + scope + success criteria stated. **Dev-team invoked and logged** (read-only inspection exempt). | intake note + dev-team invocation log in `agentic/state/dev-team-invocations/` |
 | G1 Plan | spec + plan approved | files in `templates/` form |
 | G2 Code | smallest change; callers updated; coordinator did not edit | diff + batch brief |
 | G3 Review | Independent reviewers PASS per tier in `agentic/SUBAGENT_CONTRACT.md` (>=3 for normal/high-risk; >=1 only for trivial per fast-path). Must satisfy independence rules. No Critical findings. | review files matching required count, with models used, sessions, verdicts, rationale |

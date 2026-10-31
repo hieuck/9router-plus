@@ -5,6 +5,7 @@ This document defines how agents and subagents must work together in this repo. 
 ## Core Rules
 
 - **Coordinator coordinates only.** The coordinating agent MUST NOT edit files, run mutating commands, or change repo state. It may read files and inspect results.
+- **Dev-team mandatory.** Coordinator MUST invoke `dev-team` before any mutating action or non-trivial decision. Read-only inspection is exempt. All classifications must follow this contract and be logged in `agentic/state/dev-team-invocations/`. Trivial exemptions require documented rationale and are auditable. Without `dev-team` invocation, delegation is blocked.
 - **Delegate everything code-related.** All code changes, fixes, and refactors go through a **coder subagent**.
 - **Every non-trivial coder output gets independent reviews.** See Review Tiers below.
 - **No user intervention in G1–G4** unless the issue is in the escalation list.
