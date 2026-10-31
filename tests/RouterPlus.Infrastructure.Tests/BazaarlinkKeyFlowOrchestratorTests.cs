@@ -34,6 +34,97 @@ public sealed class BazaarlinkKeyFlowOrchestratorTests
     }
 
     [Fact]
+    public async Task RunAsync_returns_error_when_google_login_fails()
+    {
+        var browser = new FakeBazaarlinkBrowser { State = OnSignInPage() };
+        var google = new FakeGoogleLoginBrowser { Fail = true };
+        var authentication = new RecordingGoogleAuthenticationService
+        {
+            Result = GoogleLoginResult.InvalidCredentials()
+        };
+
+        var result = await BazaarlinkKeyFlowOrchestrator.RunAsync(
+            browser,
+            Credential,
+            google,
+            CancellationToken.None,
+            authentication);
+
+        Assert.False(result.Success);
+        Assert.Contains("sign-in", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(browser.CreatedKey);
+    }
+
+    [Fact]
+    public async Task RunAsync_returns_error_when_no_new_key_button()
+    {
+        var browser = new FakeBazaarlinkBrowser
+        {
+            State = OnKeysPage(hasNewKeyButton: false)
+        };
+        var google = new FakeGoogleLoginBrowser();
+
+        var result = await BazaarlinkKeyFlowOrchestrator.RunAsync(
+            browser,
+            Credential,
+            google,
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("Add API Key", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(browser.CreatedKey);
+    }
+
+    [Fact]
+    public async Task RunAsync_returns_error_when_key_value_not_read()
+    {
+        var browser = new FakeBazaarlinkBrowser
+        {
+            State = OnKeysPage(hasNewKeyButton: true)
+        };
+        browser.ForceNoKeyPanel = true;
+        var google = new FakeGoogleLoginBrowser();
+
+        var result = await BazaarlinkKeyFlowOrchestrator.RunAsync(
+            browser,
+            Credential,
+            google,
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("could not be read", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.True(browser.CreatedKey);
+    }
+
+    [Fact]
+    public async Task RunAsync_returns_error_when_no_google_signin_button()
+    {
+        var browser = new FakeBazaarlinkBrowser
+        {
+            State = new BazaarlinkApiKeyPageState(
+                new Uri("https://bazaarlink.ai/login"),
+                IsOnKeysPage: false,
+                HasGoogleSignIn: false,
+                ExistingKeyCount: 0,
+                HasNewKeyButton: false,
+                HasNewKeyNameInput: false,
+                HasCreatedKeyPanel: false,
+                ApiKey: string.Empty)
+        };
+        var google = new FakeGoogleLoginBrowser();
+
+        var result = await BazaarlinkKeyFlowOrchestrator.RunAsync(
+            browser,
+            Credential,
+            google,
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("Continue with Google", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(browser.CreatedKey);
+    }
+
+    [Fact]
     public async Task RunAsync_clicks_google_then_autologins_and_creates_key()
     {
         var events = new List<string>();
@@ -95,6 +186,7 @@ public sealed class BazaarlinkKeyFlowOrchestratorTests
         public bool ClickedSignInWithGoogle { get; private set; }
         public bool DeletedExistingKeys { get; private set; }
         public bool CreatedKey { get; private set; }
+        public bool ForceNoKeyPanel { get; set; }
         public List<string>? Events { get; init; }
 
         public Task<BazaarlinkApiKeyPageState> ReadStateAsync(CancellationToken cancellationToken) =>
@@ -141,7 +233,14 @@ public sealed class BazaarlinkKeyFlowOrchestratorTests
         {
             CreatedKey = true;
             Events?.Add("create");
-            State = OnKeysPage(hasCreatedKeyPanel: true, apiKey: "bz_createdkeyvalue123456");
+            if (ForceNoKeyPanel)
+            {
+                State = OnKeysPage(hasCreatedKeyPanel: false, apiKey: "");
+            }
+            else
+            {
+                State = OnKeysPage(hasCreatedKeyPanel: true, apiKey: "bz_createdkeyvalue123456");
+            }
             return Task.FromResult(true);
         }
 
@@ -181,6 +280,7 @@ public sealed class BazaarlinkKeyFlowOrchestratorTests
 
     private sealed class RecordingGoogleAuthenticationService : IGoogleAuthenticationService
     {
+        public GoogleLoginResult Result { get; set; } = GoogleLoginResult.Success();
         public int CallCount { get; private set; }
         public List<string>? Events { get; init; }
 
@@ -188,7 +288,7 @@ public sealed class BazaarlinkKeyFlowOrchestratorTests
         {
             CallCount++;
             Events?.Add("google");
-            return Task.FromResult(GoogleLoginResult.Success());
+            return Task.FromResult(Result);
         }
     }
 }
