@@ -70,11 +70,19 @@ For reviews to be considered **independent**, ALL of the following must hold:
 
 | Tier | When | Reviewers | Notes |
 |---|---|---|---|
-| **trivial** | Docs/comments/typo/rename-only/formatting. No logic change. No API/schema/deps/security/auth/config. | 1 review (or skip only if truly trivial AND reversible) | Still must follow "coordinator doesn't edit". If uncertain, use `normal`. |
+| **trivial** | Pure docs/comments/typo/rename-only/formatting. No logic change. No API/schema/deps/security/auth/config. Must be documented with rationale. | 1 review (or skip only if truly trivial AND reversible) | Still must follow "coordinator doesn't edit". If uncertain, use `normal`. |
 | **normal** | Most code changes, bug fixes, UI tweaks without security impact. | **3 independent reviewers** | Default for code changes. |
-| **high-risk** | Auth/security/permissions, DB schema/migrations, API contract changes, new dependencies, config that affects prod behavior, secrets handling, destructive operations, cross-cutting refactors. | **3 independent reviewers** | May require extra scrutiny. See escalation list. |
+| **high-risk** | Auth/security/permissions, DB schema/migrations, API contract changes, new dependencies, config that affects prod behavior, secrets handling, destructive operations, cross-cutting refactors. **Also includes any change to `AGENTS.md` or `agentic/*.md` classified as material.** | **3 independent reviewers** | May require extra scrutiny. See escalation list. Must satisfy full independence. |
 
 **Rule:** When in doubt, use `normal` or `high-risk`. Err on the side of more review.
+
+## Meta-Reviews (agentic/AGENTS.md changes)
+
+- **Material:** adds/removes/weakens constraints, gates, roles, escalation rules, review counts/independence, or coordinator boundaries. When in doubt → **material**.
+- **Required:** `dev-team` with >=3 independent reviewers, isolated context, different models when possible. Save to `agentic/state/meta-reviews/` with reviewer models, sessions, verdicts, rationale, diff summary.
+- **Trivial exemption:** only pure formatting/typo/link. Must log rationale + file list. Conflicts with verified rules resolved in favor of verified rules.
+- **Enforcement:** tracked by G5; missing evidence/independence/Critical → block.
+
 
 ## Review Resolution
 
