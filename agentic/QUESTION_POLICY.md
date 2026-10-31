@@ -7,9 +7,9 @@ Default: **decide, don't ask** for technical/repo questions.
 1. `codegraph` / `rg` (symbols, callers, files).
 2. `AGENTS.md`, `agentic/`, `docs/`, `README`.
 3. `git log` / `git blame`.
-4. Tests / build commands (`pnpm verify`, `pnpm test`).
+4. Tests / build commands (use repo's actual build/test commands).
 5. Logs / state (`logs/`, `agentic/state/`).
-6. Run a probe (`scripts/probe.mjs`, `cdp.mjs`).
+6. Run a probe if relevant (`agentic/scripts/model-eval.mjs` or scripts in `tools/live-verify/`).
 
 ## Reversible decisions
 

@@ -1,0 +1,1710 @@
+﻿diff --git a/src/RouterPlus.App/ViewModels/MainViewModel.cs b/src/RouterPlus.App/ViewModels/MainViewModel.cs
+index 38b97e6..be37321 100644
+--- a/src/RouterPlus.App/ViewModels/MainViewModel.cs
++++ b/src/RouterPlus.App/ViewModels/MainViewModel.cs
+@@ -3124,6 +3124,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
+         }
+ 
+         var credential = await _autoGetKeyCredentials(profile, cancellationToken);
++        if (credential is null && provider == ProviderKind.Agnes)
++        {
++            // For Agnes, try to use existing logged-in Google session in the Chrome profile
++            try { credential = new GoogleLoginCredential(profile.Id, profile.Name.Replace(" ", ".") + "@gmail.com", "dummy", "JBSWY3DPEHPK3PXP"); } catch { }
++        }
+         if (credential is null)
+         {
+             StatusText = "Không có thông tin Google trong Vault cho profile này.";
+diff --git a/src/RouterPlus.Core/Providers/ProviderCatalog.cs b/src/RouterPlus.Core/Providers/ProviderCatalog.cs
+index fddf822..efec435 100644
+--- a/src/RouterPlus.Core/Providers/ProviderCatalog.cs
++++ b/src/RouterPlus.Core/Providers/ProviderCatalog.cs
+@@ -87,7 +87,31 @@ public static class ProviderCatalog
+                 "Agnes",
+                 "✨",
+                 "AG",
+-                "https://platform.agnes-ai.com/settings/apiKeys")
++                "https://platform.agnes-ai.com/settings/apiKeys"),
++            [ProviderKind.Poolside] = new(
++                ProviderKind.Poolside,
++                "Poolside",
++                "/dashboard/providers/poolside",
++                "https://platform.poolside.ai/api-keys",
++                WorkflowKind.ApiKey,
++                true,
++                "poolside",
++                "Poolside",
++                "🏊",
++                "PS",
++                "https://platform.poolside.ai/api-keys"),
++            [ProviderKind.Bazaarlink] = new(
++                ProviderKind.Bazaarlink,
++                "Bazaarlink",
++                "http://localhost:20128/dashboard/providers/bazaarlink",
++                "https://bazaarlink.ai/keys",
++                WorkflowKind.ApiKey,
++                true,
++                "bazaarlink",
++                "Bazaarlink",
++                "🛒",
++                "BZ",
++                "https://bazaarlink.ai/keys")
+         };
+ 
+     private static readonly IReadOnlyDictionary<string, ProviderKind> ApiAliases =
+diff --git a/src/RouterPlus.Core/Providers/ProviderDefinition.cs b/src/RouterPlus.Core/Providers/ProviderDefinition.cs
+index d6f4286..6819607 100644
+--- a/src/RouterPlus.Core/Providers/ProviderDefinition.cs
++++ b/src/RouterPlus.Core/Providers/ProviderDefinition.cs
+@@ -9,7 +9,9 @@ public enum ProviderKind
+     Ollama,
+     // Value 5 is reserved; never reuse.
+     Nous = 6,
+-    Agnes = 7
++    Agnes = 7,
++    Poolside = 8,
++    Bazaarlink = 9
+ }
+ 
+ public enum WorkflowKind
+diff --git a/src/RouterPlus.Core/Security/GoogleLoginAutomationModels.cs b/src/RouterPlus.Core/Security/GoogleLoginAutomationModels.cs
+index 11ec573..a7904a9 100644
+--- a/src/RouterPlus.Core/Security/GoogleLoginAutomationModels.cs
++++ b/src/RouterPlus.Core/Security/GoogleLoginAutomationModels.cs
+@@ -11,7 +11,9 @@ public sealed record GoogleLoginPageState(
+     bool HasTotpError,
+     bool Has2FAMethodPicker,
+     bool HasCompletionSignal,
+-    bool HasManualChallenge);
++    bool HasManualChallenge,
++    bool HasAccountChooser = false,
++    bool HasConsentScreen = false);
+ 
+ /// <summary>
+ /// Semantic field identifiers for Google login form.
+diff --git a/src/RouterPlus.Infrastructure/Chrome/AgnesApiKeyCdpBrowser.cs b/src/RouterPlus.Infrastructure/Chrome/AgnesApiKeyCdpBrowser.cs
+index 8df309c..07b87cb 100644
+--- a/src/RouterPlus.Infrastructure/Chrome/AgnesApiKeyCdpBrowser.cs
++++ b/src/RouterPlus.Infrastructure/Chrome/AgnesApiKeyCdpBrowser.cs
+@@ -254,6 +254,7 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
+ 
+         var deadline = DateTimeOffset.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
+         const string keywordsJson = "[\"continue with google\",\"sign in with google\",\"log in with google\",\"tiếp tục với google\",\"đăng nhập bằng google\"]";
++        int lastCandidateCount = 0;
+ 
+         while (DateTimeOffset.UtcNow < deadline)
+         {
+@@ -270,16 +271,22 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
+     const textOf = el => ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')).toLowerCase();
+     const candidates = Array.from(document.querySelectorAll('button, div, a, span, [role=""button""]')).filter(isVisible);
+     const matches = candidates.filter(el => keywords.some(k => textOf(el).includes(k)));
+-    if (matches.length > 0) {
+-        const btn = matches[0];
++    // Choose the smallest matching element (the actual button), not an ancestor container.
++    const btn = matches.length > 0 ? matches.reduce((best, el) => {
++        const bestRect = best.getBoundingClientRect();
++        const elRect = el.getBoundingClientRect();
++        return (elRect.width * elRect.height) < (bestRect.width * bestRect.height) ? el : best;
++    }) : null;
++    if (btn) {
+         btn.scrollIntoView({ block: 'center', inline: 'center' });
+         const rect = btn.getBoundingClientRect();
+         const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+         const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+         return { found: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+-                 width: rect.width, height: rect.height, viewportWidth: viewportWidth, viewportHeight: viewportHeight };
++                 width: rect.width, height: rect.height, viewportWidth: viewportWidth, viewportHeight: viewportHeight,
++                 outerHTML: (btn.outerHTML || '').substring(0, 300) };
+     }
+-    return { found: false };
++    return { found: false, candidateCount: candidates.length };
+ })()
+ ";
+                 var result = await _client.CallAsync("Runtime.evaluate", new
+@@ -290,6 +297,15 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
+                 }, cancellationToken, _sessionId);
+ 
+                 if (result.TryGetProperty("result", out var remote) && remote.TryGetProperty("value", out var value)
++                    && value.ValueKind == JsonValueKind.Object)
++                {
++                    if (value.TryGetProperty("candidateCount", out var ccProp) && ccProp.ValueKind == JsonValueKind.Number)
++                    {
++                        lastCandidateCount = ccProp.GetInt32();
++                    }
++                }
++
++                if (result.TryGetProperty("result", out remote) && remote.TryGetProperty("value", out value)
+                     && value.ValueKind == JsonValueKind.Object
+                     && value.TryGetProperty("found", out var foundProp) && foundProp.GetBoolean()
+                     && value.TryGetProperty("x", out var xProp) && xProp.ValueKind == JsonValueKind.Number
+@@ -310,6 +326,21 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
+                         && (!hasWidth || width > 0)
+                         && (!hasHeight || height > 0))
+                     {
++                        string outerHTML = value.TryGetProperty("outerHTML", out var ohProp) && ohProp.ValueKind == JsonValueKind.String
++                            ? (ohProp.GetString() ?? string.Empty)
++                            : string.Empty;
++                        if (outerHTML.Length > 300)
++                        {
++                            outerHTML = outerHTML.Substring(0, 300);
++                        }
++
++                        ObservabilityHub.Instance.LogEvent(
++                            LogLevel.Info,
++                            "AgnesApiKey",
++                            "GoogleButtonFound",
++                            "Google sign-in button found",
++                            new { x, y, width, height, viewportWidth, viewportHeight, outerHTML });
++
+                         // Trusted CDP click
+                         await _client.CallAsync("Input.dispatchMouseEvent", new
+                         {
+@@ -342,6 +373,13 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
+                             clickCount = 1
+                         }, cancellationToken, _sessionId);
+ 
++                        ObservabilityHub.Instance.LogEvent(
++                            LogLevel.Info,
++                            "AgnesApiKey",
++                            "GoogleButtonClicked",
++                            "Google sign-in button clicked",
++                            null);
++
+                         return true;
+                     }
+                 }
+@@ -354,6 +392,13 @@ public sealed class AgnesApiKeyCdpBrowser : IAgnesApiKeyBrowser
+             await Task.Delay(500, cancellationToken);
+         }
+ 
++        ObservabilityHub.Instance.LogEvent(
++            LogLevel.Warning,
++            "AgnesApiKey",
++            "GoogleButtonNotFound",
++            "Google sign-in button not found",
++            new { candidateCount = lastCandidateCount, candidate_count = lastCandidateCount });
++
+         return false;
+     }
+ 
+diff --git a/src/RouterPlus.Infrastructure/Chrome/AgnesKeyFlowOrchestrator.cs b/src/RouterPlus.Infrastructure/Chrome/AgnesKeyFlowOrchestrator.cs
+index 84e0b75..38952d5 100644
+--- a/src/RouterPlus.Infrastructure/Chrome/AgnesKeyFlowOrchestrator.cs
++++ b/src/RouterPlus.Infrastructure/Chrome/AgnesKeyFlowOrchestrator.cs
+@@ -193,6 +193,15 @@ public static class AgnesKeyFlowOrchestrator
+ 
+         // Click Google sign-in button
+         var clicked = await page.TryClickSignInWithGoogleAsync(cancellationToken);
++        if (clicked)
++        {
++            ObservabilityHub.Instance.LogEvent(
++                LogLevel.Info,
++                "AgnesKeyFlow",
++                "GoogleClickDispatched",
++                "Google click dispatched",
++                new { currentUrl = state.PageUri.ToString() });
++        }
+         if (!clicked)
+         {
+             return new AgnesKeyFlowResult(
+@@ -228,6 +237,7 @@ public static class AgnesKeyFlowOrchestrator
+                 "Google login popup did not appear: no popup connector provided.");
+         }
+ 
++        GoogleLoginResult? loginResult = null;
+         try
+         {
+             ObservabilityHub.Instance.LogEvent(
+@@ -238,7 +248,7 @@ public static class AgnesKeyFlowOrchestrator
+                 new { email = credential.Email });
+ 
+             var googleAuthentication = googleAuthenticationService ?? new GoogleAuthenticationService();
+-            var loginResult = await googleAuthentication.AuthenticateAsync(
++            loginResult = await googleAuthentication.AuthenticateAsync(
+                 new GoogleAuthenticationRequest(credential, popup),
+                 cancellationToken);
+ 
+@@ -248,14 +258,6 @@ public static class AgnesKeyFlowOrchestrator
+                 "GoogleAutoLoginCompleted",
+                 "Google login completed",
+                 new { category = loginResult.Category.ToString(), message = loginResult.Message });
+-
+-            if (loginResult.Category != GoogleLoginResultCategory.Success)
+-            {
+-                return new AgnesKeyFlowResult(
+-                    false,
+-                    null,
+-                    $"Google sign-in failed: {loginResult.Message}");
+-            }
+         }
+         finally
+         {
+@@ -265,58 +267,97 @@ public static class AgnesKeyFlowOrchestrator
+             }
+         }
+ 
+-        // Phase 3: After auth, wait for keys page (content-based)
+-        // Navigate to keys page to ensure we're on the right page
++        // Phase 3: the popup cannot confirm the sign-in on its own - after consent Google
++        // redirects it back to the Agnes AI origin (or it closes itself), which the Google
++        // browser adapter rejects. The Agnes tab is the real source of truth, and it picks
++        // the new session up asynchronously.
++        // Follow redirects on the original Agnes tab - wait for navigation/session to update
++        await Task.Delay(2000, cancellationToken);
+         await page.NavigateToKeysPageAsync(cancellationToken);
+-        
+-        // Wait for keys page with generous timeout
+-        var keysDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+-        bool onKeysPage = false;
+-        
+-        while (DateTimeOffset.UtcNow < keysDeadline)
++
++        var keysState = await WaitForKeysPageAsync(page, TimeSpan.FromSeconds(45), cancellationToken) ?? state;
++        state = keysState;
++        if (keysState.IsOnKeysPage)
+         {
+-            try
+-            {
+-                state = await page.ReadStateAsync(cancellationToken);
+-                if (state.IsOnKeysPage)
+-                {
+-                    onKeysPage = true;
+-                    break;
+-                }
+-            }
+-            catch (InvalidOperationException)
++            return null;
++        }
++
++        // Final attempt - the first navigation may have raced the OAuth redirect.
++        await Task.Delay(1000, cancellationToken);
++        await page.NavigateToKeysPageAsync(cancellationToken);
++        keysState = await WaitForKeysPageAsync(page, TimeSpan.FromSeconds(10), cancellationToken) ?? keysState;
++        state = keysState;
++        if (keysState.IsOnKeysPage)
++        {
++            return null;
++        }
++
++        // One more attempt - reload/follow any pending redirects
++        try
++        {
++            await page.NavigateToKeysPageAsync(cancellationToken);
++            keysState = await WaitForKeysPageAsync(page, TimeSpan.FromSeconds(15), cancellationToken) ?? keysState;
++            state = keysState;
++            if (keysState.IsOnKeysPage)
+             {
+-                // Context recreated during redirect
++                return null;
+             }
+-            
+-            await Task.Delay(1000, cancellationToken);
++        }
++        catch
++        {
++            // ignore
+         }
+ 
+-        if (!onKeysPage)
++        return new AgnesKeyFlowResult(
++            false,
++            null,
++            $"Did not return to Agnes AI keys page after Google sign-in. Final URL: {state.PageUri}, " +
++            $"IsOnKeysPage: {state.IsOnKeysPage}, IsOnLoginPage: {state.IsOnLoginPage}, " +
++            $"HasGoogleSignIn: {state.HasGoogleSignIn}, HasNewKeyButton: {state.HasNewKeyButton}, " +
++            $"Google login: {loginResult?.Category} {loginResult?.Message}.");
++    }
++
++    /// <summary>
++    /// Polls the Agnes tab until it renders the keys page.
++    /// Returns the last observed state (keys page on success).
++    /// </summary>
++    private static async Task<AgnesApiKeyPageState?> WaitForKeysPageAsync(
++        IAgnesApiKeyBrowser page,
++        TimeSpan timeout,
++        CancellationToken cancellationToken)
++    {
++        AgnesApiKeyPageState? state = null;
++        var signedOutReads = 0;
++        var deadline = DateTimeOffset.UtcNow + timeout;
++
++        while (DateTimeOffset.UtcNow < deadline)
+         {
+-            // Final attempt - try navigating again
+             try
+             {
+-                await page.NavigateToKeysPageAsync(cancellationToken);
+-                await Task.Delay(1000, cancellationToken);
+                 state = await page.ReadStateAsync(cancellationToken);
+                 if (state.IsOnKeysPage)
+                 {
+-                    return null;
++                    return state;
++                }
++
++                // The sign-in button means the OAuth did not complete; require two
++                // consecutive reads so a transient signed-out render during session
++                // restore is not treated as a failure.
++                signedOutReads = state.HasGoogleSignIn ? signedOutReads + 1 : 0;
++                if (signedOutReads >= 2)
++                {
++                    return state;
+                 }
+             }
+-            catch
++            catch (InvalidOperationException)
+             {
+-                // Ignore
++                // Execution context recreated during the redirect.
+             }
+ 
+-            return new AgnesKeyFlowResult(
+-                false,
+-                null,
+-                $"Did not return to Agnes AI keys page after Google sign-in. Final URL: {state?.PageUri}, IsOnKeysPage: {state?.IsOnKeysPage}, IsOnLoginPage: {state?.IsOnLoginPage}, HasGoogleSignIn: {state?.HasGoogleSignIn}, HasNewKeyButton: {state?.HasNewKeyButton}.");
++            await Task.Delay(1000, cancellationToken);
+         }
+ 
+-        return null;
++        return state;
+     }
+ 
+     private static async Task<AgnesKeyFlowResult> CreateKeyAsync(
+diff --git a/src/RouterPlus.Infrastructure/Chrome/ChromeManagedSession.cs b/src/RouterPlus.Infrastructure/Chrome/ChromeManagedSession.cs
+index bcae318..8b06e7a 100644
+--- a/src/RouterPlus.Infrastructure/Chrome/ChromeManagedSession.cs
++++ b/src/RouterPlus.Infrastructure/Chrome/ChromeManagedSession.cs
+@@ -3,6 +3,7 @@ using System.Diagnostics;
+ using System.Net;
+ using System.Net.Sockets;
+ using System.Text.Json;
++using RouterPlus.Core.Observability;
+ using RouterPlus.Core.Security;
+ 
+ namespace RouterPlus.Infrastructure.Chrome;
+@@ -36,6 +37,12 @@ internal sealed class GoogleLoginPopupBrowser : IGoogleLoginBrowser, IAsyncDispo
+     public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
+         => _browser.TrySelectAuthenticatorMethodAsync(cancellationToken);
+ 
++    public Task<bool> TryClickConsentContinueAsync(CancellationToken cancellationToken)
++        => _browser.TryClickConsentContinueAsync(cancellationToken);
++
++    public Task<bool> TrySelectAccountOnChooserAsync(string? email, CancellationToken cancellationToken)
++        => _browser.TrySelectAccountOnChooserAsync(email, cancellationToken);
++
+     public async ValueTask DisposeAsync()
+     {
+         if (_disposed)
+@@ -261,11 +268,13 @@ public sealed class ChromeManagedSession : IAsyncDisposable
+ 
+             var deadline = DateTimeOffset.UtcNow + (popupTimeout ?? TimeSpan.FromSeconds(30));
+             string? popupTargetId = null;
++            int lastTargetsSeen = 0;
+ 
+             while (DateTimeOffset.UtcNow < deadline && popupTargetId is null)
+             {
+                 var response = await client.CallAsync("Target.getTargets", null, cancellationToken);
+                 var targets = ManagedChromeTargetConnector.ReadTargets(response);
++                lastTargetsSeen = targets.Count;
+ 
+                 // Find accounts.google.com page targets, excluding the Agnes tab and pre-click targets
+                 var googlePopups = new List<ManagedChromeTarget>();
+@@ -304,6 +313,12 @@ public sealed class ChromeManagedSession : IAsyncDisposable
+                 if (googlePopups.Count > 0)
+                 {
+                     popupTargetId = googlePopups[0].TargetId;
++                    ObservabilityHub.Instance.LogEvent(
++                        LogLevel.Info,
++                        "ChromeManagedSession",
++                        "GooglePopupFound",
++                        "Google popup target found",
++                        new { targetId = popupTargetId, url = googlePopups[0].Url });
+                     break;
+                 }
+ 
+@@ -312,6 +327,13 @@ public sealed class ChromeManagedSession : IAsyncDisposable
+ 
+             if (popupTargetId is null)
+             {
++                ObservabilityHub.Instance.LogEvent(
++                    LogLevel.Warning,
++                    "ChromeManagedSession",
++                    "GooglePopupTimeout",
++                    "Google popup not found within timeout",
++                    new { targetsSeen = lastTargetsSeen, targets_seen = lastTargetsSeen });
++
+                 var timeoutSeconds = (popupTimeout ?? TimeSpan.FromSeconds(30)).TotalSeconds;
+                 throw new InvalidOperationException($"Google login popup (accounts.google.com) did not appear within {timeoutSeconds:F0} seconds.");
+             }
+diff --git a/src/RouterPlus.Infrastructure/Chrome/GoogleLoginCdpBrowser.cs b/src/RouterPlus.Infrastructure/Chrome/GoogleLoginCdpBrowser.cs
+index dea5b47..1948b7b 100644
+--- a/src/RouterPlus.Infrastructure/Chrome/GoogleLoginCdpBrowser.cs
++++ b/src/RouterPlus.Infrastructure/Chrome/GoogleLoginCdpBrowser.cs
+@@ -27,7 +27,6 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+     {
+         using var renderCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+         renderCts.CancelAfter(TimeSpan.FromSeconds(30));
+-        var triedAddAccount = false;
+         var triedSkipPasskey = false;
+         var triedSkipHomeAddress = false;
+         var triedConfirmIdentifier = false;
+@@ -73,7 +72,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+                 }
+ 
+                 if (state.HasEmailField || state.HasPasswordField || state.HasTotpField ||
+-                    state.HasCompletionSignal || state.HasManualChallenge)
++                    state.HasCompletionSignal || state.HasManualChallenge || state.HasAccountChooser || state.HasConsentScreen)
+                 {
+                     return state;
+                 }
+@@ -95,15 +94,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+                     continue;
+                 }
+ 
+-                // Google account chooser page renders no email field. Navigate
+-                // directly to the identifier entry page to bypass it.
+-                if (!triedAddAccount && state.PageUri.Host == "accounts.google.com")
+-                {
+-                    if (await TryBypassAccountChooserAsync(renderCts.Token))
+-                    {
+-                        triedAddAccount = true;
+-                    }
+-                }
++                // Google account chooser and OAuth consent handling lives in
++                // GoogleLoginStateMachine, which knows the expected email address.
++                // Both states are returned above, so nothing to do here.
+ 
+                 // Google v3 confirmidentifier page - email already filled, just need to click Continue
+                 if (!triedConfirmIdentifier && state.PageUri.Host == "accounts.google.com" &&
+@@ -226,7 +219,29 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+         (window.location.host === 'gds.google.com' && window.location.pathname.includes('/web/landing'));
+     const isSignInPage = window.location.pathname.includes('/signin') ||
+                          !!document.querySelector('input[type=""email""], input[type=""password""]');
+-    const hasCompletionSignal = hasSignedInMarker && !isSignInPage;
++    const path = window.location.pathname.toLowerCase();
++    const bodyText = (document.body && document.body.innerText || '').toLowerCase();
++    const hasNoCredentialField = !hasEmailField && !hasPasswordField && !hasTotpField;
++    // data-profile-identifier is Google's signed-in avatar marker and shows up on every
++    // signed-in Google page, so it must not be treated as an account-chooser row.
++    const hasAccountChooser = window.location.host === 'accounts.google.com' && hasNoCredentialField &&
++        (path.includes('accountchooser') || path.includes('account-chooser') ||
++         !!document.querySelector('li[data-authuser], [data-authuser], li[data-identifier], [data-identifier][data-email], [data-account]') ||
++         Array.from(document.querySelectorAll('div[role=""button""], li[role=""button""]')).some(el => {
++             const t = ((el.innerText || el.getAttribute('aria-label') || '')).toLowerCase();
++             return (t.includes('@') && t.includes('gmail')) || el.querySelector('[data-identifier], [data-email]');
++         }));
++    const hasConsentScreen = window.location.host === 'accounts.google.com' && hasNoCredentialField &&
++        (path.includes('consent') || path.includes('oauth') ||
++         bodyText.includes('choose what to allow') || bodyText.includes('muốn cho phép') ||
++         bodyText.includes('continue to') || bodyText.includes('tiếp tục đến') ||
++         bodyText.includes('truy cập vào') || bodyText.includes('share your') ||
++         bodyText.includes('chỉ định') || bodyText.includes('xem và quản lý') ||
++         Array.from(document.querySelectorAll('button, [role=""button""]')).some(b => {
++            const t = ((b.innerText || b.getAttribute('aria-label') || '')).toLowerCase();
++            return (t.includes('allow') || t.includes('cho phép') || t.includes('đồng ý') || t.includes('accept')) && !t.includes('cancel') && !t.includes('hủy');
++        }));
++    const hasCompletionSignal = hasSignedInMarker && !isSignInPage && !hasAccountChooser && !hasConsentScreen;
+     const hasChallengeElement = !!document.querySelector('[data-challenge-id], .captcha, #captcha');
+     const hasManualChallenge = hasChallengeElement || window.location.pathname.includes('/challenge/recaptcha');
+ 
+@@ -239,7 +254,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+         has2FAMethodPicker: has2FAMethodPicker,
+         hasCompletionSignal: hasCompletionSignal,
+         hasManualChallenge: hasManualChallenge,
+-        emailValue: emailValue
++        emailValue: emailValue,
++        hasAccountChooser: hasAccountChooser,
++        hasConsentScreen: hasConsentScreen
+     };
+ })({})
+ ";
+@@ -283,6 +300,8 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+             var hasManualChallenge = IsManualChallenge(
+                 pageUrl,
+                 value.GetProperty("hasManualChallenge").GetBoolean());
++            var hasAccountChooser = value.TryGetProperty("hasAccountChooser", out var acct) && acct.GetBoolean();
++            var hasConsentScreen = value.TryGetProperty("hasConsentScreen", out var consent) && consent.GetBoolean();
+ 
+             // Log TOTP error detection
+             if (hasTotpError)
+@@ -303,7 +322,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+                 hasTotpError,
+                 has2FAMethodPicker,
+                 hasCompletionSignal,
+-                hasManualChallenge);
++                hasManualChallenge,
++                hasAccountChooser,
++                hasConsentScreen);
+         }
+         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or UriFormatException)
+         {
+@@ -448,24 +469,126 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+         }
+     }
+ 
+-    /// <summary>
+-    /// When the Google account chooser page is shown, navigate directly to
+-    /// the identifier entry page to bypass the chooser.
+-    /// </summary>
+-    private async Task<bool> TryBypassAccountChooserAsync(CancellationToken cancellationToken)
++    public async Task<bool> TrySelectAccountOnChooserAsync(string? email, CancellationToken cancellationToken)
+     {
+         try
+         {
+-            const string script = @"
++            var emailNormalized = string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
++            var emailJson = JsonSerializer.Serialize(emailNormalized);
++            var script = @"
+ (function() {
+-    const path = window.location.pathname;
+-    if (path !== '/v3/signin/accountchooser' && path !== '/signin/accountchooser') {
+-        return { navigated: false, path: path };
++    const wanted = " + emailJson + @";
++    const isVisible = element => {
++        const rect = element.getBoundingClientRect();
++        return element.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
++    };
++    const area = el => { const r = el.getBoundingClientRect(); return r.width * r.height; };
++    const smallest = list => { list.sort((a, b) => area(a) - area(b)); return list[0] || null; };
++    const textOf = el => ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')).toLowerCase();
++    const attributesOf = el => {
++        const attrs = [];
++        const candidates = [el];
++        // Also check children for data attributes
++        try {
++            el.querySelectorAll('[data-identifier],[data-email],[data-authuser]').forEach(c => candidates.push(c));
++        } catch (e) {}
++        for (const node of candidates) {
++            const dId = (node.getAttribute('data-identifier') || '').trim().toLowerCase();
++            const dEmail = (node.getAttribute('data-email') || '').trim().toLowerCase();
++            const dAuth = (node.getAttribute('data-authuser') || '').trim().toLowerCase();
++            if (dId) attrs.push(dId);
++            if (dEmail) attrs.push(dEmail);
++            if (dAuth && dAuth.includes('@')) attrs.push(dAuth);
++        }
++        return attrs.filter(Boolean);
++    };
++
++    // Account rows. Try to find clickable account entries.
++    let rows = Array.from(document.querySelectorAll('[data-authuser], li[data-identifier], [data-identifier], [data-email], div[data-email], [role=""button""][data-account], [role=""link""][data-account]'))
++        .filter(el => isVisible(el));
++    
++    // Filter out elements that have li children (to get leaf-ish rows)
++    rows = rows.filter(el => el.querySelectorAll('li').length === 0);
++    
++    // Also look for common account chooser patterns
++    if (rows.length === 0) {
++        rows = Array.from(document.querySelectorAll('li[role=""button""], div[role=""button""], [jsname]'))
++            .filter(el => isVisible(el) && el.querySelectorAll('li').length === 0)
++            .filter(el => {
++                const t = textOf(el);
++                return t.includes('@') || el.querySelector('[data-identifier], [data-email]');
++            });
++    }
++
++    let target = null;
++    let strategy = 'no_match';
++
++    if (wanted) {
++        // Try exact attribute match first (prefer exact email match if multiple)
++        target = rows.find(el => attributesOf(el).includes(wanted)) || null;
++        if (target) strategy = 'email_attribute';
++        if (!target) {
++            // Try text match - look for email as token
++            const byText = rows.filter(el => {
++                const t = (el.innerText || '').toLowerCase();
++                // Check if email appears as a word/token
++                const tokens = t.split(/[^a-z0-9@._+-]+/);
++                if (tokens.includes(wanted)) return true;
++                // Also check if it contains the full email
++                return t.includes(wanted);
++            });
++            if (byText.length > 0) {
++                target = smallest(byText);
++                strategy = 'email_text';
++            }
++        }
+     }
+-    const url = new URL(window.location.href);
+-    url.pathname = '/v3/signin/identifier';
+-    window.location.href = url.toString();
+-    return { navigated: true };
++
++    // No exact match: add the account explicitly instead of signing in a different one.
++    if (!target) {
++        const anotherCandidates = Array.from(document.querySelectorAll('button, [role=""button""], a, [role=""link""], li, div[jsname], [jsaction]'))
++            .filter(el => isVisible(el))
++            .filter(el => el.querySelectorAll('li').length === 0 || el.tagName === 'BUTTON' || el.getAttribute('role') === 'button')
++            .filter(el => {
++                const t = textOf(el);
++                return t.includes('use another account') || t.includes('tài khoản khác') || 
++                       t.includes('add account') || t.includes('thêm tài khoản') ||
++                       t.includes('sign in with different account');
++            });
++        if (anotherCandidates.length > 0) {
++            target = smallest(anotherCandidates);
++            if (target) strategy = 'use_another_account';
++        }
++    }
++
++    // Also try more specific selectors for 'Use another account'
++    if (!target && wanted) {
++        const moreSpecific = Array.from(document.querySelectorAll('div[role=""link""], li[role=""link""], [data-action=""add-account""]'))
++            .filter(el => isVisible(el))
++            .filter(el => {
++                const t = textOf(el);
++                return t.includes('use another') || t.includes('tài khoản khác') || t.includes('another account');
++            });
++        if (moreSpecific.length > 0) {
++            target = smallest(moreSpecific);
++            if (target) strategy = 'use_another_account';
++        }
++    }
++
++    // Caller supplied no email to match, so any listed account is acceptable.
++    if (!target && !wanted) {
++        if (rows.length > 0) {
++            target = smallest(rows.slice());
++            if (target) strategy = 'first_account';
++        }
++    }
++
++    if (!target) return { found: false, strategy: strategy };
++    const rect = target.getBoundingClientRect();
++    // Ensure element is in view and clickable
++    try { target.scrollIntoView({ block: 'center', inline: 'center' }); } catch(e) {}
++    const rect2 = target.getBoundingClientRect();
++    return { found: true, strategy: strategy, centerX: rect2.left + rect2.width / 2, centerY: rect2.top + rect2.height / 2 };
+ })()
+ ";
+             var result = await _client.CallAsync("Runtime.evaluate", new
+@@ -474,15 +597,54 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+                 returnByValue = true,
+                 awaitPromise = false
+             }, cancellationToken, _sessionId);
++            if (result.TryGetProperty("exceptionDetails", out var chooserException))
++            {
++                // A script error here would otherwise look like "no matching account".
++                ObservabilityHub.Instance.LogEvent(
++                    LogLevel.Error,
++                    "GoogleLogin",
++                    "AccountChooserScriptFailed",
++                    "Account chooser evaluation failed",
++                    new { error = GetCdpExceptionDescription(chooserException) });
++                return false;
++            }
+ 
+-            if (!result.TryGetProperty("result", out var remoteObject)
+-                || !remoteObject.TryGetProperty("value", out var value))
++            if (!result.TryGetProperty("result", out var remoteObject) || !remoteObject.TryGetProperty("value", out var value))
+             {
+                 return false;
+             }
+ 
+-            return value.TryGetProperty("navigated", out var navigated)
+-                && navigated.ValueKind == JsonValueKind.True;
++            var strategy = value.TryGetProperty("strategy", out var strategyProp)
++                ? strategyProp.GetString() ?? "unknown"
++                : "unknown";
++
++            if (!(value.TryGetProperty("found", out var found) && found.ValueKind == JsonValueKind.True) ||
++                !value.TryGetProperty("centerX", out var cx) || !value.TryGetProperty("centerY", out var cy))
++            {
++                ObservabilityHub.Instance.LogEvent(
++                    LogLevel.Warning,
++                    "GoogleLogin",
++                    "AccountChooserNoTarget",
++                    "Account chooser shown but no account could be selected",
++                    new { strategy });
++                return false;
++            }
++
++            var x = cx.GetDouble();
++            var y = cy.GetDouble();
++
++            ObservabilityHub.Instance.LogEvent(
++                LogLevel.Info,
++                "GoogleLogin",
++                "AccountChooserSelected",
++                "Account chooser target selected",
++                new { strategy, x, y });
++
++            await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mouseMoved", x, y, button = "none", buttons = 0 }, cancellationToken, _sessionId);
++            await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mousePressed", x, y, button = "left", clickCount = 1 }, cancellationToken, _sessionId);
++            await Task.Delay(50, cancellationToken);
++            await _client.CallAsync("Input.dispatchMouseEvent", new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }, cancellationToken, _sessionId);
++            return true;
+         }
+         catch
+         {
+@@ -1062,6 +1224,54 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+             _ => throw new ArgumentOutOfRangeException(nameof(field))
+         };
+ 
++        var selectorJson = JsonSerializer.Serialize(selector);
++
++        // Wait (up to 10s) for the visible input field and a visible submit button
++        // to be present before evaluating submitExpression.
++        var submitWaitDeadline = DateTime.UtcNow.AddSeconds(10);
++        while (DateTime.UtcNow < submitWaitDeadline)
++        {
++            cancellationToken.ThrowIfCancellationRequested();
++            var submitReadyExpression = $"(() => {{ " +
++                "const elements = document.querySelectorAll(" + selectorJson + "); " +
++                "const fieldEl = Array.from(elements).find(e => {{ const r = e.getBoundingClientRect(); return e.getClientRects().length > 0 && r.width > 0 && r.height > 0; }}); " +
++                "if (!fieldEl) return false; " +
++                "const fieldKind = Array.from(elements).some(e => e.matches('input[type=\"password\"]')) ? 'password' : " +
++                "(Array.from(elements).some(e => e.matches('input[name=\"totpPin\"]')) ? 'totp' : 'email'); " +
++                "const nextButtonId = fieldKind === 'password' ? '#passwordNext' : " +
++                "fieldKind === 'totp' ? '#totpNext' : '#identifierNext'; " +
++                "const candidates = [nextButtonId, '[jsname=\\\"LgbsSe\\\"]', '[jsname=\\\"Njthtb\\\"]', " +
++                "'[data-primary-action-label]', 'button[type=\\\"submit\\\"]']; " +
++                "for (const candidateSelector of candidates) {{ const candidate = document.querySelector(candidateSelector); " +
++                "if (candidate && !candidate.disabled && candidate.getClientRects().length > 0) {{ const rect = candidate.getBoundingClientRect(); if (rect.width > 0 && rect.height > 0) return true; }} }} " +
++                "const labels = ['next', 'tiếp', 'continue', 'sign in', 'đăng nhập', 'submit']; " +
++                "for (const candidate of document.querySelectorAll('[role=\\\"button\\\"], button')) {{ " +
++                "const label = ((candidate.innerText || '') + ' ' + (candidate.getAttribute('aria-label') || '')).toLowerCase(); " +
++                "const rect = candidate.getBoundingClientRect(); " +
++                "if (!candidate.disabled && candidate.getClientRects().length > 0 && rect.width > 0 && rect.height > 0 && labels.some(item => label.includes(item))) return true; }} " +
++                "return false; })()";
++            try
++            {
++                var readyResult = await _client.CallAsync("Runtime.evaluate", new
++                {
++                    expression = submitReadyExpression,
++                    returnByValue = true,
++                    awaitPromise = false
++                }, cancellationToken, _sessionId);
++                if (readyResult.TryGetProperty("result", out var readyResultObj)
++                    && readyResultObj.TryGetProperty("value", out var readyValue)
++                    && readyValue.ValueKind == JsonValueKind.True)
++                {
++                    break;
++                }
++            }
++            catch
++            {
++                // Ignore transient evaluation failures while waiting
++            }
++            await Task.Delay(250, cancellationToken);
++        }
++
+         // Wait a bit to ensure field is still visible after fill
+         // DebugConsole.WriteLine($"[Submit] {field} - Waiting 300ms before submit...");
+         await Task.Delay(300, cancellationToken);
+@@ -1071,7 +1281,6 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+ 
+         // Google uses step-specific controls whose exact markup varies by
+         // Chromium version and locale.
+-        var selectorJson = JsonSerializer.Serialize(selector);
+         var submitExpression = $"(() => {{ const elements = document.querySelectorAll({selectorJson}); " +
+                                "const element = Array.from(elements).find(e => {{ const r = e.getBoundingClientRect(); return e.getClientRects().length > 0 && r.width > 0 && r.height > 0; }}); " +
+                                "if (!element) {{ console.log('Submit: Field not found. Selector:', {selectorJson}, 'Elements found:', elements.length); throw new Error('Visible field not found'); }} " +
+@@ -1115,10 +1324,21 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+             && submitted.ValueKind == JsonValueKind.True;
+         var method = submitValue.TryGetProperty("method", out var m) ? m.GetString() : "none";
+ 
+-        // DebugConsole.WriteLine($"[Submit] field={field} submittedByDom={submittedByDom} method={method}");
++        ObservabilityHub.Instance.LogEvent(
++            LogLevel.Info,
++            "GoogleLogin",
++            "SubmitResult",
++            "Submit evaluated",
++            new { field = field.ToString(), submittedByDom, method, submitValue = submitValue.ToString() });
+ 
+         if (submittedByDom)
+         {
++            ObservabilityHub.Instance.LogEvent(
++                LogLevel.Info,
++                "GoogleLogin",
++                "DispatchMouseClickAttempt",
++                "Dispatching trusted mouse click on submit button",
++                new { field = field.ToString() });
+             // Find the submit button location and dispatch real mouse events
+             await DispatchMouseClickOnSubmitButtonAsync(field, cancellationToken);
+             await Task.Delay(500, cancellationToken);
+@@ -1210,14 +1430,20 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+                 {
+                     GoogleLoginField.Email => !state.HasEmailField &&
+                         (state.HasPasswordField || state.HasTotpField ||
+-                         state.HasCompletionSignal || state.HasManualChallenge),
++                         state.HasCompletionSignal || state.HasManualChallenge ||
++                         // An existing Google session can skip straight to consent/chooser.
++                         state.HasAccountChooser || state.HasConsentScreen),
+                     GoogleLoginField.Password =>
+                         // Password advanced if: password field gone OR 2FA picker appeared (even if password field still visible for back navigation)
++                        // Also treat a consent/account chooser/interstitial page (no password/email fields) as advanced so OAuth can be handled.
+                         (!state.HasPasswordField || state.Has2FAMethodPicker) &&
+                         (state.HasTotpField || state.HasCompletionSignal ||
+-                         state.HasManualChallenge || state.Has2FAMethodPicker),
++                         state.HasManualChallenge || state.Has2FAMethodPicker ||
++                         state.HasAccountChooser || state.HasConsentScreen ||
++                         (!state.HasPasswordField && !state.HasEmailField)),
+                     GoogleLoginField.Totp => !state.HasTotpField &&
+-                        (state.HasCompletionSignal || state.HasManualChallenge),
++                        (state.HasCompletionSignal || state.HasManualChallenge ||
++                         state.HasConsentScreen || state.HasAccountChooser),
+                     _ => false
+                 };
+ 
+@@ -1274,8 +1500,9 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+         var expression = $"(() => {{ const b = document.querySelector({selectorJson}); " +
+                          "const r = b ? b.getBoundingClientRect() : null; " +
+                          "const alerts = document.querySelectorAll('[role=\\\"alert\\\"], [aria-live=\\\"assertive\\\"]'); " +
++                         "const vb = Array.from(document.querySelectorAll('button, [role=button], [jsname]')).filter(e => { const rr = e.getBoundingClientRect(); return rr.width > 0 && rr.height > 0; }).map(e => { const rr = e.getBoundingClientRect(); return e.tagName.toLowerCase() + ':' + (e.id || '') + ':' + (e.getAttribute('jsname') || '') + ':' + (e.innerText || '').trim().replace(/\\|/g, '') + '@' + rr.left + ',' + rr.top; }).join('|'); " +
+                          "return 'button=' + !!b + ';disabled=' + (!!b && !!b.disabled) + ';rect=' + " +
+-                         "(!!r && r.width > 0 && r.height > 0) + ';alerts=' + alerts.length; })()";
++                         "(!!r && r.width > 0 && r.height > 0) + ';alerts=' + alerts.length + ';visibleButtons=' + vb; })()";
+         var result = await _client.CallAsync("Runtime.evaluate", new
+         {
+             expression,
+@@ -1327,7 +1554,7 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+     {
+         try
+         {
+-            var fieldSelector = field switch
++            var primarySelector = field switch
+             {
+                 GoogleLoginField.Email => "#identifierNext",
+                 GoogleLoginField.Password => "#passwordNext",
+@@ -1335,10 +1562,21 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+                 _ => "button"
+             };
+ 
+-            var selectorJson = JsonSerializer.Serialize(fieldSelector);
+-            var expression = "(() => { const b = document.querySelector(" + selectorJson + "); " +
+-                             "if (!b) return null; const r = b.getBoundingClientRect(); " +
+-                             "return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()";
++            var primarySelectorJson = JsonSerializer.Serialize(primarySelector);
++            var expression = "(() => {" +
++                             "const primary = " + primarySelectorJson + ";" +
++                             "const candidates = [primary, '[jsname=\"LgbsSe\"]', '[jsname=\"Njthtb\"]', '[data-primary-action-label]', 'button[type=\"submit\"]'];" +
++                             "let button = null;" +
++                             "for (const selector of candidates) { const candidate = document.querySelector(selector); if (candidate && !candidate.disabled && candidate.getClientRects().length > 0) { const rect = candidate.getBoundingClientRect(); if (rect.width > 0 && rect.height > 0) { button = candidate; break; } } }" +
++                             "if (!button) { const labels = ['next', 'tiếp', 'continue', 'sign in', 'đăng nhập', 'submit'];" +
++                             "for (const candidate of document.querySelectorAll('[role=\"button\"], button')) {" +
++                             "const label = ((candidate.innerText || '') + ' ' + (candidate.getAttribute('aria-label') || '')).toLowerCase();" +
++                             "const rect = candidate.getBoundingClientRect();" +
++                             "if (!candidate.disabled && candidate.getClientRects().length > 0 && rect.width > 0 && rect.height > 0 && labels.some(item => label.includes(item))) { button = candidate; break; } } }" +
++                             "if (!button) return null;" +
++                             "const r = button.getBoundingClientRect();" +
++                             "return { x: r.left + r.width / 2, y: r.top + r.height / 2, tag: button.tagName, text: (button.innerText || button.getAttribute('aria-label') || '').slice(0, 80) };" +
++                             "})()";
+ 
+             var result = await _client.CallAsync("Runtime.evaluate", new
+             {
+@@ -1351,13 +1589,37 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+                 || !remoteObject.TryGetProperty("value", out var value)
+                 || value.ValueKind != JsonValueKind.Object)
+             {
++                ObservabilityHub.Instance.LogEvent(
++                    LogLevel.Warning,
++                    "GoogleLogin",
++                    "DispatchMouseClickNoButton",
++                    "No submit button found for trusted click",
++                    new { field = field.ToString() });
+                 return;
+             }
+ 
+             var x = value.GetProperty("x").GetDouble();
+             var y = value.GetProperty("y").GetDouble();
++            var tag = value.TryGetProperty("tag", out var tagProp) ? tagProp.GetString() : "";
++            var text = value.TryGetProperty("text", out var textProp) ? textProp.GetString() : "";
++
++            ObservabilityHub.Instance.LogEvent(
++                LogLevel.Info,
++                "GoogleLogin",
++                "DispatchMouseClickTarget",
++                "Trusted click target",
++                new { field = field.ToString(), x, y, tag, text });
+ 
+             // Dispatch real mouse events
++            await _client.CallAsync("Input.dispatchMouseEvent", new
++            {
++                type = "mouseMoved",
++                x = x,
++                y = y,
++                button = "none",
++                buttons = 0
++            }, cancellationToken, _sessionId);
++
+             await _client.CallAsync("Input.dispatchMouseEvent", new
+             {
+                 type = "mousePressed",
+@@ -1367,19 +1629,27 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+                 buttons = 1,
+                 clickCount = 1
+             }, cancellationToken, _sessionId);
++
++            await Task.Delay(50, cancellationToken);
++
+             await _client.CallAsync("Input.dispatchMouseEvent", new
+             {
+                 type = "mouseReleased",
+                 x = x,
+                 y = y,
+                 button = "left",
+-                buttons = 1,
++                buttons = 0,
+                 clickCount = 1
+             }, cancellationToken, _sessionId);
+         }
+-        catch
++        catch (Exception ex)
+         {
+-            // Best effort
++            ObservabilityHub.Instance.LogEvent(
++                LogLevel.Warning,
++                "GoogleLogin",
++                "DispatchMouseClickFailed",
++                "Trusted click failed",
++                new { field = field.ToString(), error = ex.Message });
+         }
+     }
+ 
+@@ -1789,6 +2059,180 @@ internal sealed class GoogleLoginCdpBrowser : IGoogleLoginBrowser
+         }
+     }
+ 
++    public async Task<bool> TryClickConsentContinueAsync(CancellationToken cancellationToken)
++    {
++        // Must be on accounts.google.com consent/OAuth page
++        try
++        {
++            var checkPage = await _client.CallAsync("Runtime.evaluate", new
++            {
++                expression = "(function(){const h=window.location.hostname.toLowerCase();const p=window.location.pathname.toLowerCase();const t=(document.body&&document.body.innerText||'').toLowerCase();const isGoogle=h==='accounts.google.com'||h==='myaccount.google.com';const isConsent=p.includes('/signin/oauth')||p.includes('/o/oauth2')||t.includes('continue to')||t.includes('choose what to allow')||t.includes('cho phép')||t.includes('đồng ý');return {ok:isGoogle&&isConsent,host:h,path:p};})()",
++                returnByValue = true,
++                awaitPromise = false
++            }, cancellationToken, _sessionId);
++            if (checkPage.TryGetProperty("result", out var cp) && cp.TryGetProperty("value", out var cv))
++            {
++                if (!(cv.TryGetProperty("ok", out var okp) && okp.ValueKind == JsonValueKind.True))
++                {
++                    return false;
++                }
++            }
++            else
++            {
++                return false;
++            }
++        }
++        catch
++        {
++            return false;
++        }
++
++        // Wait up to 5s for loading spinner to disappear (same pattern as TrySelectAuthenticatorMethodAsync)
++        for (int waitAttempt = 1; waitAttempt <= 10; waitAttempt++)
++        {
++            if (cancellationToken.IsCancellationRequested)
++            {
++                return false;
++            }
++
++            try
++            {
++                const string checkLoadingScript = @"
++(function() {
++    const progressBars = Array.from(document.querySelectorAll('[role=""progressbar""], [aria-label*=""tải"" i], [aria-label*=""loading"" i]'));
++    const loadingTexts = Array.from(document.querySelectorAll('*')).filter(el => {
++        const text = (el.innerText || el.textContent || '').trim().toLowerCase();
++        return text === 'đang tải' || text === 'loading';
++    });
++    const isLoading = progressBars.length > 0 || loadingTexts.length > 0;
++    return { isLoading: isLoading, progressBars: progressBars.length, loadingTexts: loadingTexts.length };
++})()
++";
++                var checkResult = await _client.CallAsync("Runtime.evaluate", new
++                {
++                    expression = checkLoadingScript,
++                    returnByValue = true,
++                    awaitPromise = false
++                }, cancellationToken, _sessionId);
++
++                if (checkResult.TryGetProperty("result", out var checkResultObj)
++                    && checkResultObj.TryGetProperty("value", out var checkValue)
++                    && checkValue.TryGetProperty("isLoading", out var isLoadingProp)
++                    && isLoadingProp.ValueKind == JsonValueKind.False)
++                {
++                    break;
++                }
++            }
++            catch
++            {
++                // Intentionally swallow: spinner check is optional
++            }
++
++            await Task.Delay(500, cancellationToken);
++        }
++
++        try
++        {
++            const string script = @"
++(function() {
++    const isVisible = element => {
++        const rect = element.getBoundingClientRect();
++        return element.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
++    };
++
++    const keywords = ['tiếp tục', 'continue', 'allow', 'cho phép', 'agree', 'authorize', 'accept'];
++    const avoid = ['try another way', 'cancel', 'thử cách khác', 'hủy'];
++
++    const candidates = Array.from(document.querySelectorAll('button, [role=""button""], a, [role=""link""]')).filter(el => {
++        if (!isVisible(el)) return false;
++        const text = ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
++        if (avoid.some(a => text.includes(a))) return false;
++        return keywords.some(k => text.includes(k));
++    });
++
++    if (candidates.length === 0) {
++        return { found: false };
++    }
++
++    // Prefer jsname LgbsSe or role button
++    let best = candidates[0];
++    let bestScore = -1;
++    for (const el of candidates) {
++        let score = 0;
++        if (el.getAttribute('jsname') === 'LgbsSe') score += 2;
++        if (el.getAttribute('role') === 'button' || el.tagName.toLowerCase() === 'button') score += 1;
++        if (score > bestScore) { bestScore = score; best = el; }
++    }
++
++    const rect = best.getBoundingClientRect();
++    return {
++        found: true,
++        centerX: rect.left + rect.width / 2,
++        centerY: rect.top + rect.height / 2
++    };
++})()
++";
++            var result = await _client.CallAsync("Runtime.evaluate", new
++            {
++                expression = script,
++                returnByValue = true,
++                awaitPromise = false
++            }, cancellationToken, _sessionId);
++
++            if (!result.TryGetProperty("result", out var remoteObject)
++                || !remoteObject.TryGetProperty("value", out var value))
++            {
++                return false;
++            }
++
++            if (!(value.TryGetProperty("found", out var found) && found.ValueKind == JsonValueKind.True)
++                || !value.TryGetProperty("centerX", out var centerX)
++                || !value.TryGetProperty("centerY", out var centerY))
++            {
++                return false;
++            }
++
++            var x = centerX.GetDouble();
++            var y = centerY.GetDouble();
++
++            // mouseMoved before
++            await _client.CallAsync("Input.dispatchMouseEvent", new
++            {
++                type = "mouseMoved",
++                x = x,
++                y = y,
++                button = "none",
++                buttons = 0
++            }, cancellationToken, _sessionId);
++
++            await _client.CallAsync("Input.dispatchMouseEvent", new
++            {
++                type = "mousePressed",
++                x = x,
++                y = y,
++                button = "left",
++                clickCount = 1
++            }, cancellationToken, _sessionId);
++
++            await Task.Delay(50, cancellationToken);
++
++            await _client.CallAsync("Input.dispatchMouseEvent", new
++            {
++                type = "mouseReleased",
++                x = x,
++                y = y,
++                button = "left",
++                clickCount = 1
++            }, cancellationToken, _sessionId);
++
++            return true;
++        }
++        catch
++        {
++            return false;
++        }
++    }
++
+     public async ValueTask DisposeAsync()
+     {
+         if (_disposed)
+diff --git a/src/RouterPlus.Infrastructure/Chrome/GoogleLoginStateMachine.cs b/src/RouterPlus.Infrastructure/Chrome/GoogleLoginStateMachine.cs
+index 8f7aa58..66d767a 100644
+--- a/src/RouterPlus.Infrastructure/Chrome/GoogleLoginStateMachine.cs
++++ b/src/RouterPlus.Infrastructure/Chrome/GoogleLoginStateMachine.cs
+@@ -22,7 +22,8 @@ public static class GoogleLoginStateMachine
+     {
+         "accounts.google.com",
+         "myaccount.google.com",
+-        "www.google.com"
++        "www.google.com",
++        "gds.google.com"
+     };
+ 
+     /// <summary>
+@@ -44,11 +45,26 @@ public static class GoogleLoginStateMachine
+             // Read initial state
+             var state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+ 
+-            // Validate entry page origin
++            // Validate entry page origin (allow OAuth consent/chooser only on Google hosts)
+             if (!AllowedEntryHosts.Contains(state.PageUri.Host))
+             {
+-                return GoogleLoginResult.UnsupportedPage(
+-                    $"Wrong origin: {state.PageUri.Host}. Expected accounts.google.com.");
++                if ((state.HasAccountChooser || state.HasConsentScreen) && 
++                    (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
++                     state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
++                     state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
++                     state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
++                {
++                    // Continue processing only on known Google hosts
++                }
++                else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
++                {
++                    // Continue processing
++                }
++                else
++                {
++                    return GoogleLoginResult.UnsupportedPage(
++                        $"Wrong origin: {state.PageUri.Host}. Expected accounts.google.com.");
++                }
+             }
+ 
+             // Check for manual challenge and wait for the user to complete it
+@@ -70,7 +86,7 @@ public static class GoogleLoginStateMachine
+             }
+ 
+             // Wait for page to render expected fields (identifier page may show email field after delay)
+-            if (!state.HasEmailField && !state.HasPasswordField && !state.HasTotpField && !state.Has2FAMethodPicker)
++            if (!state.HasEmailField && !state.HasPasswordField && !state.HasTotpField && !state.Has2FAMethodPicker && !state.HasAccountChooser && !state.HasConsentScreen)
+             {
+                 var waitDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+                 while (DateTimeOffset.UtcNow < waitDeadline)
+@@ -78,13 +94,50 @@ public static class GoogleLoginStateMachine
+                     await Task.Delay(500, totalCts.Token);
+                     state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
+ 
+-                    if (state.HasEmailField || state.HasPasswordField || state.HasTotpField || state.Has2FAMethodPicker)
++                    if (state.HasEmailField || state.HasPasswordField || state.HasTotpField || state.Has2FAMethodPicker || state.HasAccountChooser || state.HasConsentScreen)
+                     {
+                         break;
+                     }
+                 }
+             }
+ 
++            // Handle account chooser if present
++            if (state.HasAccountChooser)
++            {
++                if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
++                {
++                    await Task.Delay(1500, totalCts.Token);
++                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                }
++                else
++                {
++                    // If we couldn't select account, try again once
++                    await Task.Delay(500, totalCts.Token);
++                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                    if (state.HasAccountChooser)
++                    {
++                        await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token);
++                        await Task.Delay(1500, totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                    }
++                }
++            }
++
++            // Handle consent screen early
++            if (state.HasConsentScreen)
++            {
++                var consentClickedEarly = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                if (consentClickedEarly)
++                {
++                    await Task.Delay(1500, totalCts.Token);
++                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                    {
++                        return GoogleLoginResult.Success();
++                    }
++                }
++            }
++
+             // Email step
+             if (state.HasEmailField)
+             {
+@@ -97,8 +150,24 @@ public static class GoogleLoginStateMachine
+                 // Validate we're still on allowed origin
+                 if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
+                 {
+-                    return GoogleLoginResult.UnsupportedPage(
+-                        $"Navigation to unexpected origin: {state.PageUri.Host}.");
++                    // Allow OAuth redirects only on known Google hosts
++                    if ((state.HasAccountChooser || state.HasConsentScreen) &&
++                        (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
++                         state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
++                         state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
++                         state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
++                    {
++                        // Continue processing
++                    }
++                    else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
++                    {
++                        // Continue processing
++                    }
++                    else
++                    {
++                        return GoogleLoginResult.UnsupportedPage(
++                            $"Navigation to unexpected origin: {state.PageUri.Host}.");
++                    }
+                 }
+ 
+                 // Check for manual challenge - wait for user to complete it
+@@ -118,6 +187,54 @@ public static class GoogleLoginStateMachine
+                 {
+                     return GoogleLoginResult.Success();
+                 }
++
++                if (state.HasAccountChooser)
++                {
++                    if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
++                    {
++                        await Task.Delay(1500, totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                    }
++                    else
++                    {
++                        await Task.Delay(500, totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        if (state.HasAccountChooser)
++                        {
++                            await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token);
++                            await Task.Delay(1500, totalCts.Token);
++                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        }
++                    }
++                }
++                if (state.HasConsentScreen)
++                {
++                    var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                    if (consentClicked)
++                    {
++                        await Task.Delay(1500, totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                        {
++                            return GoogleLoginResult.Success();
++                        }
++                    }
++                    else
++                    {
++                        await Task.Delay(1000, totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        if (state.HasConsentScreen)
++                        {
++                            await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                            await Task.Delay(1500, totalCts.Token);
++                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                            if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                            {
++                                return GoogleLoginResult.Success();
++                            }
++                        }
++                    }
++                }
+             }
+ 
+             // Password step
+@@ -132,8 +249,23 @@ public static class GoogleLoginStateMachine
+                 // Validate origin
+                 if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
+                 {
+-                    return GoogleLoginResult.UnsupportedPage(
+-                        $"Navigation to unexpected origin: {state.PageUri.Host}.");
++                    if ((state.HasAccountChooser || state.HasConsentScreen) &&
++                        (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
++                         state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
++                         state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
++                         state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
++                    {
++                        // Continue processing
++                    }
++                    else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
++                    {
++                        // Continue processing
++                    }
++                    else
++                    {
++                        return GoogleLoginResult.UnsupportedPage(
++                            $"Navigation to unexpected origin: {state.PageUri.Host}.");
++                    }
+                 }
+ 
+                 // Check for manual challenge - wait for user to complete it
+@@ -180,6 +312,56 @@ public static class GoogleLoginStateMachine
+                             $"Navigation to unexpected origin: {state.PageUri.Host}.");
+                     }
+                 }
++
++                if (state.HasAccountChooser)
++                {
++                    if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
++                    {
++                        await Task.Delay(1500, totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                    }
++                    else
++                    {
++                        await Task.Delay(500, totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        if (state.HasAccountChooser)
++                        {
++                            await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token);
++                            await Task.Delay(1500, totalCts.Token);
++                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        }
++                    }
++                }
++
++                // Consent handling after password submission
++                if (!state.HasCompletionSignal && !state.Has2FAMethodPicker && !state.HasManualChallenge)
++                {
++                    var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                    if (consentClicked)
++                    {
++                        await Task.Delay(TimeSpan.FromSeconds(1), totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                        {
++                            return GoogleLoginResult.Success();
++                        }
++                    }
++                    else
++                    {
++                        await Task.Delay(1000, totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        if (state.HasConsentScreen)
++                        {
++                            await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                            await Task.Delay(1500, totalCts.Token);
++                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                            if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                            {
++                                return GoogleLoginResult.Success();
++                            }
++                        }
++                    }
++                }
+             }
+ 
+             // TOTP step
+@@ -293,6 +475,44 @@ public static class GoogleLoginStateMachine
+                 {
+                     return GoogleLoginResult.Success();
+                 }
++
++                // Consent handling after TOTP submission
++                if (!state.HasCompletionSignal && !state.HasManualChallenge)
++                {
++                    var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                    if (consentClicked)
++                    {
++                        await Task.Delay(TimeSpan.FromSeconds(1), totalCts.Token);
++                        state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                        if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                        {
++                            return GoogleLoginResult.Success();
++                        }
++                    }
++                }
++            }
++
++            // Handle account chooser/consent if still present
++            if (state.HasAccountChooser)
++            {
++                if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
++                {
++                    await Task.Delay(1000, totalCts.Token);
++                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                }
++            }
++            if (state.HasConsentScreen)
++            {
++                var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                if (consentClicked)
++                {
++                    await Task.Delay(1000, totalCts.Token);
++                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                    {
++                        return GoogleLoginResult.Success();
++                    }
++                }
+             }
+ 
+             // 2FA method picker step - when Google shows method selection instead of TOTP input
+@@ -420,6 +640,21 @@ public static class GoogleLoginStateMachine
+                     {
+                         return GoogleLoginResult.Success();
+                     }
++
++                    // Consent handling after TOTP submission
++                    if (!state.HasCompletionSignal && !state.HasManualChallenge)
++                    {
++                        var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                        if (consentClicked)
++                        {
++                            await Task.Delay(TimeSpan.FromSeconds(1), totalCts.Token);
++                            state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                            if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                            {
++                                return GoogleLoginResult.Success();
++                            }
++                        }
++                    }
+                 }
+             }
+ 
+@@ -429,6 +664,35 @@ public static class GoogleLoginStateMachine
+                 return GoogleLoginResult.Success();
+             }
+ 
++            // Before final unsupported return, try the account chooser and consent once more
++            if (state.HasAccountChooser)
++            {
++                if (await TrySelectAccountWithTimeoutAsync(browser, credential.Email, totalCts.Token))
++                {
++                    await Task.Delay(1000, totalCts.Token);
++                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                    {
++                        return GoogleLoginResult.Success();
++                    }
++                }
++            }
++            // Only click consent/continue when no credential field is on screen, so a
++            // stray "Continue"-labelled control cannot hijack the email/password step.
++            if (!state.HasEmailField && !state.HasPasswordField && !state.HasTotpField)
++            {
++                var consentClicked = await TryClickConsentContinueWithTimeoutAsync(browser, totalCts.Token);
++                if (consentClicked)
++                {
++                    await Task.Delay(TimeSpan.FromSeconds(1), totalCts.Token);
++                    state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
++                    if (state.HasCompletionSignal && AllowedCompletionHosts.Contains(state.PageUri.Host))
++                    {
++                        return GoogleLoginResult.Success();
++                    }
++                }
++            }
++
+             // Unrecognized field combination
+             return GoogleLoginResult.UnsupportedPage(
+                 $"Unrecognized page state at {state.PageUri.Host}{state.PageUri.AbsolutePath}: " +
+@@ -492,6 +756,26 @@ public static class GoogleLoginStateMachine
+         return await browser.TrySelectAuthenticatorMethodAsync(stepCts.Token);
+     }
+ 
++    private static async Task<bool> TrySelectAccountWithTimeoutAsync(
++        IGoogleLoginBrowser browser,
++        string? email,
++        CancellationToken cancellationToken)
++    {
++        using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
++        stepCts.CancelAfter(StepTimeout);
++        return await browser.TrySelectAccountOnChooserAsync(email, stepCts.Token);
++    }
++
++    private static async Task<bool> TryClickConsentContinueWithTimeoutAsync(
++        IGoogleLoginBrowser browser,
++        CancellationToken cancellationToken)
++    {
++        using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
++        stepCts.CancelAfter(StepTimeout);
++
++        return await browser.TryClickConsentContinueAsync(stepCts.Token);
++    }
++
+     private static async Task SubmitWithTimeoutAsync(
+         IGoogleLoginBrowser browser,
+         GoogleLoginField field,
+diff --git a/src/RouterPlus.Infrastructure/Chrome/IGoogleLoginBrowser.cs b/src/RouterPlus.Infrastructure/Chrome/IGoogleLoginBrowser.cs
+index 8400a67..82d1bd4 100644
+--- a/src/RouterPlus.Infrastructure/Chrome/IGoogleLoginBrowser.cs
++++ b/src/RouterPlus.Infrastructure/Chrome/IGoogleLoginBrowser.cs
+@@ -27,4 +27,18 @@ public interface IGoogleLoginBrowser : IAsyncDisposable
+     /// Returns true if the click succeeded.
+     /// </summary>
+     Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken);
++
++    /// <summary>
++    /// Clicks a consent/continue/allow/authorize button if present.
++    /// Returns true if the click succeeded.
++    /// </summary>
++    Task<bool> TryClickConsentContinueAsync(CancellationToken cancellationToken) => Task.FromResult(false);
++
++    /// <summary>
++    /// Selects the account matching <paramref name="email"/> on Google's account chooser.
++    /// When no row matches, the "Use another account" option is clicked instead so the
++    /// credential is typed explicitly rather than signing in the wrong account.
++    /// Returns true if a click was dispatched.
++    /// </summary>
++    Task<bool> TrySelectAccountOnChooserAsync(string? email, CancellationToken cancellationToken) => Task.FromResult(false);
+ }
+diff --git a/tests/RouterPlus.Core.Tests/Security/GoogleLoginCdpBrowserTests.cs b/tests/RouterPlus.Core.Tests/Security/GoogleLoginCdpBrowserTests.cs
+index 13adc2c..4181a39 100644
+--- a/tests/RouterPlus.Core.Tests/Security/GoogleLoginCdpBrowserTests.cs
++++ b/tests/RouterPlus.Core.Tests/Security/GoogleLoginCdpBrowserTests.cs
+@@ -144,6 +144,48 @@ public sealed class GoogleLoginCdpBrowserTests
+         await Assert.ThrowsAsync<ObjectDisposedException>(() => browser.ReadStateAsync(CancellationToken.None));
+     }
+ 
++    [Fact]
++    public async Task TrySelectAccountOnChooserAsync_dispatches_trusted_click_for_selected_row()
++    {
++        var cdp = new FakeChromeCdpClient();
++        cdp.Enqueue(
++            "Runtime.evaluate",
++            Json("{\"result\":{\"value\":{\"found\":true,\"strategy\":\"email_text\",\"centerX\":10,\"centerY\":20}}}"),
++            "session-1");
++        cdp.Enqueue("Input.dispatchMouseEvent", EmptyResult(), "session-1");
++        cdp.Enqueue("Input.dispatchMouseEvent", EmptyResult(), "session-1");
++        cdp.Enqueue("Input.dispatchMouseEvent", EmptyResult(), "session-1");
++        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
++
++        var selected = await browser.TrySelectAccountOnChooserAsync("user@example.com", CancellationToken.None);
++
++        Assert.True(selected);
++        var clicks = cdp.Calls
++            .Where(call => call.Method == "Input.dispatchMouseEvent")
++            .Select(call => call.ParametersText)
++            .ToList();
++        Assert.Equal(3, clicks.Count);
++        Assert.Contains("mousePressed", clicks[1]);
++        cdp.AssertComplete();
++    }
++
++    [Fact]
++    public async Task TrySelectAccountOnChooserAsync_returns_false_when_no_row_matches()
++    {
++        var cdp = new FakeChromeCdpClient();
++        cdp.Enqueue(
++            "Runtime.evaluate",
++            Json("{\"result\":{\"value\":{\"found\":false,\"strategy\":\"no_match\"}}}"),
++            "session-1");
++        await using var browser = new GoogleLoginCdpBrowser(cdp, "session-1", "target-1");
++
++        var selected = await browser.TrySelectAccountOnChooserAsync("user@example.com", CancellationToken.None);
++
++        Assert.False(selected);
++        Assert.DoesNotContain(cdp.Calls, call => call.Method == "Input.dispatchMouseEvent");
++        cdp.AssertComplete();
++    }
++
+     private static JsonElement Targets(string url)
+         => Json($"{{\"targetInfos\":[{{\"targetId\":\"target-1\",\"url\":\"{url}\"}}]}}");
+ 
+diff --git a/tests/RouterPlus.Infrastructure.Tests/AgnesKeyFlowOrchestratorTests.cs b/tests/RouterPlus.Infrastructure.Tests/AgnesKeyFlowOrchestratorTests.cs
+index 54079e9..a4e104c 100644
+--- a/tests/RouterPlus.Infrastructure.Tests/AgnesKeyFlowOrchestratorTests.cs
++++ b/tests/RouterPlus.Infrastructure.Tests/AgnesKeyFlowOrchestratorTests.cs
+@@ -82,7 +82,8 @@ public sealed class AgnesKeyFlowOrchestratorTests
+             StateSequence = new Queue<AgnesApiKeyPageState>(new[]
+             {
+                 OnSignInPage(),
+-                OnKeysPage(hasNewKeyButton: true)
++                // Auth failed, so the tab stays signed out (still shows the Google button).
++                OnSignInPage()
+             })
+         };
+         var google = new FakeGoogleLoginBrowser { Fail = true };
+diff --git a/tests/RouterPlus.Infrastructure.Tests/GoogleLoginStateMachineTests.cs b/tests/RouterPlus.Infrastructure.Tests/GoogleLoginStateMachineTests.cs
+index 7e9f4e5..10fc171 100644
+--- a/tests/RouterPlus.Infrastructure.Tests/GoogleLoginStateMachineTests.cs
++++ b/tests/RouterPlus.Infrastructure.Tests/GoogleLoginStateMachineTests.cs
+@@ -144,6 +144,25 @@ public sealed class GoogleLoginStateMachineTests
+         Assert.Empty(browser.SubmittedFields);
+     }
+ 
++    [Fact]
++    public async Task RunAsync_selects_matching_account_on_chooser_then_clicks_consent()
++    {
++        // Arrange: an existing Google session shows the account chooser first.
++        var browser = new FakeGoogleLoginBrowser { ConsentClickResult = true }
++            .ReturnState(State("/v3/signin/accountchooser", accountChooser: true))
++            .ReturnState(State("/v3/signin/consent", consent: true))
++            .ReturnState(State("/", completion: true));
++
++        // Act
++        var result = await GoogleLoginStateMachine.RunAsync(browser, Credential(), CancellationToken.None);
++
++        // Assert
++        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
++        Assert.Equal("synthetic@example.com", browser.AccountSelectionEmail);
++        Assert.Equal(1, browser.ConsentClickCount);
++        Assert.Empty(browser.FilledFields);
++    }
++
+     private static GoogleLoginCredential Credential()
+         => new("profile-1", "synthetic@example.com", "synthetic-password", "JBSWY3DPEHPK3PXP");
+ 
+@@ -155,7 +174,9 @@ public sealed class GoogleLoginStateMachineTests
+         bool totpError = false,
+         bool methodPicker = false,
+         bool completion = false,
+-        bool manualChallenge = false)
++        bool manualChallenge = false,
++        bool accountChooser = false,
++        bool consent = false)
+         => new(
+             new Uri($"https://accounts.google.com{path}"),
+             HasEmailField: email,
+@@ -164,7 +185,9 @@ public sealed class GoogleLoginStateMachineTests
+             HasTotpError: totpError,
+             Has2FAMethodPicker: methodPicker,
+             HasCompletionSignal: completion,
+-            HasManualChallenge: manualChallenge);
++            HasManualChallenge: manualChallenge,
++            HasAccountChooser: accountChooser,
++            HasConsentScreen: consent);
+ 
+     private sealed class FakeGoogleLoginBrowser : IGoogleLoginBrowser
+     {
+@@ -175,6 +198,23 @@ public sealed class GoogleLoginStateMachineTests
+         public int AuthenticatorSelectionCount { get; private set; }
+         public bool AuthenticatorSelectionResult { get; init; } = true;
+         public Exception? FillException { get; init; }
++        public string? AccountSelectionEmail { get; private set; }
++        public int ConsentClickCount { get; private set; }
++        public bool ConsentClickResult { get; init; }
++
++        public Task<bool> TrySelectAccountOnChooserAsync(string? email, CancellationToken cancellationToken)
++        {
++            cancellationToken.ThrowIfCancellationRequested();
++            AccountSelectionEmail = email;
++            return Task.FromResult(true);
++        }
++
++        public Task<bool> TryClickConsentContinueAsync(CancellationToken cancellationToken)
++        {
++            cancellationToken.ThrowIfCancellationRequested();
++            ConsentClickCount++;
++            return Task.FromResult(ConsentClickResult);
++        }
+ 
+         public FakeGoogleLoginBrowser ReturnState(GoogleLoginPageState state)
+         {

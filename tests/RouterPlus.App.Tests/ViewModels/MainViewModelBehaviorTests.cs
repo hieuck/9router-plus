@@ -274,7 +274,7 @@ public sealed class MainViewModelBehaviorTests
     {
         var viewModel = new MainViewModel(secretVault: new NoOpSecretVault());
 
-        Assert.Equal(7, viewModel.ProviderCount);
+        Assert.Equal(9, viewModel.ProviderCount);
         Assert.Equal(ProviderCatalog.All.Count, viewModel.ProviderCount);
         Assert.Contains(viewModel.ProviderCards, card => card.Kind == ProviderKind.Agnes);
     }
@@ -296,7 +296,7 @@ public sealed class MainViewModelBehaviorTests
         Assert.Equal("Chưa có provider được gán", row.ConnectionSummary);
 
         // The provider count should include Agnes (7 total)
-        Assert.Equal(7, row.ProviderStatuses.Count);
+        Assert.Equal(9, row.ProviderStatuses.Count);
     }
 
     private static ChromeProfile CreateProfile(string name, string directoryName, string? userDataDirectory = null) =>

@@ -180,6 +180,34 @@ public sealed class ChromeManagedSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Connects to the managed Poolside keys page and returns a pair of adapters
+    /// sharing the same CDP session.
+    /// </summary>
+    public async Task<(PoolsideApiKeyCdpBrowser PoolsidePage, IGoogleLoginBrowser GoogleLogin)> ConnectPoolsideFlowAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var session = await ConnectAnyTargetAsync(cancellationToken);
+        var poolsidePage = new PoolsideApiKeyCdpBrowser(session.Client, session.SessionId, session.TargetId);
+        var googleLogin = new GoogleLoginCdpBrowser(session.Client, session.SessionId, session.TargetId);
+        return (poolsidePage, googleLogin);
+    }
+
+    /// <summary>
+    /// Connects to the managed Bazaarlink keys page and returns a pair of adapters
+    /// sharing the same CDP session.
+    /// </summary>
+    public async Task<(BazaarlinkApiKeyCdpBrowser BazaarlinkPage, IGoogleLoginBrowser GoogleLogin)> ConnectBazaarlinkFlowAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var session = await ConnectAnyTargetAsync(cancellationToken);
+        var bazaarlinkPage = new BazaarlinkApiKeyCdpBrowser(session.Client, session.SessionId, session.TargetId);
+        var googleLogin = new GoogleLoginCdpBrowser(session.Client, session.SessionId, session.TargetId);
+        return (bazaarlinkPage, googleLogin);
+    }
+
+    /// <summary>
     /// Connects to the managed Agnes AI keys page and returns the Agnes page plus
     /// a factory for connecting to the Google login popup (separate CDP target).
     /// The Agnes page and Google popup are distinct targets; they do NOT share a session.

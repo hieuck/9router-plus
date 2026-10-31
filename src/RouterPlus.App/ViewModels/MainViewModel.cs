@@ -83,6 +83,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OpenRouterKeyFlowOrchestrator.OpenRouterKeyFlowResult>> _openRouterKeyFlow = null!;
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<OllamaKeyFlowOrchestrator.OllamaKeyFlowResult>> _ollamaKeyFlow = null!;
     private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<AgnesKeyFlowOrchestrator.AgnesKeyFlowResult>> _agnesKeyFlow = null!;
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<PoolsideKeyFlowOrchestrator.PoolsideKeyFlowResult>> _poolsideKeyFlow = null!;
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<BazaarlinkKeyFlowOrchestrator.BazaarlinkKeyFlowResult>> _bazaarlinkKeyFlow = null!;
     private Func<ChromeProfile, CancellationToken, Task<GoogleLoginCredential?>> _autoGetKeyCredentials = null!;
     private Func<CancellationToken, Task<OpenRouterPkceResult>> _openRouterPkceFlow = null!;
     private string _quickLaunchFilterText = string.Empty;
@@ -202,6 +204,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _openRouterKeyFlow = CreateDefaultOpenRouterKeyFlow();
         _ollamaKeyFlow = CreateDefaultOllamaKeyFlow();
         _agnesKeyFlow = CreateDefaultAgnesKeyFlow();
+        _poolsideKeyFlow = CreateDefaultPoolsideKeyFlow();
+        _bazaarlinkKeyFlow = CreateDefaultBazaarlinkKeyFlow();
         _autoGetKeyCredentials = CreateDefaultAutoGetKeyCredentials();
         _openRouterPkceFlow = CreateDefaultOpenRouterPkceFlow();
         _quotaPollingService = new QuotaPollingService(
@@ -3090,6 +3094,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => _agnesKeyFlow = value ?? throw new ArgumentNullException(nameof(value));
     }
 
+    public Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<PoolsideKeyFlowOrchestrator.PoolsideKeyFlowResult>> PoolsideKeyFlow
+    {
+        get => _poolsideKeyFlow;
+        set => _poolsideKeyFlow = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<BazaarlinkKeyFlowOrchestrator.BazaarlinkKeyFlowResult>> BazaarlinkKeyFlow
+    {
+        get => _bazaarlinkKeyFlow;
+        set => _bazaarlinkKeyFlow = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
     /// <summary>
     /// Injectable seam for loading the Google login credential (from the
     /// Google account vault) used by <see cref="AutoGetKeyAsync"/>.
@@ -3105,6 +3121,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _openRouterPkceFlow;
         set => _openRouterPkceFlow = value ?? throw new ArgumentNullException(nameof(value));
     }
+
+    /// <summary>
+    public async Task<PoolsideKeyFlowOrchestrator.PoolsideKeyFlowResult> GetPoolsideKeyAsync(
+        ChromeProfile profile,
+        GoogleLoginCredential credential,
+        CancellationToken cancellationToken = default) =>
+        await _poolsideKeyFlow(profile, credential, cancellationToken);
+
+    public async Task<BazaarlinkKeyFlowOrchestrator.BazaarlinkKeyFlowResult> GetBazaarlinkKeyAsync(
+        ChromeProfile profile,
+        GoogleLoginCredential credential,
+        CancellationToken cancellationToken = default) =>
+        await _bazaarlinkKeyFlow(profile, credential, cancellationToken);
 
     /// <summary>
     /// Auto-get an API key for the given provider (OpenRouter, Ollama, or Agnes):
@@ -3126,13 +3155,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var credential = await _autoGetKeyCredentials(profile, cancellationToken);
         if (credential is null)
         {
-            StatusText = "Không có thông tin Google trong Vault cho profile này.";
-            ShowToast(StatusText, ToastType.Warning);
-            return false;
+            // Try to proceed - some flows may work with existing logged-in session
+            StatusText = "Không tìm thấy Google credential trong Vault. Thử tiếp tục với session Chrome hiện tại nếu đã đăng nhập.";
+            ShowToast(StatusText, ToastType.Info);
         }
 
         if (provider == ProviderKind.Ollama)
         {
+            if (credential is null)
+            {
+                StatusText = "Không có thông tin Google trong Vault. Vui lòng thêm credential để đăng nhập Ollama.";
+                ShowToast(StatusText, ToastType.Warning);
+                return false;
+            }
+
             var ollamaResult = await _ollamaKeyFlow(profile, credential, cancellationToken);
             if (!ollamaResult.Success)
             {
@@ -3145,6 +3181,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         else if (provider == ProviderKind.Agnes)
         {
+            if (credential is null)
+            {
+                StatusText = "Không có thông tin Google trong Vault. Vui lòng thêm credential để đăng nhập Agnes.";
+                ShowToast(StatusText, ToastType.Warning);
+                return false;
+            }
+
             var agnesResult = await _agnesKeyFlow(profile, credential, cancellationToken);
             if (!agnesResult.Success)
             {
@@ -3157,6 +3200,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         else if (provider == ProviderKind.OpenRouter)
         {
+            if (credential is null)
+            {
+                StatusText = "Không có thông tin Google trong Vault. Vui lòng thêm credential để đăng nhập OpenRouter.";
+                ShowToast(StatusText, ToastType.Warning);
+                return false;
+            }
+
             var flowResult = await _openRouterKeyFlow(profile, credential, cancellationToken);
             if (!flowResult.Success)
             {
@@ -3166,6 +3216,58 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             return await AddApiKeyAsync(ProviderKind.OpenRouter, flowResult.ApiKey!);
+        }
+        else if (provider == ProviderKind.Poolside)
+        {
+            if (credential is null)
+            {
+                StatusText = "Không có thông tin Google trong Vault. Vui lòng thêm credential để đăng nhập Poolside.";
+                ShowToast(StatusText, ToastType.Warning);
+                return false;
+            }
+            try
+            {
+                var result = await GetPoolsideKeyAsync(profile, credential, cancellationToken);
+                if (!result.Success || string.IsNullOrWhiteSpace(result.ApiKey))
+                {
+                    StatusText = $"Không lấy được Poolside key: {result.ErrorMessage ?? "Unknown error"}";
+                    ShowToast(StatusText, ToastType.Error);
+                    return false;
+                }
+                return await AddApiKeyAsync(ProviderKind.Poolside, result.ApiKey);
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Lỗi lấy Poolside key: {ex.Message}";
+                ShowToast(StatusText, ToastType.Error);
+                return false;
+            }
+        }
+        else if (provider == ProviderKind.Bazaarlink)
+        {
+            if (credential is null)
+            {
+                StatusText = "Không có thông tin Google trong Vault. Vui lòng thêm credential để đăng nhập Bazaarlink.";
+                ShowToast(StatusText, ToastType.Warning);
+                return false;
+            }
+            try
+            {
+                var result = await GetBazaarlinkKeyAsync(profile, credential, cancellationToken);
+                if (!result.Success || string.IsNullOrWhiteSpace(result.ApiKey))
+                {
+                    StatusText = $"Không lấy được Bazaarlink key: {result.ErrorMessage ?? "Unknown error"}";
+                    ShowToast(StatusText, ToastType.Error);
+                    return false;
+                }
+                return await AddApiKeyAsync(ProviderKind.Bazaarlink, result.ApiKey);
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Lỗi lấy Bazaarlink key: {ex.Message}";
+                ShowToast(StatusText, ToastType.Error);
+                return false;
+            }
         }
         else
         {
@@ -4135,6 +4237,92 @@ public sealed class MainViewModel : INotifyPropertyChanged
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
             {
                 return new AgnesKeyFlowOrchestrator.AgnesKeyFlowResult(false, null, ex.Message);
+            }
+            finally
+            {
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                }
+            }
+        };
+    }
+
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<PoolsideKeyFlowOrchestrator.PoolsideKeyFlowResult>> CreateDefaultPoolsideKeyFlow()
+    {
+        return async (profile, credential, cancellationToken) =>
+        {
+            var installation = _installation ?? throw new InvalidOperationException("Chrome installation not configured.");
+
+            ChromeManagedSession? session = null;
+            try
+            {
+                var settings = await _settingsStore.LoadAsync(cancellationToken);
+                session = await _chromeLauncher.LaunchManagedAsync(
+                    installation,
+                    profile,
+                    new Uri("https://platform.poolside.ai/api-keys"),
+                    cancellationToken,
+                    settings.UseOriginalProfileForAutoLogin);
+
+                var (poolsidePage, googleLogin) = await session.ConnectPoolsideFlowAsync(cancellationToken);
+                return await PoolsideKeyFlowOrchestrator.RunAsync(
+                    poolsidePage,
+                    credential,
+                    googleLogin,
+                    cancellationToken,
+                    _googleAuthenticationService);
+            }
+            catch (OperationCanceledException)
+            {
+                return new PoolsideKeyFlowOrchestrator.PoolsideKeyFlowResult(false, null, "Đã hủy.");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+            {
+                return new PoolsideKeyFlowOrchestrator.PoolsideKeyFlowResult(false, null, ex.Message);
+            }
+            finally
+            {
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                }
+            }
+        };
+    }
+
+    private Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<BazaarlinkKeyFlowOrchestrator.BazaarlinkKeyFlowResult>> CreateDefaultBazaarlinkKeyFlow()
+    {
+        return async (profile, credential, cancellationToken) =>
+        {
+            var installation = _installation ?? throw new InvalidOperationException("Chrome installation not configured.");
+
+            ChromeManagedSession? session = null;
+            try
+            {
+                var settings = await _settingsStore.LoadAsync(cancellationToken);
+                session = await _chromeLauncher.LaunchManagedAsync(
+                    installation,
+                    profile,
+                    new Uri("https://bazaarlink.ai/keys"),
+                    cancellationToken,
+                    settings.UseOriginalProfileForAutoLogin);
+
+                var (bazaarlinkPage, googleLogin) = await session.ConnectBazaarlinkFlowAsync(cancellationToken);
+                return await BazaarlinkKeyFlowOrchestrator.RunAsync(
+                    bazaarlinkPage,
+                    credential,
+                    googleLogin,
+                    cancellationToken,
+                    _googleAuthenticationService);
+            }
+            catch (OperationCanceledException)
+            {
+                return new BazaarlinkKeyFlowOrchestrator.BazaarlinkKeyFlowResult(false, null, "Đã hủy.");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+            {
+                return new BazaarlinkKeyFlowOrchestrator.BazaarlinkKeyFlowResult(false, null, ex.Message);
             }
             finally
             {
