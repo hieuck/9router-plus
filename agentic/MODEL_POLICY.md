@@ -30,14 +30,9 @@ Không đổi default sang model trả tiền khi chưa đối chiếu bảng. M
 - Default must not consume a paid wallet (OpenCode Go/Zen).
 - Provider-quota models (Codex/Kiro) must state the quota source.
 - Paid models only with explicit owner approval.
-- Kiro Free is **50 credits per account per month**, not one global pool. All `kr/*` models on one account share that account's 50 credits; different accounts have separate quotas. Unused credits do not roll over; reset is `2026-11-01T00:00:00Z` (07:00 Vietnam). `overageStatus=DISABLED`: when exhausted, requests return 402 with no extra charge. Use the cheapest capable model for bulk; use an expensive model only for hard tasks.
+- Use cheapest capable model for bulk; use expensive only for hard tasks.
+- **Kiro Free quota:** see `agentic/state/` (e.g. `agentic/state/model-eval.json`, `agentic/state/kiro-quota.md`). Quota is per account, not global. Unused credits do not roll over. Check `overageStatus`. Do not assume numbers from old snapshots. Run `node agentic/scripts/model-eval.mjs` to refresh. See [`PROBES.md`](PROBES.md) for probe/quota notes.
 
-## Kiro quota (measured 26/10)
-
-- 90 accounts: **4,172.54 credits** remaining in total; 6 accounts exhausted (0/50); active `6137105a` 26.23; `9fcad678` 50; `8e446274` 49.97 but skipped by router selection; most active accounts 50.
-- Credit per request (short tool prompt): `qwen3-coder-next-thinking` 0.0051; `qwen3-coder-next-agentic` 0.0057; `claude-sonnet-4.5` 0.0182; `glm-5-*` 0.044–0.049.
-- Fallback test: after `6137105a`, the router used `9fcad678` and a tool request returned 200; `8e446274` was skipped (check testStatus/modelLock).
-- Do not bulk-apply `builder-id`/profileArn to all accounts; test one account first. A wrong ARN returns 403; a missing one can return 400.
 
 ## Danh mục 9router
 
@@ -135,13 +130,9 @@ Tất cả dòng trong bảng đều text=OK và tool=OK; lỗi nằm ở danh s
 
 Chọn kr: qwen3-coder-next-thinking (0,0051) cho bulk; qwen3-coder-next-thinking-agentic (0,0057) khi cần agentic; claude-sonnet-4.5 (0,0182) chỉ việc khó; tránh GLM (0,044–0,049).
 
-### Kiro quota (đo 26/10)
+### Kiro quota
 
-- 90 account: tổng còn **4.172,54 credit**; 6 account đã 0/50; account active `6137105a` còn **26,23**; `8e446274` còn **49,97**; phần lớn active còn 50.
-- Reset **01/11 07:00 giờ Việt Nam** (2026-11-01T00:00:00Z); `overageStatus=DISABLED` ⇒ hết credit thì 402, không charge thêm.
-- Credit/lượt (đo, prompt tool ngắn): `qwen3-coder-next-thinking` 0,0051; `qwen3-coder-next-agentic` 0,0057; `claude-sonnet-4.5` 0,0182; `glm-5-*` 0,044–0,049.
-- Dùng Qwen cho bulk; Claude/GLM chỉ cho việc khó. Muốn dùng quota account khác phải rotate account và xử lý `profileArn`; không bulk khi chưa test một account.
-- Fallback test 26/10: sau `6137105a`, 9router dùng `9fcad678` (50 credit) và tool-call OK; `8e446274` bị selection bỏ qua (kiểm tra testStatus/modelLock trước khi dùng).
+See `agentic/state/` for current measured values. Do not hardcode account counts/credits here - they change frequently. See [`PROBES.md`](PROBES.md) for known pitfalls (profileArn, session bleed).
 
 ## Ưu tiên khi free dùng chung hạn mức
 
