@@ -1,17 +1,51 @@
-# Agent workflow (9router-plus)
+# Luật repo — RouterPlus (9router-plus)
 
-- **Coordinator coordinates only:** may read files and inspect results, but must not edit code, run builds/tests, run the app, automate the UI, commit, push, or perform any mutating actions. All code changes must be delegated to subagents.
-- **Delegate appropriately:** use models per `agentic/MODEL_POLICY.md`. Follow `agentic/SUBAGENT_CONTRACT.md` for batching, delegation, and templates.
-- **Reviews required:** every **non-trivial** coder output must go through independent, read-only reviews before commit. Review count/tiering follows `agentic/SUBAGENT_CONTRACT.md` (trivial/normal/high-risk). **Normal/high-risk:** minimum **3** independent reviewers. **Trivial:** only per fast-path rules in `agentic/SUBAGENT_CONTRACT.md` and **must be documented** (reason). **When in doubt, classify as normal or high-risk.**
-- **Independence mandatory:** reviewers must be independent — different models when possible, isolated context, no shared verdicts/rationale, no context leakage between reviewers or from coder's internal reasoning. If independence cannot be satisfied, **escalate**. If a preferred reviewer model is unavailable, substitute another model; **never** reduce below the minimum for that tier. **Document all substitutions and why.**
-- **Review resolution:** follow `agentic/SUBAGENT_CONTRACT.md` (any Critical blocks; 2/1 needs resolution; 3-round failure = escalate/rethink). No merge until all concerns addressed.
-- **Gates enforced:** must satisfy `agentic/GATES.md` (especially G3). Provide concrete evidence (batch brief/diff, review files with models/verdicts, counts matching tier). Missing reviews, missing evidence, or **Critical findings block commit**.
-- **Dev-team mandatory:** Coordinator MUST invoke `dev-team` before any mutating action or non-trivial decision (mapped to existing tiers in `SUBAGENT_CONTRACT.md`; if uncertain, treat as non-trivial). Read-only inspection is exempt. All classifications must follow `SUBAGENT_CONTRACT.md` and be logged in `agentic/state/dev-team-invocations/`. Trivial exemptions require documented rationale and are auditable. Without `dev-team` invocation, delegation is blocked.
-- **Live verification required:** No feature may be claimed as "working" without live verification evidence. Implementation + unit tests alone are insufficient for UI automation flows. Evidence (screenshots, logs, successful connection test) must be saved under `tools/live-verify/`. Without live verification, status is "PARTIAL" at best.
-- **Skill usage:** When a relevant skill exists for a task, invoke it and state which skill and why. If no skill applies, no need to state "không cần skill". Skills are targeted tools, not mandatory for every request. Follow the skill's instructions when invoked.
-- **Meta-rule gate:** **Any material change to `AGENTS.md` or `agentic/*.md` requires a `dev-team` review treated as high-risk (minimum 3 independent reviewers, fully independent) before applying.** A change is **material** if it adds/removes/weakens constraints, gates, roles, escalation rules, review counts/independence, or coordinator boundaries. **When in doubt, treat as material.** Trivial-only changes (pure formatting/typo/link) may be exempt **only if** explicitly logged with rationale in `agentic/state/meta-reviews/`. Conflicts with committed verified rules (`AGENTS.md`, `agentic/SUBAGENT_CONTRACT.md`, `agentic/GATES.md`) must be resolved **in favor of verified rules**. All meta-reviews (reviewer models, sessions, verdicts, rationale) must be saved as evidence and must satisfy `agentic/GATES.md`.
-- **No user intervention in G1–G4:** follow escalation list in `agentic/WORKFLOW.md`. Only escalate per that list or `agentic/QUESTION_POLICY.md`.
-- **Commits/push:** do not push. Commit only when the user asks.
-- **Probes/scripts:** if you create a probe/diagnostic script and reuse it more than once in this repo, save it under `tools/live-verify/` and reuse it. The model-eval script `agentic/scripts/model-eval.mjs` is the maintained evaluation tool and is **intentionally** located in `agentic/scripts/` (see `agentic/PROBES.md`); do not relocate it to satisfy the "reuse" rule.
-- **Live OAuth verification:** must use a profile with no existing provider connection; a connected profile can reuse the session/connection and skip the target step.
-- **References:** `agentic/WORKFLOW.md`, `agentic/SUBAGENT_CONTRACT.md`, `agentic/ROLES.md`, `agentic/GATES.md`, `agentic/MODEL_POLICY.md`, `agentic/QUESTION_POLICY.md`, `agentic/PROBES.md`.
+## 1. Skill check bắt buộc (trước mọi hành động)
+
+Trước khi làm bất cứ điều gì — kể cả hỏi clarifying question, đọc code, chạy tool — xác nhận có skill liên quan không:
+
+- **Có skill liên quan** → invoke skill đó (`Skill` tool), trích dẫn 1 câu xác nhận đã đọc, rồi mới làm.
+- **Không có skill liên quan** → nói rõ "không dùng skill", rồi làm.
+- Việc quên bước này là vi phạm luật, không phải tùy chọn.
+
+Skills liên quan thường gặp: `superpowers:brainstorming` (thiết kế/tính năng mới), `superpowers:test-driven-development` (code mới/sửa bug/refactor), `superpowers:systematic-debugging` (debug), `superpowers:writing-skills` (viết luật/skill), `ecc:dev-team` (review 4 góc nhìn), `codegraph` (đọc code).
+
+## 2. TDD — review độc lập test TRƯỚC, 3 reviewer SAU
+
+**Iron Law: không code production nào mà không có failing test trước.** (Áp dụng Claude Code Best Practices — Boris Cherny, Anthropic: "Write tests, commit; code, iterate, commit" và "Have one Claude write code; use another Claude to verify".)
+
+- **Khám + Plan trước code**: đọc code (codegraph/rg), nêu plan 1 đoạn ngắn, ghi giả định. Đi lệch → course-correct sớm (dừng, sửa hướng, không patch mãi).
+- **Trước khi triển khai**: viết test cho behavior mới/sửa đổi → **1 reviewer độc lập** (subagent riêng, context cô lập, không thấy code production) review test: test có đúng behavior không, có đủ edge case không, có assert real behavior không. Test chưa qua review → không viết code.
+- **Triển khai** theo red-green-refactor: watch test fail (đúng reason), viết minimal code để pass, refactor. Workflow phức tạp → dùng checklist/scratchpad, đánh dấu xong từng mục.
+- **Sau khi triển khai**: **3 reviewer độc lập** (subagent riêng, context cô lập lẫn nhau, không thấy reasoning của nhau — verify bằng session khác người viết) review diff. Vòng sau chỉ review phần diff mới. Bất kỳ reviewer nào chấm **Critical** → block, phải sửa và re-review. Reviewer không đồng thuận → coordinator nêu conflict, không dung hòa qua đường.
+- "Watch test fail" và "3 reviewer độc lập" là bắt buộc, không bỏ qua với lý do "việc nhỏ".
+- **3 vòng review fail → rethink**: nếu cùng một batch lọt qua 3 vòng review mà reviewer vẫn không pass (đặc biệt cùng loại Critical lặp lại), dừng patch. Quay lại thiết kế/cách làm — viết lại brief, đổi hướng tiếp cận, hoặc chia nhỏ bài toán. Patch mãi trên cùng hướng là vi phạm luật. (Tinh thần "rule of three": lặp lại lần 3 nghĩa là vấn đề nằm ở thiết kế, không nằm ở chi tiết.)
+
+## 3. Agent tự vận hành — không hỏi lại user
+
+- Sau khi dev-team/skill/luật đã thống nhất phương án, agent **tự chốt và thực hiện**, không hỏi user xác nhận lại.
+- Chỉ hỏi user khi: destructive/không đảo ngược được, cần credential/secret, thêm dependency mới, hoặc conflict scope sản phẩm.
+- Trước khi code: nêu giả định, nếu có nhiều cách thì chọn 1 cách và làm, ghi lý do 1 dòng. **Không trình nhiều phương án để user chọn.**
+- Skill check (§1) trước mọi hành động — kể cả khi định hỏi.
+
+## 4. Sửa đổi tối thiểu
+
+- Chỉ chạm code liên quan trực tiếp đến task. Không refactor, không "improve" code kề bên, không dọn dead code ngoài phạm vi.
+- Match style hiện có. Mỗi dòng đổi phải trace được đến yêu cầu.
+
+## 5. Guardrails repo này (không bỏ qua được)
+
+- **Không log secret / API key / DPAPI vault content** vào code, log, hay output.
+- Build phải xanh **0 warning** (`scripts/build.ps1`; `TreatWarningsAsErrors` đang bật).
+- Test liên quan phải xanh; test suite đủ 5 project phải xanh trước khi báo done.
+- UI automation / provider flow: không claim "working" nếu chưa có live verification evidence (screenshot/log) lưu dưới `tools/live-verify/`.
+- **Không commit khi chưa được user yêu cầu. Không push.**
+
+## 6. Model / router
+
+- Model pool, quota, credit **không ghi trong luật**. Chọn model theo cost/quality tại thời điểm dùng. Không hardcode số liệu quota vào luật.
+
+## 7. Quyền lực agent
+
+- Agent được phép: đọc mọi file, viết code, chạy build/test, invoke subagent, invoke skill.
+- Agent không được: push, commit khi chưa được yêu cầu, làm ngược §1–§5.
