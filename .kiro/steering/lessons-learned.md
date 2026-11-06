@@ -98,3 +98,6 @@ Khi restore file từ `git checkout HEAD -- <file>`, toàn bộ working copy cha
 
 ### `TreatWarningsAsErrors` + DLL lock khi app đang chạy
 `RouterPlus.App` đang chạy lock DLL trong `bin/Release/`, khiến `dotnet build --configuration Release` fail với MSB3027. Workaround: build `--configuration Debug` (output khác thư mục). CI không gặp vì chạy trong môi trường sạch.
+
+### Dependabot major bumps vs pinned SDK
+Project pin .NET 8 SDK qua `global.json`. Dependabot sẽ mở PR cho package major versions (System.Management 10.x, Test.Sdk 18.x, coverlet 10.x, xunit.runner 4.x) — những package này target .NET 10 và sẽ không build được trên .NET 8. Đóng các PR dependabot major bump cho đến khi project upgrade SDK. Chỉ merge minor bumps (ví dụ Moq 4.20→4.21).
