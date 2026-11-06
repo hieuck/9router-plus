@@ -50,7 +50,8 @@ public sealed class CodexOAuthAdapter : ExistingOAuthProviderAdapter
             request.CdpSession.Client,
             request.CdpSession.SessionId,
             request.CdpSession.TargetId,
-            request.ProfileEmail);
+            request.ProfileEmail,
+            request.TotpGenerator);
         return Map(await automation.WaitAndConsentAsync(
             request.TargetServiceUri,
             request.Timeout,
@@ -72,7 +73,8 @@ public sealed class GitHubOAuthAdapter : ExistingOAuthProviderAdapter
             request.CdpSession.Client,
             request.CdpSession.SessionId,
             request.CdpSession.TargetId,
-            request.ProfileEmail);
+            request.ProfileEmail,
+            request.TotpGenerator);
         return Map(await automation.WaitAndConsentAsync(
             request.TargetServiceUri,
             request.Timeout,
@@ -94,7 +96,8 @@ public sealed class OpenRouterOAuthAdapter : ExistingOAuthProviderAdapter
             request.CdpSession.Client,
             request.CdpSession.SessionId,
             request.CdpSession.TargetId,
-            request.ProfileEmail);
+            request.ProfileEmail,
+            request.TotpGenerator);
         return Map(await automation.WaitAndConsentAsync(
             request.TargetServiceUri,
             request.Timeout,

@@ -90,6 +90,8 @@ public sealed class QuotaPollingService
             }
 
             _paused = false;
+            // _cancellation is guaranteed non-null here: the guard above ensures
+            // _loopTask is not null, which Start() only sets after assigning _cancellation.
             cancellationToken = _cancellation!.Token;
         }
 

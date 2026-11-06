@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Security Check on Create",
+      "trigger": "PostFileCreate",
+      "description": "Run a quick security check when new C# files are created",
+      "matcher": "\\.(cs|csproj)$",
+      "action": {
+        "type": "agent",
+        "prompt": "A new C# file was created. Check for common security issues: hardcoded secrets or API keys, missing input validation, sensitive data being logged, missing authentication/authorization checks. This project uses Windows DPAPI for secrets — flag any hardcoded credentials immediately."
+      }
+    }
+  ]
+}

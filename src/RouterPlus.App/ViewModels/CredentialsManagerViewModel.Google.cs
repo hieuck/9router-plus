@@ -179,20 +179,9 @@ public sealed partial class CredentialsManagerViewModel
     /// </summary>
     private GoogleLoginCredential? ResolveCredentialForProfile(GoogleAccountVault? vault, ChromeProfile profile)
     {
-        if (vault is null)
-        {
-            return null;
-        }
-
-        var byId = vault.Find(profile.Id);
-        if (byId is not null)
-        {
-            return byId;
-        }
-
-        // Legacy compatibility: adopt a name-keyed record only when exactly one
-        // current profile carries that display name.
-        return HasUniqueProfileName(profile.Name) ? vault.Find(profile.Name) : null;
+        return vault is null
+            ? null
+            : GoogleAccountCredentialResolver.Resolve(vault, profile, _mainViewModel.Profiles);
     }
 
     private bool HasUniqueProfileName(string profileName)

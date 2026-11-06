@@ -210,7 +210,8 @@ public sealed class CodexOAuthAutomation : GoogleOAuthFlowAutomation
     protected override bool ShouldClickProviderAccountPicker(CombinedOAuthPageState state)
     {
         var providerState = state.ProviderState as CodexOAuthPageState;
-        return !state.IsGoogleOAuthPage &&
+        return LooksLikeEmail(_profileEmail) &&
+               !state.IsGoogleOAuthPage &&
                providerState?.IsOpenAIOAuthPage == true &&
                providerState.HasOpenAIAccountPicker;
     }

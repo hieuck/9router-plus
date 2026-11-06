@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "C# Check on Edit",
+      "trigger": "PostFileSave",
+      "description": "Check C# files for obvious issues when edited and saved",
+      "matcher": "src\\\\.*\\.cs$",
+      "action": {
+        "type": "agent",
+        "prompt": "A C# source file was just saved. Check for any obvious issues: missing null checks (CS8600), unused variables, potential NullReferenceException, TreatWarningsAsErrors violations, or obvious logic errors. Flag them if found. This project has TreatWarningsAsErrors enabled and Nullable reference types enabled."
+      }
+    }
+  ]
+}

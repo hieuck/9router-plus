@@ -9,7 +9,7 @@
     Git tag, and pushes both commit and tag to origin.
 
 .NOTES
-    This script should be run only after a successful CI run and when the harness audit score >= 70.
+    This script should be run only after a successful CI run.
 #>
 
 param(

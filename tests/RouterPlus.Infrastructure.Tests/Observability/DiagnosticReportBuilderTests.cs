@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text.Json;
 using RouterPlus.Infrastructure.Observability;
 using Xunit;
@@ -36,6 +37,13 @@ public class DiagnosticReportBuilderTests
             using var document = JsonDocument.Parse(metadataStream);
             Assert.Equal(sessionId, document.RootElement.GetProperty("session_id").GetString());
             Assert.True(document.RootElement.TryGetProperty("report_generated", out _));
+            Assert.True(document.RootElement.TryGetProperty("operating_system", out _));
+            Assert.True(document.RootElement.TryGetProperty("framework", out _));
+            Assert.Equal(1, document.RootElement.GetProperty("file_count").GetInt32());
+            Assert.True(document.RootElement.GetProperty("total_bytes").GetInt64() > 0);
+            var artifacts = document.RootElement.GetProperty("artifacts").EnumerateArray().ToList();
+            Assert.Contains(artifacts, artifact => artifact.GetProperty("Path").GetString() == "events.jsonl");
+            Assert.All(artifacts, artifact => Assert.Equal(64, artifact.GetProperty("Sha256").GetString()!.Length));
         }
         finally
         {

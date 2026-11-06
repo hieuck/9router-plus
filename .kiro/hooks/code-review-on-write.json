@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Code Review on Write",
+      "trigger": "PostToolUse",
+      "description": "Performs a quick code review after write operations to catch common issues",
+      "matcher": "fs_write|str_replace|fs_append",
+      "action": {
+        "type": "agent",
+        "prompt": "Code was just written or modified. Perform a quick review checking for: 1) Common security issues (hardcoded secrets, missing input validation), 2) Error handling, 3) Code clarity and maintainability, 4) Potential bugs or edge cases. Only comment if you find issues worth addressing."
+      }
+    }
+  ]
+}

@@ -32,14 +32,7 @@ internal static class DebugAutoLoginRunner
         ChromeProfile profile,
         IReadOnlyCollection<ChromeProfile> profiles)
     {
-        var credential = vault.Find(profile.Id);
-        if (credential != null)
-        {
-            return credential;
-        }
-
-        var profilesWithSameName = profiles.Count(p => p.Name == profile.Name);
-        return profilesWithSameName == 1 ? vault.Find(profile.Name) : null;
+        return GoogleAccountCredentialResolver.Resolve(vault, profile, profiles);
     }
 
     public static async Task RunAsync()

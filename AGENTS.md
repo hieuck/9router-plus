@@ -1,51 +1,192 @@
-# Luật repo — RouterPlus (9router-plus)
+# AGENTS.md — RouterPlus workflow rules
 
-## 1. Skill check bắt buộc (trước mọi hành động)
+`AGENTS.md` is the sole authority for workflow in this repo.
 
-Trước khi làm bất cứ điều gì — kể cả hỏi clarifying question, đọc code, chạy tool — xác nhận có skill liên quan không:
+---
 
-- **Có skill liên quan** → invoke skill đó (`Skill` tool), trích dẫn 1 câu xác nhận đã đọc, rồi mới làm.
-- **Không có skill liên quan** → nói rõ "không dùng skill", rồi làm.
-- Việc quên bước này là vi phạm luật, không phải tùy chọn.
+## Project snapshot
 
-Skills liên quan thường gặp: `superpowers:brainstorming` (thiết kế/tính năng mới), `superpowers:test-driven-development` (code mới/sửa bug/refactor), `superpowers:systematic-debugging` (debug), `superpowers:writing-skills` (viết luật/skill), `ecc:dev-team` (review 4 góc nhìn), `codegraph` (đọc code).
+RouterPlus is a Windows WPF desktop companion for 9Router (C# .NET 8, `net8.0-windows`).
+Key libraries: `RouterPlus.Core`, `RouterPlus.Infrastructure`, `RouterPlus.App`, `RouterPlus.Updater`.
+Tests: xUnit + Moq in `tests/` (6 projects). Build: `scripts/build.ps1`. CI: `.github/workflows/ci.yml`.
 
-## 2. TDD — review độc lập test TRƯỚC, 3 reviewer SAU
+Read `PROJECT-CONTEXT.md` for the long-term objective before starting any work.
 
-**Iron Law: không code production nào mà không có failing test trước.** (Áp dụng Claude Code Best Practices — Boris Cherny, Anthropic: "Write tests, commit; code, iterate, commit" và "Have one Claude write code; use another Claude to verify".)
+---
 
-- **Khám + Plan trước code**: đọc code (codegraph/rg), nêu plan 1 đoạn ngắn, ghi giả định. Đi lệch → course-correct sớm (dừng, sửa hướng, không patch mãi).
-- **Trước khi triển khai**: viết test cho behavior mới/sửa đổi → **1 reviewer độc lập** (subagent riêng, context cô lập, không thấy code production) review test: test có đúng behavior không, có đủ edge case không, có assert real behavior không. Test chưa qua review → không viết code.
-- **Triển khai** theo red-green-refactor: watch test fail (đúng reason), viết minimal code để pass, refactor. Workflow phức tạp → dùng checklist/scratchpad, đánh dấu xong từng mục.
-- **Sau khi triển khai**: **3 reviewer độc lập** (subagent riêng, context cô lập lẫn nhau, không thấy reasoning của nhau — verify bằng session khác người viết) review diff. Vòng sau chỉ review phần diff mới. Bất kỳ reviewer nào chấm **Critical** → block, phải sửa và re-review. Reviewer không đồng thuận → coordinator nêu conflict, không dung hòa qua đường.
-- "Watch test fail" và "3 reviewer độc lập" là bắt buộc, không bỏ qua với lý do "việc nhỏ".
-- **3 vòng review fail → rethink**: nếu cùng một batch lọt qua 3 vòng review mà reviewer vẫn không pass (đặc biệt cùng loại Critical lặp lại), dừng patch. Quay lại thiết kế/cách làm — viết lại brief, đổi hướng tiếp cận, hoặc chia nhỏ bài toán. Patch mãi trên cùng hướng là vi phạm luật. (Tinh thần "rule of three": lặp lại lần 3 nghĩa là vấn đề nằm ở thiết kế, không nằm ở chi tiết.)
+## Session start
 
-## 3. Agent tự vận hành — không hỏi lại user
+Before the first code change in a session, verify the build is green:
 
-- Sau khi dev-team/skill/luật đã thống nhất phương án, agent **tự chốt và thực hiện**, không hỏi user xác nhận lại.
-- Chỉ hỏi user khi: destructive/không đảo ngược được, cần credential/secret, thêm dependency mới, hoặc conflict scope sản phẩm.
-- Trước khi code: nêu giả định, nếu có nhiều cách thì chọn 1 cách và làm, ghi lý do 1 dòng. **Không trình nhiều phương án để user chọn.**
-- Skill check (§1) trước mọi hành động — kể cả khi định hỏi.
+```
+cd e:\GitHub\9router-plus
+dotnet build RouterPlus.sln
+```
 
-## 4. Sửa đổi tối thiểu
+A red build is a blocker — diagnose before writing new code.
 
-- Chỉ chạm code liên quan trực tiếp đến task. Không refactor, không "improve" code kề bên, không dọn dead code ngoài phạm vi.
-- Match style hiện có. Mỗi dòng đổi phải trace được đến yêu cầu.
+---
 
-## 5. Guardrails repo này (không bỏ qua được)
+## Workflow phases
 
-- **Không log secret / API key / DPAPI vault content** vào code, log, hay output.
-- Build phải xanh **0 warning** (`scripts/build.ps1`; `TreatWarningsAsErrors` đang bật).
-- Test liên quan phải xanh; test suite đủ 5 project phải xanh trước khi báo done.
-- UI automation / provider flow: không claim "working" nếu chưa có live verification evidence (screenshot/log) lưu dưới `tools/live-verify/`.
-- **Không commit khi chưa được user yêu cầu. Không push.**
+Work flows through four phases in order:
 
-## 6. Model / router
+| Phase | What happens | Proof required |
+|---|---|---|
+| **Kickoff** | Understand the objective; read relevant source; identify risks | Written summary of findings |
+| **Ready** | One objective, one failing test (red), allowed files listed | Red test exists and fails |
+| **Implement** | Write minimal code to make the test green; keep 80 %+ coverage | `dotnet test` green |
+| **Close** | Commit on a `feat/*` or `fix/*` branch; push; open PR | PR description cites test evidence |
 
-- Model pool, quota, credit **không ghi trong luật**. Chọn model theo cost/quality tại thời điểm dùng. Không hardcode số liệu quota vào luật.
+Never skip phases. Mechanical doc/config edits may skip Kickoff.
 
-## 7. Quyền lực agent
+**Commit at every phase boundary.** Before moving to the next phase — and whenever a meaningful, self-contained unit of work is complete — commit what you have. Never carry uncommitted changes across a phase boundary. A WIP commit is acceptable to checkpoint progress, but it must be squashed or cleaned up before the PR is opened.
 
-- Agent được phép: đọc mọi file, viết code, chạy build/test, invoke subagent, invoke skill.
-- Agent không được: push, commit khi chưa được yêu cầu, làm ngược §1–§5.
+---
+
+## Skills
+
+Before making any code or documentation change, check the available skills with `disclose_context` and load the one that best matches the task. The full skill catalog is visible in the Kiro skill system — do not assume the list is limited to any examples here.
+
+**How to pick:** match the task type to the skill name. Examples of common matches:
+- Writing or fixing code → look for a `tdd-*`, `test-driven-*`, or language/framework pattern skill
+- Debugging an unexpected failure → `systematic-debugging`
+- Finishing a branch, committing, pushing, opening a PR → `finishing-a-development-branch`
+- Planning a multi-file feature → `writing-plans`
+- Code review → `requesting-code-review` or `receiving-code-review`
+- Architecture or new subsystem → `agentic-engineering`
+- Security-sensitive change → `security-review`
+- Verification before claiming done → `verification-before-completion`
+
+If genuinely no skill applies, state **"no skill"** explicitly.
+
+After loading, **quote one line from the skill** to confirm it was applied — e.g.:
+
+> *"Verify tests → Detect environment → Present options → Execute choice → Clean up."* — `finishing-a-development-branch`
+
+Reading a skill file directly without calling `disclose_context` does **not** count.
+
+---
+
+## Development rules
+
+### Build
+- `dotnet build RouterPlus.sln` must exit 0 with **0 warnings** (`TreatWarningsAsErrors` is on).
+- `dotnet test` must be green before any commit.
+- After CI edits verify `.github/workflows/ci.yml` still passes locally: `dotnet build && dotnet test`.
+
+### Code style
+- Nullable and ImplicitUsings are enabled — no `#nullable disable`, no suppression without justification.
+- Immutable patterns preferred; never mutate shared state without a lock or immutable replacement.
+- No hardcoded secrets; DPAPI (`CurrentUser`) for API keys at rest.
+- Functions ≤ 50 lines, files ≤ 800 lines; extract when either limit is approached.
+
+### Tests (TDD)
+- Write the red test **before** implementation code.
+- Tests live in the matching project under `tests/`; use the shared `TestHelpers` project.
+- Behavior-style assertions preferred (describe what the system does, not how).
+- Mocks via Moq; never reach the real filesystem or registry in unit tests.
+- Coverage target: **80 %+** across all test projects.
+
+### Git
+
+**Branching:**
+- Cut branches from `main`: `feat/<topic>` for features, `fix/<topic>` for bugs.
+- `main` is protected — never push directly; always go via PR.
+- Small single-objective batches (≤ 3 source files) work fine on a regular branch.
+  Parallel or high-risk work should use a worktree to isolate changes.
+
+**Commit message format** (Conventional Commits):
+```
+<type>: <short description>
+
+<optional body — what changed and why>
+```
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
+
+- Test + implementation go in the **same commit**. Never commit a red test alone.
+- Never `git add .` blindly — stage specific files only.
+- Never `--no-verify`; never `--force` unless you own the branch exclusively.
+
+**PR:** use `gh pr create` and fill in `.github/PULL_REQUEST_TEMPLATE.md`. Title ≤ 70 characters.
+
+### Security
+- No secrets in source. Validate all external inputs at system boundaries.
+- API keys stored via DPAPI vault (`RouterPlus.Infrastructure`); never logged.
+- Before any commit: confirm no credentials, tokens, or passwords are staged.
+
+### Versioning and releases
+- Versions follow semver; bump via `scripts/bump-version.ps1`.
+- Release artifacts built with `scripts/build.ps1` → `scripts/package-release.ps1`.
+- Self-update only installs checksum-verified (`*.sha256`) stable packages.
+
+---
+
+## Roles (Kiro multi-agent)
+
+### Delegation law (mandatory)
+
+The coordinator (Tech Lead / orchestrator session) **never does implementation work itself**. It only routes, coordinates, and communicate with the owner. All substantive work goes to subagents via workflows:
+
+- **Read/understand code** → dispatch to a workflow agent; do not read source files in the orchestrator session to "understand the problem" first.
+- **Implement a feature or fix** → `run_workflow` with a brief; the workflow agent writes the code.
+- **Investigate a bug or diagnose** → `bundled://investigate` or `agent://wf-coder` with a self-contained brief.
+- **Write tests** → `tdd-guide` / test-author agent.
+- **Review** → `code-reviewer` / specialist reviewer agent; never self-review.
+- **Run builds/tests/verification** → the workflow agent that owns the work runs them.
+
+**What the coordinator keeps:**
+- Conversations, clarifications, decisions with the user
+- Lightweight orchestration: launching workflows, checking status, post-run cleanup
+- Small mechanical edits the user explicitly asks for inline (steering tweaks, one-liner fixes)
+- Commit, push, PR creation (after the workflow produces reviewed work)
+
+**Anti-pattern:** catching yourself calling `read_file` or `grep_search` to understand a problem before launching a workflow — stop, that is the workflow's job. A single grep to confirm a path is fine; reading file contents to "understand" is not.
+
+### Fixed roles
+
+| Role | Agent | Owns |
+|---|---|---|
+| Coordinator | *(orchestrator session)* | Scope, routing, commit, PR, owner communication |
+| Planner | `planner` | Break features into tasks; identify risks and dependencies |
+| Implementer | *(coder session)* | Source edits, test edits |
+| Test author | `tdd-guide` | Write red tests before implementation; enforce TDD workflow |
+| Reviewer | `code-reviewer` | Independent `dotnet build` + `dotnet test`; written VERDICT: PASS/FAIL |
+
+### Specialist agents (invoke when the task matches)
+
+| Agent | When to use |
+|---|---|
+| `architect` | Architecture decisions, new projects/subsystems, major refactors |
+| `build-error-resolver` | `dotnet build` fails with compiler or linker errors |
+| `security-reviewer` | Any change touching auth, DPAPI vault, API keys, or user input validation |
+| `performance-optimizer` | Profiling, memory leaks, slow startup, render bottlenecks |
+| `refactor-cleaner` | Dead code removal, duplicate logic, large consolidation tasks |
+| `doc-updater` | Updating `README.md`, `docs/user-guide.md`, or other project docs |
+| `loop-operator` | Monitor and intervene in autonomous agent loops when they stall |
+
+### Review rules
+
+- No self-review: the agent that wrote code cannot be its own reviewer.
+- Reviewer verdict row must include: date, batch, verdict, command run, output line count.
+- Behavior changes (code/tests) require **3 independent PASS** verdicts before merge.
+- Mechanical changes (docs, comments, config) require **1 independent PASS**.
+
+---
+
+## Checks before marking work done
+
+- [ ] `dotnet build RouterPlus.sln` — 0 errors, 0 warnings
+- [ ] `dotnet test` — all tests green
+- [ ] No hardcoded secrets staged
+- [ ] PR description includes: what changed, why, test evidence
+- [ ] `README.md` / `docs/user-guide.md` updated if UI or behavior changed
+
+---
+
+## PowerShell notes (Windows dev environment)
+
+- Use `$LASTEXITCODE` to check native command success, not `$?`.
+- Prefer file tools (Kiro's `read_file`, `fs_write`) over `Get-Content`/`Set-Content` for UTF-8 safety.
+- Long-running commands (build, tests) that may exceed 20 s should be run with an explicit timeout or in background.
+- Exclude `bin/`, `obj/`, `.git/` from recursive file scans.

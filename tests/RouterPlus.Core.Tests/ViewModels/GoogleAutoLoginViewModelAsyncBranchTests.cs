@@ -43,7 +43,7 @@ public sealed class GoogleAutoLoginViewModelAsyncBranchTests
         // Assert
         var saved = store.SavedVault?.Find(profile.Id);
         Assert.NotNull(saved);
-        Assert.Equal("AAAAAAAAAAAAAAAAAAAAAAAA", saved.TotpSecret);
+        Assert.Equal(GoogleAutoLoginViewModel.NoTotpPlaceholder, saved.TotpSecret);
         Assert.Equal("Information saved successfully", viewModel.StatusText);
     }
 

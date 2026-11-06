@@ -319,6 +319,28 @@ public abstract class GoogleOAuthFlowAutomation
         CancellationToken cancellationToken) =>
         Task.Delay(delay, cancellationToken);
 
+    /// <summary>
+    /// Conservative email check used before attempting to match an account-picker row.
+    /// Chrome profile names are not required to be email addresses, so automation must
+    /// not fail just because no Google credential (and thus email) is available.
+    /// </summary>
+    protected static bool LooksLikeEmail(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Contains(' ', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var at = value.IndexOf('@', StringComparison.Ordinal);
+        if (at <= 0 || at == value.Length - 1 || at != value.LastIndexOf('@'))
+        {
+            return false;
+        }
+
+        var domain = value.AsSpan(at + 1);
+        return domain.IndexOf('.') > 0 && domain[^1] != '.';
+    }
+
     // ========== Abstract methods (must override) ==========
 
     /// <summary>
@@ -353,7 +375,7 @@ public abstract class GoogleOAuthFlowAutomation
     /// Should click the shared Google account picker?
     /// </summary>
     protected virtual bool ShouldClickAccountPicker(CombinedOAuthPageState state)
-        => state.GoogleState?.HasAccountPicker == true;
+        => state.GoogleState?.HasAccountPicker == true && LooksLikeEmail(_profileEmail);
 
     /// <summary>
     /// Click the account picker owned by the current automation.

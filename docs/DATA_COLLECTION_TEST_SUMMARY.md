@@ -242,6 +242,6 @@ dotnet test /p:CollectCoverage=true
 
 ## Issues Discovered
 
-⚠️ **Observability System Inconsistency** - See `OBSERVABILITY_UNIFICATION_PLAN.md`
+⚠️ **Observability System Inconsistency** - See `docs/observability-system.md`
 - 3 logging systems coexist (ObservabilityHub, DebugLogger, DebugConsole)
 - Migration plan created to unify on ObservabilityHub

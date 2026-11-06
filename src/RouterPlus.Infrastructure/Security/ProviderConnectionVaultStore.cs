@@ -66,6 +66,8 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
 
     /// <summary>
     /// Save or update provider connection.
+    /// Mutation of the in-memory cache and the subsequent file write are both
+    /// performed under the write lock so concurrent callers cannot interleave.
     /// </summary>
     public async Task SaveConnectionAsync(
         ProviderAuthConnection connection,
@@ -76,30 +78,35 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
 
         await EnsureLoadedAsync(cancellationToken);
 
-        if (!_connections!.TryGetValue(connection.ProfileName, out var byProvider))
+        await ExecuteWriteOperationAsync(async () =>
         {
-            byProvider = new Dictionary<ProviderKind, ProviderAuthConnection>();
-            _connections[connection.ProfileName] = byProvider;
-        }
+            if (!_connections!.TryGetValue(connection.ProfileName, out var byProvider))
+            {
+                byProvider = new Dictionary<ProviderKind, ProviderAuthConnection>();
+                _connections[connection.ProfileName] = byProvider;
+            }
 
-        byProvider[connection.Provider] = connection;
+            byProvider[connection.Provider] = connection;
 
-        await SaveAsync(cancellationToken);
+            await WriteFileCoreAsync(cancellationToken);
 
-        ObservabilityHub.Instance.LogEvent(
-            LogLevel.Info,
-            "ProviderConnectionVault",
-            "ConnectionSaved",
-            "Provider connection saved",
-            new {
-                profile = connection.ProfileName,
-                provider = connection.Provider.ToString(),
-                method = connection.PreferredMethod.ToString()
-            });
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "ProviderConnectionVault",
+                "ConnectionSaved",
+                "Provider connection saved",
+                new {
+                    profile = connection.ProfileName,
+                    provider = connection.Provider.ToString(),
+                    method = connection.PreferredMethod.ToString()
+                });
+        }, cancellationToken);
     }
 
     /// <summary>
     /// Remove provider connection.
+    /// Mutation of the in-memory cache and the subsequent file write are both
+    /// performed under the write lock so concurrent callers cannot interleave.
     /// </summary>
     public async Task RemoveConnectionAsync(
         string profileName,
@@ -110,16 +117,17 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
 
         await EnsureLoadedAsync(cancellationToken);
 
-        if (_connections!.TryGetValue(profileName, out var profileConnections))
+        await ExecuteWriteOperationAsync(async () =>
         {
-            if (profileConnections.Remove(provider))
+            if (_connections!.TryGetValue(profileName, out var profileConnections) &&
+                profileConnections.Remove(provider))
             {
                 if (profileConnections.Count == 0)
                 {
                     _connections.Remove(profileName);
                 }
 
-                await SaveAsync(cancellationToken);
+                await WriteFileCoreAsync(cancellationToken);
 
                 ObservabilityHub.Instance.LogEvent(
                     LogLevel.Info,
@@ -128,7 +136,7 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
                     "Provider connection removed",
                     new { profile = profileName, provider = provider.ToString() });
             }
-        }
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -175,6 +183,11 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
 
         if (_loadFailed)
         {
+            // _loadFailed is only set for vault-corruption errors (JsonException,
+            // CryptographicException, FormatException). Transient I/O errors are not
+            // caught in LoadAsync and bubble up without setting this flag, so they
+            // will be retried on the next call. Corruption errors are not retried
+            // because the vault file content has not changed between calls.
             throw new CryptographicException("Vault load failed previously", _loadException);
         }
 
@@ -404,58 +417,62 @@ public sealed class ProviderConnectionVaultStore : VaultStoreBase, IProviderConn
         }
     }
 
-    private async Task SaveAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Acquires the write lock and persists the current in-memory state to disk.
+    /// <summary>
+    /// Writes the current in-memory state to disk without acquiring the write lock.
+    /// Must only be called from within an ExecuteWriteOperationAsync callback
+    /// to avoid re-entering the non-reentrant SemaphoreSlim write lock.
+    /// </summary>
+    private async Task WriteFileCoreAsync(CancellationToken cancellationToken)
     {
-        await ExecuteWriteOperationAsync(async () =>
+        var json = JsonSerializer.Serialize(_connections, new JsonSerializerOptions
         {
-            var json = JsonSerializer.Serialize(_connections, new JsonSerializerOptions
-            {
-                WriteIndented = false
-            });
+            WriteIndented = false
+        });
 
-            var encryptedBytes = EncryptPayload(json);
+        var encryptedBytes = EncryptPayload(json);
 
-            // Ensure directory exists
-            var directory = Path.GetDirectoryName(_vaultPath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        // Ensure directory exists
+        var directory = Path.GetDirectoryName(_vaultPath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        // Atomic write: write to temp file, then replace
+        var tempPath = _vaultPath + ".tmp";
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, encryptedBytes, cancellationToken);
+
+            // Flush to ensure data is on disk
+            using (var fs = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                Directory.CreateDirectory(directory);
+                await fs.FlushAsync(cancellationToken);
             }
 
-            // Atomic write: write to temp file, then replace
-            var tempPath = _vaultPath + ".tmp";
-            try
+            // Atomic replace
+            File.Move(tempPath, _vaultPath, overwrite: true);
+
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Info,
+                "ProviderConnectionVault",
+                "VaultSaved",
+                "Vault saved successfully",
+                new {
+                    profile_count = _connections!.Count,
+                    connection_count = _connections.Values.Sum(p => p.Count)
+                });
+        }
+        finally
+        {
+            // Clean up temp file if it still exists
+            if (File.Exists(tempPath))
             {
-                await File.WriteAllBytesAsync(tempPath, encryptedBytes, cancellationToken);
-
-                // Flush to ensure data is on disk
-                using (var fs = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read))
-                {
-                    await fs.FlushAsync(cancellationToken);
-                }
-
-                // Atomic replace
-                File.Move(tempPath, _vaultPath, overwrite: true);
-
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Info,
-                    "ProviderConnectionVault",
-                    "VaultSaved",
-                    "Vault saved successfully",
-                    new {
-                        profile_count = _connections!.Count,
-                        connection_count = _connections.Values.Sum(p => p.Count)
-                    });
+                try { File.Delete(tempPath); } catch { /* best effort */ }
             }
-            finally
-            {
-                // Clean up temp file if it still exists
-                if (File.Exists(tempPath))
-                {
-                    try { File.Delete(tempPath); } catch { /* best effort */ }
-                }
-            }
-        }, cancellationToken);
+        }
     }
 
     private string DecryptPayload(byte[] encryptedBytes)

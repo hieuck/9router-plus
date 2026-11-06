@@ -90,6 +90,9 @@ Làm theo từng mục từ trên xuống dưới. Khi cần báo lỗi, hãy x�
 Khi gặp lỗi OAuth, connection sync hoặc Chrome automation, Diagnostics Panel giúp xem chi tiết:
 
 1. Mở Diagnostics Panel trước khi thực hiện thao tác bị lỗi
+2. Chọn đúng session trong danh sách `Session`
+3. Xem các event ngay khi lỗi xảy ra
+4. Dùng nút **Export Report** để tạo ZIP gửi kèm bug report; file chứa `events.jsonl`, snapshots và `report_metadata.json` với mã băm SHA-256 cho từng file
 2. Filter theo mức độ **Error** hoặc **Warning**
 3. Tìm kiếm theo category liên quan:
    - **OAuthAutoLogin** - OAuth flow issues

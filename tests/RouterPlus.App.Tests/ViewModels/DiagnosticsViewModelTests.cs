@@ -756,7 +756,7 @@ public sealed class DiagnosticsViewModelTests : IDisposable
         await Task.Delay(25);
 
         // Assert
-        Assert.Equal("Observability not initialized", _viewModel.StatusMessage);
+        Assert.Equal("No observability session selected", _viewModel.StatusMessage);
         Assert.False(_viewModel.IsLoading);
     }
 
@@ -771,7 +771,7 @@ public sealed class DiagnosticsViewModelTests : IDisposable
         await Task.Delay(25);
 
         // Assert
-        Assert.Equal("Observability not initialized", _viewModel.StatusMessage);
+        Assert.Equal("No observability session selected", _viewModel.StatusMessage);
     }
 
     [Fact]
@@ -784,7 +784,7 @@ public sealed class DiagnosticsViewModelTests : IDisposable
         _viewModel.OpenLogFolderCommand.Execute(null);
 
         // Assert
-        Assert.Equal("Observability not initialized", _viewModel.StatusMessage);
+        Assert.Equal("No observability session selected", _viewModel.StatusMessage);
     }
 
     [Fact]

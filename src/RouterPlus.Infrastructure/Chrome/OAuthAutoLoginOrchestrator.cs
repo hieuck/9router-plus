@@ -43,7 +43,8 @@ public sealed class OAuthAutoLoginOrchestrator : IAsyncDisposable
         Uri targetServiceUri,
         string profileEmail,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<Task<string?>>? totpGenerator = null)
     {
         ArgumentNullException.ThrowIfNull(authUrl);
         ArgumentNullException.ThrowIfNull(targetServiceUri);
@@ -69,7 +70,8 @@ public sealed class OAuthAutoLoginOrchestrator : IAsyncDisposable
                 targetServiceUri,
                 profileEmail,
                 timeout,
-                _cdpSession),
+                _cdpSession,
+                totpGenerator),
             _googleAuthenticationService,
             cancellationToken);
 

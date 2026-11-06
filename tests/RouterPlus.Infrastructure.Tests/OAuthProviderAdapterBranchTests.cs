@@ -104,6 +104,44 @@ public sealed class OAuthProviderAdapterBranchTests
         }, result.Message);
     }
 
+    [Theory]
+    [MemberData(nameof(SupportedAdapters))]
+    public async Task RunAsync_forwards_totp_generator_when_google_presents_totp(
+        Type adapterType,
+        ProviderKind provider)
+    {
+        var totpGeneratorCallCount = 0;
+        Func<Task<string?>> totpGenerator = () =>
+        {
+            totpGeneratorCallCount++;
+            return Task.FromResult<string?>("123456");
+        };
+
+        await using var cdp = await SyntheticCdpServer.StartForTotpAsync(provider);
+        await cdp.Client.ConnectAsync(CancellationToken.None);
+        await using var cdpSession = new CdpSession(
+            cdp.Client,
+            cdp.SessionId,
+            "synthetic-target");
+        var request = new ProviderOAuthRequest(
+            provider,
+            new Uri("https://synthetic.example.test/oauth"),
+            new Uri("https://synthetic.example.test/complete"),
+            "synthetic@example.test",
+            TimeSpan.FromSeconds(5),
+            cdpSession,
+            totpGenerator);
+        var googleAuthentication = new Mock<IGoogleAuthenticationService>().Object;
+
+        var result = await CreateAdapter(adapterType).RunAsync(
+            request,
+            googleAuthentication,
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, totpGeneratorCallCount);
+    }
+
     [Fact]
     public void Combined_page_state_uses_provider_url_before_google_url()
     {
@@ -193,7 +231,13 @@ public sealed class OAuthProviderAdapterBranchTests
         public ChromeCdpClient Client { get; }
         public string SessionId { get; }
 
-        public static Task<SyntheticCdpServer> StartAsync(ProviderKind provider)
+        public static Task<SyntheticCdpServer> StartAsync(ProviderKind provider) =>
+            StartAsync(provider, presentTotp: false);
+
+        public static Task<SyntheticCdpServer> StartForTotpAsync(ProviderKind provider) =>
+            StartAsync(provider, presentTotp: true);
+
+        private static Task<SyntheticCdpServer> StartAsync(ProviderKind provider, bool presentTotp)
         {
             using var portProbe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
             portProbe.Start();
@@ -203,12 +247,12 @@ public sealed class OAuthProviderAdapterBranchTests
             var listener = new HttpListener();
             listener.Prefixes.Add($"http://127.0.0.1:{port}/");
             listener.Start();
-            var serverTask = ServeAsync(listener, port, provider);
+            var serverTask = ServeAsync(listener, port, provider, presentTotp);
             var client = new ChromeCdpClient(new Uri($"http://127.0.0.1:{port}"));
             return Task.FromResult(new SyntheticCdpServer(listener, serverTask, port, client, "synthetic-session"));
         }
 
-        private static async Task ServeAsync(HttpListener listener, int port, ProviderKind provider)
+        private static async Task ServeAsync(HttpListener listener, int port, ProviderKind provider, bool presentTotp = false)
         {
             var versionContext = await listener.GetContextAsync();
             var versionJson = "{\"webSocketDebuggerUrl\":\"ws://127.0.0.1:" +
@@ -223,18 +267,20 @@ public sealed class OAuthProviderAdapterBranchTests
             var socketContext = await listener.GetContextAsync();
             using var webSocket = (await socketContext.AcceptWebSocketAsync(null)).WebSocket;
             var buffer = new byte[8192];
+            var requestCount = 0;
             while (webSocket.State == WebSocketState.Open)
             {
                 var received = await webSocket.ReceiveAsync(buffer, CancellationToken.None);
                 if (received.MessageType == WebSocketMessageType.Close)
                     break;
+                requestCount++;
 
                 using var request = JsonDocument.Parse(Encoding.UTF8.GetString(buffer, 0, received.Count));
                 var root = request.RootElement;
                 var id = root.GetProperty("id").GetInt32();
                 var expression = root.GetProperty("params").GetProperty("expression").GetString()!;
                 var value = expression.Contains("isGoogleOAuthPage", StringComparison.Ordinal)
-                    ? new { isGoogleOAuthPage = false }
+                    ? BuildGoogleState(presentTotp && requestCount <= 2)
                     : BuildProviderState(provider);
                 var response = JsonSerializer.SerializeToUtf8Bytes(new
                 {
@@ -244,6 +290,17 @@ public sealed class OAuthProviderAdapterBranchTests
                 await webSocket.SendAsync(response, WebSocketMessageType.Text, true, CancellationToken.None);
             }
         }
+
+        private static object BuildGoogleState(bool presentTotp) => presentTotp
+            ? new
+            {
+                isGoogleOAuthPage = true,
+                currentUrl = "https://accounts.google.com/signin/challenge/otp",
+                hasAccountPicker = false,
+                hasGoogleTotpInput = true,
+                hasGoogleConsentButton = false
+            }
+            : new { isGoogleOAuthPage = false };
 
         private static object BuildProviderState(ProviderKind provider) => provider switch
         {

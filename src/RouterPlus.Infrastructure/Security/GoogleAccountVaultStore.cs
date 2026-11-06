@@ -385,6 +385,10 @@ public sealed class GoogleAccountVaultStore : VaultStoreBase, IGoogleAccountVaul
 
         if (envelope.KdfIterations != KdfIterations)
         {
+            // Exact-equality check is intentional: this vault format is version-locked.
+            // If KdfIterations ever needs to increase, bump CurrentVersion, write a migration
+            // path in OpenAsync (detect old version → re-derive with old params → re-encrypt),
+            // and only then relax this check for the old version branch.
             throw new CryptographicException($"Invalid KDF iterations: {envelope.KdfIterations}");
         }
     }

@@ -88,13 +88,13 @@ Handled by `PrivacyScrubber` before writing to disk.
 
 ## Diagnostics Panel UI
 
-**Phase 4 Feature** - Real-time log viewer in the app:
+**Phase 4 Feature** - Real-time log viewer in the app. It now supports selecting any recorded session and exporting a support bundle:
 
 - Filter by log level (Error, Warning, Info, Debug)
 - Search by category/event/message
 - View structured context as JSON
 - Export logs
-- Session selector
+- **Export diagnostic report** — a ZIP report containing the selected session plus `report_metadata.json` with app version, `informational_version`, OS/runtime, file count, total bytes and a per-file SHA-256 table
 
 Access: Main menu → Tools → Diagnostics Panel
 
@@ -166,9 +166,8 @@ ObservabilityHub is **always active** and writes to log files in all configurati
 
 ## Related Documentation
 
-- `docs/observability/DIAGNOSTICS_PANEL_IMPLEMENTATION.md` - UI implementation
-- `docs/observability/FINAL_STATUS.md` - All 4 phases completed
-- `AUDIT-2026-09-06.md` - Observability section (189 log events across 24 files)
+- `src/RouterPlus.Infrastructure/Diagnostics/` and `src/RouterPlus.Core/Observability/` - observability implementation
+- `tests/RouterPlus.Core.Tests/Observability/` - observability tests
 
 ## Example: Complete Flow Logging
 

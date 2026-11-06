@@ -1,5 +1,5 @@
 ---
-inclusion: auto
+inclusion: always
 name: lessons-learned
 description: Project-specific patterns, preferences, and lessons learned over time (user-editable)
 ---
@@ -19,29 +19,6 @@ This file captures project-specific patterns, coding preferences, common pitfall
 ## Project-Specific Patterns
 
 *Document patterns unique to this project that the team should follow.*
-
-### `AsyncRelayCommand<T>` with value-type `T`: `CanExecute(null)` always returns false
-
-`AsyncRelayCommand<T>` uses `parameter is T value` in `CanExecute`. When `T` is a value type (e.g. `ProviderKind` enum), `null is ProviderKind` is always `false`, so WPF button binding with no `CommandParameter` will always appear disabled. The fix in `AsyncRelayCommand<T>`:
-
-```csharp
-// After (null = no param supplied → fall back to canExecute-less check)
-public bool CanExecute(object? parameter) =>
-    !_isRunning && (parameter is T value ? (_canExecute?.Invoke(value) ?? true) : (_canExecute is null));
-```
-
-Always pass `CommandParameter="{Binding Kind}"` in XAML when using `AsyncRelayCommand<ProviderKind>`.
-
-### Auto-get-key flows must route by provider — don't hard-code OpenRouter
-
-Both Ollama and OpenRouter show the "Tự lấy key" button (driven by `WorkflowKind.ApiKey`). The `AutoGetKeyCommand` must use `AsyncRelayCommand<ProviderKind>` with `CommandParameter="{Binding Kind}"` in XAML so the correct flow runs. Hard-coding `ProviderKind.OpenRouter` inside `AutoGetKeyAsync` silently runs the wrong browser flow when the user clicks the Ollama card.
-
-### Adding a new ApiKey provider flow requires 4 wiring points
-
-1. Add `ConnectXxxFlowAsync()` to `ChromeManagedSession` (returns `(XxxBrowser, IGoogleLoginBrowser)`)
-2. Add `_xxxKeyFlow` field + `CreateDefaultXxxKeyFlow()` factory in `MainViewModel`
-3. Initialize `_xxxKeyFlow` in `MainViewModel` constructor
-4. Add a routing branch in `AutoGetKeyAsync` for the new `ProviderKind`
 
 ### Example: API Error Handling
 ```typescript
@@ -82,6 +59,12 @@ The hooks table and Example 5 in README.md document the action type (`runCommand
 
 *Document mistakes that have been made and how to avoid them.*
 
+### Don't duplicate in AGENTS.md what a skill already covers
+When a skill (e.g. `finishing-a-development-branch`) already defines a step-by-step procedure, AGENTS.md should only add project-specific constraints (branch naming, commit format, PR template path) — not repeat the generic steps. Duplication causes drift and dilutes the authority of the skill.
+
+### Always load the matching skill before making changes
+Before editing any file (code or documentation), call `disclose_context` with the skill name that matches the task. Reading a skill file directly without the tool call does not activate it. If no skill applies, state "no skill" explicitly. Skipping this step causes the agent to miss task-specific guidelines that are only surfaced by activation.
+
 ### Example: Database Transactions
 - Always wrap multiple database operations in a transaction
 - Remember to handle rollback on errors
@@ -106,3 +89,15 @@ The hooks table and Example 5 in README.md document the action type (`runCommand
 - Remove patterns that are no longer relevant
 - Update patterns as the project evolves
 - Focus on what's unique to this project
+
+### Partial class split — tìm class declaration trước khi thay line index
+Khi thêm `partial` keyword bằng PowerShell, phải tìm dòng chứa `class Name` bằng `Select-String` thay vì hardcode index. Index sai sẽ thay dòng `{` thành class declaration thứ hai, gây lỗi CS1514. Luôn verify: `$content[$idx]` phải chứa `class` keyword, dòng kế tiếp phải là `{`.
+
+### `git checkout HEAD` mất uncommitted changes — kiểm tra trước khi restore
+Khi restore file từ `git checkout HEAD -- <file>`, toàn bộ working copy changes bị mất vĩnh viễn. Nếu file có uncommitted changes từ session trước (thêm parameter, thêm method), cần diff trước: `git diff HEAD -- <file>` để xem có thay đổi nào cần giữ không. Trong session này, `ProviderWorkflowService.cs` có `getGoogleCredential` parameter chưa commit bị mất khi restore.
+
+### `TreatWarningsAsErrors` + DLL lock khi app đang chạy
+`RouterPlus.App` đang chạy lock DLL trong `bin/Release/`, khiến `dotnet build --configuration Release` fail với MSB3027. Workaround: build `--configuration Debug` (output khác thư mục). CI không gặp vì chạy trong môi trường sạch.
+
+### Dependabot major bumps vs pinned SDK
+Project pin .NET 8 SDK qua `global.json`. Dependabot sẽ mở PR cho package major versions (System.Management 10.x, Test.Sdk 18.x, coverlet 10.x, xunit.runner 4.x) — những package này target .NET 10 và sẽ không build được trên .NET 8. Đóng các PR dependabot major bump cho đến khi project upgrade SDK. Chỉ merge minor bumps (ví dụ Moq 4.20→4.21).

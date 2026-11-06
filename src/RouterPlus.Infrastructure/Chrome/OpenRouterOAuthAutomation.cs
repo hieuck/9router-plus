@@ -14,8 +14,9 @@ public sealed class OpenRouterOAuthAutomation : GoogleOAuthFlowAutomation
         ChromeCdpClient client,
         string sessionId,
         string targetId,
-        string profileEmail)
-        : base(client, sessionId, targetId, profileEmail, totpGenerator: null)
+        string profileEmail,
+        Func<Task<string?>>? totpGenerator = null)
+        : base(client, sessionId, targetId, profileEmail, totpGenerator)
     {
     }
 

@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Windows.Data;
 using System.Windows.Input;
 using Microsoft.Win32;
@@ -17,9 +19,12 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 {
     private readonly EventLogReader _logReader;
     private readonly ObservabilityPaths _paths;
+    private readonly SessionBrowser _sessionBrowser;
+    private readonly DiagnosticReportBuilder _reportBuilder;
     private readonly string? _sessionId;
 
     private ObservableCollection<ObservabilityEvent> _events;
+    private ObservableCollection<SessionInfo> _sessions;
     private ICollectionView _eventsView;
     private string _selectedCategory;
     private string _selectedLevel;
@@ -28,10 +33,14 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
     private bool _isLoading;
     private string _statusMessage;
     private ObservabilityEvent? _selectedEvent;
+    private SessionInfo? _selectedSession;
+    private bool _suppressSessionRefresh;
 
     public DiagnosticsViewModel()
     {
         _paths = new ObservabilityPaths();
+        _sessionBrowser = new SessionBrowser(_paths);
+        _reportBuilder = new DiagnosticReportBuilder(_paths, _sessionBrowser);
         _logReader = new EventLogReader(_paths);
         _sessionId = App.CurrentSessionId;
 
@@ -43,6 +52,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
             new { session_id = _sessionId ?? "null", has_value = !string.IsNullOrEmpty(_sessionId) });
 
         _events = new ObservableCollection<ObservabilityEvent>();
+        _sessions = new ObservableCollection<SessionInfo>();
         _eventsView = CollectionViewSource.GetDefaultView(_events);
         _eventsView.Filter = FilterEvent;
 
@@ -54,6 +64,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         // Commands
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         ExportCommand = new AsyncRelayCommand(ExportAsync, () => _events.Any());
+        ExportReportCommand = new AsyncRelayCommand(ExportReportAsync, () => _selectedSession != null);
         ClearLogsCommand = new AsyncRelayCommand(ClearLogsAsync);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
         CopyEventCommand = new RelayCommand(CopySelectedEvent);
@@ -77,6 +88,27 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
     }
 
     public ICollectionView EventsView => _eventsView;
+
+    public ObservableCollection<SessionInfo> Sessions => _sessions;
+
+    public SessionInfo? SelectedSession
+    {
+        get => _selectedSession;
+        set
+        {
+            if (!ReferenceEquals(_selectedSession, value))
+            {
+                _selectedSession = value;
+                OnPropertyChanged(nameof(SelectedSession));
+                OnPropertyChanged(nameof(SessionId));
+
+                if (!_suppressSessionRefresh && value is not null)
+                {
+                    _ = RefreshAsync();
+                }
+            }
+        }
+    }
 
     public ObservableCollection<string> Categories { get; }
     public ObservableCollection<string> Levels { get; }
@@ -166,38 +198,72 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         }
     }
 
-    public string SessionId => _sessionId ?? "unknown";
+    public string SessionId => _selectedSession?.SessionId ?? _sessionId ?? "unknown";
 
     public int TotalEventCount => _events.Count;
 
     public ICommand RefreshCommand { get; }
     public ICommand ExportCommand { get; }
+    public ICommand ExportReportCommand { get; }
     public ICommand ClearLogsCommand { get; }
     public ICommand OpenLogFolderCommand { get; }
     public ICommand CopyEventCommand { get; }
 
     private async Task LoadInitialDataAsync()
     {
+        await RefreshSessionsAsync();
         await RefreshAsync();
     }
 
+    private async Task RefreshSessionsAsync()
+    {
+        var sessions = _sessionBrowser.ListSessions();
+        var previous = _selectedSession?.SessionId ?? _sessionId;
+
+        _suppressSessionRefresh = true;
+        try
+        {
+            _sessions.Clear();
+            foreach (var session in sessions)
+            {
+                _sessions.Add(session);
+            }
+
+            var selected = sessions.FirstOrDefault(s => s.SessionId == previous);
+            _selectedSession = selected;
+            OnPropertyChanged(nameof(Sessions));
+            OnPropertyChanged(nameof(SelectedSession));
+            OnPropertyChanged(nameof(SessionId));
+        }
+        finally
+        {
+            _suppressSessionRefresh = false;
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private string? ResolveSessionId() =>
+        _selectedSession?.SessionId ?? _sessionId;
+
     private async Task RefreshAsync()
     {
+        var sessionId = ResolveSessionId();
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Debug,
             "Diagnostics",
             "RefreshStarted",
-            $"RefreshAsync called with sessionId: {_sessionId ?? "NULL"}",
-            new { session_id = _sessionId ?? "null" });
+            $"RefreshAsync called with sessionId: {sessionId ?? "NULL"}",
+            new { session_id = sessionId ?? "null" });
 
-        if (string.IsNullOrEmpty(_sessionId))
+        if (string.IsNullOrEmpty(sessionId))
         {
-            StatusMessage = "Observability not initialized";
+            StatusMessage = "No observability session selected";
             ObservabilityHub.Instance.LogEvent(
                 LogLevel.Warning,
                 "Diagnostics",
                 "RefreshFailed",
-                "SessionId is null or empty",
+                "No session available to load",
                 new { });
             return;
         }
@@ -210,22 +276,22 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
             // Add timeout to prevent infinite hang
             var readTask = Task.Run(() =>
             {
-                var eventsPath = _paths.GetEventsFilePath(_sessionId);
+                var eventsPath = _paths.GetEventsFilePath(sessionId);
                 ObservabilityHub.Instance.LogEvent(
                     LogLevel.Debug,
                     "Diagnostics",
                     "ReadingEvents",
-                    $"About to read events from session: {_sessionId}, path: {eventsPath}",
-                    new { session_id = _sessionId, events_path = eventsPath, file_exists = System.IO.File.Exists(eventsPath) });
+                    $"About to read events from session: {sessionId}, path: {eventsPath}",
+                    new { session_id = sessionId, events_path = eventsPath, file_exists = System.IO.File.Exists(eventsPath) });
 
-                var events = _logReader.ReadEventsFromSession(_sessionId, maxCount: 1000);
+                var events = _logReader.ReadEventsFromSession(sessionId, maxCount: 1000);
 
                 ObservabilityHub.Instance.LogEvent(
                     LogLevel.Debug,
                     "Diagnostics",
                     "EventsRead",
                     $"Read {events.Count} events from session",
-                    new { session_id = _sessionId, event_count = events.Count });
+                    new { session_id = sessionId, event_count = events.Count });
 
                 return events;
             });
@@ -245,7 +311,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
                     OnPropertyChanged(nameof(TotalEventCount));
 
                     // Update categories
-                    var categories = _logReader.GetCategories(_sessionId);
+                    var categories = _logReader.GetCategories(sessionId);
                     Categories.Clear();
                     Categories.Add("All");
                     foreach (var cat in categories)
@@ -267,7 +333,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
                     "Diagnostics",
                     "ReadTimeout",
                     "EventLogReader.ReadEventsFromSession() timed out after 5 seconds",
-                    new { session_id = _sessionId });
+                    new { session_id = sessionId });
             }
         }
         catch (Exception ex)
@@ -278,7 +344,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
                 "Diagnostics",
                 "RefreshError",
                 $"Exception in RefreshAsync: {ex.GetType().Name}: {ex.Message}",
-                new { session_id = _sessionId, exception_type = ex.GetType().FullName, stack_trace = ex.StackTrace });
+                new { session_id = sessionId, exception_type = ex.GetType().FullName, stack_trace = ex.StackTrace });
         }
         finally
         {
@@ -363,6 +429,58 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         }
     }
 
+    private async Task ExportReportAsync()
+    {
+        if (_selectedSession is null)
+        {
+            StatusMessage = "No observability session selected";
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "ZIP files (*.zip)|*.zip|All files (*.*)|*.*",
+            DefaultExt = "zip",
+            FileName = $"diagnostic-report-{_selectedSession.SessionId}-{DateTime.Now:yyyyMMdd-HHmmss}.zip"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                IsLoading = true;
+                StatusMessage = $"Generating diagnostic report for {_selectedSession.SessionId}…";
+
+                var sessionId = _selectedSession.SessionId;
+                var path = await Task.Run(() =>
+                    _reportBuilder.CreateReport(sessionId, dialog.FileName));
+
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Info,
+                    "Reports",
+                    "DiagnosticReportExported",
+                    $"Diagnostic report exported to {path}",
+                    new { session_id = sessionId, output = path });
+
+                StatusMessage = $"Diagnostic report exported to {Path.GetFileName(path)}";
+            }
+            catch (Exception ex)
+            {
+                ObservabilityHub.Instance.LogEvent(
+                    LogLevel.Error,
+                    "Reports",
+                    "DiagnosticReportExportFailed",
+                    $"Failed to export diagnostic report: {ex.GetType().Name}",
+                    new { session_id = _selectedSession.SessionId, exception_type = ex.GetType().FullName });
+                StatusMessage = $"Export failed: {ex.Message}";
+            }
+            finally
+            {
+                IsLoading = false;
+            }
+        }
+    }
+
     private void ExportToJson(List<ObservabilityEvent> events, string path)
     {
         var json = System.Text.Json.JsonSerializer.Serialize(events, new System.Text.Json.JsonSerializerOptions
@@ -401,14 +519,15 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
     private Task ClearLogsAsync()
     {
-        if (string.IsNullOrEmpty(_sessionId))
+        var sessionId = ResolveSessionId();
+        if (string.IsNullOrEmpty(sessionId))
         {
-            StatusMessage = "Observability not initialized";
+            StatusMessage = "No observability session selected";
             return Task.CompletedTask;
         }
 
         var result = System.Windows.MessageBox.Show(
-            "This will delete all events in the current session. Continue?",
+            "This will delete all events in the selected session. Continue?",
             "Clear Logs",
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Warning);
@@ -417,7 +536,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
         {
             try
             {
-                var eventsPath = _paths.GetEventsFilePath(_sessionId);
+                var eventsPath = _paths.GetEventsFilePath(sessionId);
                 if (File.Exists(eventsPath))
                 {
                     File.Delete(eventsPath);
@@ -439,13 +558,14 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
     private void OpenLogFolder()
     {
-        if (string.IsNullOrEmpty(_sessionId))
+        var sessionId = ResolveSessionId();
+        if (string.IsNullOrEmpty(sessionId))
         {
-            StatusMessage = "Observability not initialized";
+            StatusMessage = "No observability session selected";
             return;
         }
 
-        var sessionDir = _paths.GetSessionDirectory(_sessionId);
+        var sessionDir = _paths.GetSessionDirectory(sessionId);
         if (Directory.Exists(sessionDir))
         {
             Process.Start("explorer.exe", sessionDir);

@@ -376,6 +376,92 @@ public sealed class AutoLoginOrchestratorTests
     }
 
     [Fact]
+    public async Task LoginAsync_GoogleOAuthPassesVaultEmailToProviderRequest()
+    {
+        // Arrange
+        var tempDir = TestDirectory.Create();
+        try
+        {
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = "Unrelated Chrome Profile",
+                Provider = ProviderKind.GitHub,
+                PreferredMethod = AuthMethod.GoogleOAuth,
+                LinkedGoogleAccount = "google@example.test"
+            });
+
+            var googleVault = new FakeGoogleAccountVaultStore(new GoogleAccountVault(
+                new[] { new GoogleLoginCredential("profile-key", "google@example.test", "synthetic-password", "TOTP123") }));
+            var launcher = new QueueChromeLauncher(CreateCdpSession());
+            var adapter = new FakeOAuthAdapter(ProviderKind.GitHub, new ProviderOAuthResult(true, false, "authorized"));
+            var orchestrator = new AutoLoginOrchestrator(
+                googleVault,
+                providerVault,
+                launcher,
+                new ProviderOAuthAdapterRegistry(adapter),
+                new Mock<IGoogleAuthenticationService>().Object);
+
+            // Act
+            var result = await orchestrator.LoginAsync(
+                "Unrelated Chrome Profile", ProviderKind.GitHub, new Uri("https://fallback.test"),
+                TimeSpan.FromMinutes(1), CancellationToken.None);
+
+            // Assert
+            Assert.True(result.Success);
+            Assert.NotNull(adapter.LastRequest);
+            Assert.Equal("google@example.test", adapter.LastRequest.ProfileEmail);
+        }
+        finally
+        {
+            TestDirectory.Delete(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task LoginAsync_GoogleOAuthWithDuplicateMatchingEmailsFailsDeterministically()
+    {
+        // Arrange
+        var tempDir = TestDirectory.Create();
+        try
+        {
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new ProviderAuthConnection
+            {
+                ProfileName = "TestProfile",
+                Provider = ProviderKind.GitHub,
+                PreferredMethod = AuthMethod.GoogleOAuth,
+                LinkedGoogleAccount = "google@example.test"
+            });
+
+            var googleVault = new FakeGoogleAccountVaultStore(new GoogleAccountVault(
+                new[]
+                {
+                    new GoogleLoginCredential("profile-one", "google@example.test", "first-password", "TOTPONE"),
+                    new GoogleLoginCredential("profile-two", "google@example.test", "second-password", "TOPTWO")
+                }));
+            var launcher = new Mock<IChromeLauncher>();
+            var orchestrator = new AutoLoginOrchestrator(googleVault, providerVault, launcher.Object);
+
+            // Act
+            var result = await orchestrator.LoginAsync(
+                "TestProfile", ProviderKind.GitHub, new Uri("https://fallback.test"),
+                TimeSpan.FromMinutes(1), CancellationToken.None);
+
+            // Assert
+            Assert.False(result.Success);
+            Assert.Equal(AuthMethod.GoogleOAuth, result.Method);
+            Assert.Contains("Multiple Google accounts match", result.ErrorMessage);
+            launcher.Verify(item => item.LaunchAsync(
+                It.IsAny<string>(), It.IsAny<Uri>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+        finally
+        {
+            TestDirectory.Delete(tempDir);
+        }
+    }
+
+    [Fact]
     public async Task LoginAsync_DirectPrimaryWithoutFallback_DoesNotRetry()
     {
         // Arrange
@@ -500,9 +586,12 @@ public sealed class AutoLoginOrchestratorTests
         }
         public ProviderKind Provider { get; }
         public int CallCount { get; private set; }
+        public ProviderOAuthRequest? LastRequest { get; private set; }
+
         public Task<ProviderOAuthResult> RunAsync(ProviderOAuthRequest request, IGoogleAuthenticationService googleAuthentication, CancellationToken cancellationToken)
         {
             CallCount++;
+            LastRequest = request;
             return Task.FromResult(_result);
         }
     }

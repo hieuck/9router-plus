@@ -19,5 +19,5 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 New-Item -ItemType Directory -Force $publishDirectory | Out-Null
-& $dotnet publish (Join-Path $repoRoot "src\RouterPlus.App\RouterPlus.App.csproj") --configuration Release --runtime win-x64 --self-contained false --output $publishDirectory
+& $dotnet publish (Join-Path $repoRoot "src\RouterPlus.App\RouterPlus.App.csproj") --configuration Release --runtime win-x64 --self-contained true --output $publishDirectory
 exit $LASTEXITCODE
