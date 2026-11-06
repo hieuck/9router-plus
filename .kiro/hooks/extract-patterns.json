@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Extract Patterns",
+      "trigger": "Stop",
+      "description": "Suggest patterns to add to lessons-learned.md after agent execution completes",
+      "action": {
+        "type": "agent",
+        "prompt": "Review the conversation that just completed. If you identified any genuinely useful patterns, code style preferences, common pitfalls, or architecture decisions that would benefit future work on this project, suggest adding them to .kiro/steering/lessons-learned.md. Only suggest patterns that are: 1) Project-specific (not general best practices already covered in other steering files), 2) Repeatedly applicable (not one-off solutions), 3) Non-obvious, 4) Actionable. If no such patterns emerged, simply respond with 'No new patterns to extract.'"
+      }
+    }
+  ]
+}

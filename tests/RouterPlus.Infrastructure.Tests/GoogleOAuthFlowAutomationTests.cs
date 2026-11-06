@@ -57,6 +57,35 @@ public sealed class GoogleOAuthFlowAutomationTests
         Assert.True(GoogleOAuthFlowAutomation.IsProviderOwnedPage(state));
     }
 
+    [Theory]
+    [InlineData("user@example.com", true)]
+    [InlineData("user.domain+tag@sub.example.co.uk", true)]
+    [InlineData("Work Profile", false)]
+    [InlineData("profile-without-at", false)]
+    [InlineData("@example.com", false)]
+    public void Account_picker_auto_click_is_allowed_only_for_plausible_emails(
+        string profileEmail,
+        bool expectedToClick)
+    {
+        var automation = new TestAutomation(
+            new ChromeCdpClient(new Uri("http://127.0.0.1:9222")),
+            "session",
+            "target",
+            profileEmail);
+        var state = new GoogleOAuthFlowAutomation.CombinedOAuthPageState
+        {
+            GoogleState = new GoogleOAuthPageState
+            {
+                CurrentUrl = "https://accounts.google.com/v3/signin/identifier",
+                HasAccountPicker = true,
+                HasGoogleTotpInput = false,
+                HasGoogleConsentButton = false
+            }
+        };
+
+        Assert.Equal(expectedToClick, automation.ExposeShouldClickAccountPicker(state));
+    }
+
     [Fact]
     public void Default_google_action_predicates_follow_detected_flags()
     {

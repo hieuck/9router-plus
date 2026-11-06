@@ -172,7 +172,7 @@ public partial class GoogleAutoLoginDialog : Window
         // TOTP is optional - default to placeholder if not provided
         if (string.IsNullOrWhiteSpace(totpSecret))
         {
-            totpSecret = "AAAAAAAAAAAAAAAAAAAAAAAA";
+            totpSecret = GoogleAutoLoginViewModel.NoTotpPlaceholder;
         }
 
         try

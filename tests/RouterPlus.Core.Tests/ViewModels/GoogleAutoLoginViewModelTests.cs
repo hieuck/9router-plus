@@ -153,6 +153,30 @@ public sealed class GoogleAutoLoginViewModelTests
     }
 
     [Fact]
+    public async Task Constructor_auto_unlock_does_not_pair_legacy_credential_when_display_names_are_duplicated()
+    {
+        var profile = new ChromeProfile("profile-1", "shared-name", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);
+        var sibling = new ChromeProfile("profile-2", "shared-name", "Profile 1", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", false);
+        var vaultStore = new FakeVaultStore
+        {
+            RememberedVault = new GoogleAccountVault(new[]
+            {
+                new GoogleLoginCredential("shared-name", "legacy@example.com", "synthetic-password", "SYNTHETIC-TOTP")
+            })
+        };
+
+        var viewModel = new GoogleAutoLoginViewModel(profile, vaultStore, FakeAutomation, new[] { profile, sibling });
+        await WaitForAsync(() => viewModel.IsVaultUnlocked);
+
+        Assert.True(viewModel.IsVaultUnlocked);
+        Assert.Equal(string.Empty, viewModel.Email);
+        Assert.Equal(string.Empty, viewModel.Password);
+        Assert.Equal(string.Empty, viewModel.TotpSecret);
+
+        await viewModel.DisposeAsync();
+    }
+
+    [Fact]
     public async Task Constructor_auto_unlock_uses_profile_name_fallback_for_legacy_credentials()
     {
         var profile = new ChromeProfile("profile-1", "legacy-profile", "Default", @"C:\Users\Test\AppData\Local\Google\Chrome\User Data", true);

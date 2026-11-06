@@ -181,6 +181,7 @@ Diagnostics Panel cho phép xem log chi tiết của app trong thời gian thự
 - **Tìm kiếm:** Lọc theo category, event hoặc message
 - **Xem context:** Click vào event để xem structured JSON context
 - **Export logs:** Lưu logs ra file để báo bug hoặc phân tích
+- **Export report:** Xuất ZIP chứa toàn bộ logs/snapshots của session và `report_metadata.json` (app version, OS, kiến trúc, thông tin .NET, commit `informational_version`, danh sách file với kích thước và SHA-256)
 - **Chọn session:** Xem logs từ các lần chạy app trước
 
 ### Log file location
@@ -191,6 +192,10 @@ C:\Users\{username}\AppData\Local\RouterPlus\Observability\Sessions\{session_id}
 ```
 
 Mỗi dòng là một JSON event với timestamp, level, category, event name và context data.
+
+### Export Diagnostic Report
+
+Trong Diagnostics Panel, chọn một session và nhấn **Export Report**. App tạo file `.zip` chứa toàn bộ `events.jsonl`, `snapshots.jsonl` và các file liên quan của session đó. File `report_metadata.json` bên trong report gồm phiên bản app, hệ điều hành, .NET runtime, `informational_version` (thường chứa commit), tổng số file/byte và danh sách file kèm SHA-256 để tái hiện đúng dữ liệu khi điều tra. Report không chứa mật khẩu, TOTP code hay API key vì các giá trị đó đã được scrub/redact trước khi ghi log.
 
 ### Khi nào dùng Diagnostics Panel
 

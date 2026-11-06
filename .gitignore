@@ -33,14 +33,12 @@ typedoc/
 *.vcproj
 *.vcxproj
 *.aps
-*.csproj
 *.vbproj
 *.vcxitems
 *.vcxitems.filters
 *.vssscc
 *.vspcc
 *.vpvc
-*.sln
 *.suo
 *.user
 *.userosscache
@@ -124,6 +122,7 @@ temp_*.txt
 *.pfx
 secrets.*
 credentials.*
+login.json
 config.local.*
 
 # ============================================================
@@ -158,3 +157,6 @@ test-output.txt
 # Local agent harness (opencode)
 # ============================================================
 .opencode/
+
+# Agent Loop runtime state
+.harness/

@@ -195,13 +195,24 @@ public sealed class AutoLoginOrchestrator
 
         await using (session)
         {
-            var googleAccount = session.Vault.Records
-                .FirstOrDefault(c => string.Equals(c.Email, connection.LinkedGoogleAccount, StringComparison.OrdinalIgnoreCase));
+            var matchingAccounts = session.Vault.Records
+                .Where(record => string.Equals(record.Email, connection.LinkedGoogleAccount, StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-            if (googleAccount == null)
+            if (matchingAccounts.Count == 0)
             {
                 return new AutoLoginResult(false, AuthMethod.GoogleOAuth, $"Google account '{connection.LinkedGoogleAccount}' not found in vault");
             }
+
+            if (matchingAccounts.Count > 1)
+            {
+                return new AutoLoginResult(
+                    false,
+                    AuthMethod.GoogleOAuth,
+                    $"Multiple Google accounts match '{connection.LinkedGoogleAccount}' in the vault. Remove the duplicate credential in an existing Chrome profile so exactly one credential is used.");
+            }
+
+            var googleAccount = matchingAccounts[0];
 
             return await RunGoogleOAuthAsync(connection, provider, googleAccount, startUri, timeout, cancellationToken);
         }
@@ -239,7 +250,7 @@ public sealed class AutoLoginOrchestrator
                     provider,
                     loginUrl,
                     loginUrl,
-                    connection.ProfileName,
+                    googleAccount.Email,
                     timeout,
                     cdp,
                     totpGenerator),

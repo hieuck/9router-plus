@@ -13,8 +13,20 @@ namespace RouterPlus.App.ViewModels;
 /// </summary>
 public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
+    /// <summary>
+    /// Sentinel value stored in the vault when the user has not configured a TOTP secret.
+    /// This is a valid Base32 string (all-A = all-zeros) that the automation layer treats
+    /// as "no TOTP" and skips the 2FA step. Never compare real user secrets against this value.
+    /// </summary>
+    internal const string NoTotpPlaceholder = "AAAAAAAAAAAAAAAAAAAAAAAA";
+
     private readonly ChromeProfile _profile;
     private readonly IGoogleAccountVaultStore _vaultStore;
+    /// <summary>
+    /// Current managed profiles, used to reject legacy name-only credentials when
+    /// multiple visible profiles share the same display name.
+    /// </summary>
+    private readonly IReadOnlyCollection<ChromeProfile> _profiles;
     private readonly Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> _runAutomation;
 
     private GoogleAccountVaultSession? _session;
@@ -29,11 +41,13 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
     public GoogleAutoLoginViewModel(
         ChromeProfile profile,
         IGoogleAccountVaultStore vaultStore,
-        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> runAutomation)
+        Func<ChromeProfile, GoogleLoginCredential, CancellationToken, Task<GoogleLoginResult>> runAutomation,
+        IReadOnlyCollection<ChromeProfile>? currentProfiles = null)
     {
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _vaultStore = vaultStore ?? throw new ArgumentNullException(nameof(vaultStore));
         _runAutomation = runAutomation ?? throw new ArgumentNullException(nameof(runAutomation));
+        _profiles = currentProfiles ?? new[] { profile };
 
         _email = string.Empty; // Don't default to profile name
 
@@ -185,12 +199,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                 trace.LogCheckpoint("VaultCreated");
             }
 
-            var existingCredential = _session.Vault.Find(_profile.Id);
-            if (existingCredential == null)
-            {
-                // Legacy compatibility: try profile name fallback
-                existingCredential = _session.Vault.Find(_profile.Name);
-            }
+            var existingCredential = GoogleAccountCredentialResolver.Resolve(_session.Vault, _profile, _profiles);
 
             if (existingCredential != null)
             {
@@ -265,7 +274,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         // TOTP is optional for save - user might not have 2FA enabled yet
         if (string.IsNullOrWhiteSpace(totpSecret))
         {
-            totpSecret = "AAAAAAAAAAAAAAAAAAAAAAAA"; // Valid Base32 placeholder
+            totpSecret = NoTotpPlaceholder; // Valid Base32 placeholder
         }
 
         ObservabilityHub.Instance.LogEvent(
@@ -273,7 +282,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             "AutoLogin",
             "SaveCredentials",
             "Saving credentials to vault",
-            new { profile_id = _profile.Id, email, has_totp = totpSecret != "AAAAAAAAAAAAAAAAAAAAAAAA" });
+            new { profile_id = _profile.Id, email, has_totp = totpSecret != NoTotpPlaceholder });
 
         IsBusy = true;
         try
@@ -324,7 +333,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
         // TOTP is optional - use placeholder if not provided
         if (string.IsNullOrWhiteSpace(totpSecret))
         {
-            totpSecret = "AAAAAAAAAAAAAAAAAAAAAAAA";
+            totpSecret = NoTotpPlaceholder;
         }
 
         ObservabilityHub.Instance.LogEvent(
@@ -332,7 +341,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             "AutoLogin",
             "AutoLoginStarted",
             "Starting Google auto-login automation",
-            new { profile_name = _profile.Name, email, has_totp = totpSecret != "AAAAAAAAAAAAAAAAAAAAAAAA" });
+            new { profile_name = _profile.Name, email, has_totp = totpSecret != NoTotpPlaceholder });
 
         IsBusy = true;
         try
@@ -341,12 +350,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
             var credential = new GoogleLoginCredential(_profile.Id, email, password, totpSecret);
 
             // If email changed AND there's an existing record, persist the email change only
-            var existingCredential = _session.Vault.Find(_profile.Id);
-            if (existingCredential == null)
-            {
-                // Legacy compatibility: try profile name fallback
-                existingCredential = _session.Vault.Find(_profile.Name);
-            }
+            var existingCredential = GoogleAccountCredentialResolver.Resolve(_session.Vault, _profile, _profiles);
 
             if (existingCredential != null && existingCredential.Email != email)
             {
@@ -600,12 +604,7 @@ public sealed class GoogleAutoLoginViewModel : INotifyPropertyChanged, IAsyncDis
                         new { credentials = profileIds });
                 }
 
-                var existingCredential = _session.Vault.Find(_profile.Id);
-                if (existingCredential == null)
-                {
-                    // Legacy compatibility: try profile name fallback
-                    existingCredential = _session.Vault.Find(_profile.Name);
-                }
+                var existingCredential = GoogleAccountCredentialResolver.Resolve(_session.Vault, _profile, _profiles);
 
                 if (existingCredential != null)
                 {

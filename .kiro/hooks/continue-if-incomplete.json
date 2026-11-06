@@ -1,0 +1,13 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Continue If Incomplete",
+      "trigger": "Stop",
+      "action": {
+        "type": "agent",
+        "prompt": "Review the conversation that just completed and determine if the user's original goal is fully accomplished.\n\nRules:\n- DO NOT ask the user any questions\n- DO NOT wait for user input\n- DO NOT stop to confirm before acting\n- Use tools directly to continue the work\n\nIf the goal is NOT yet complete:\n1. State in one sentence what remains\n2. Immediately use tools to do it — write files, run commands, fetch URLs, whatever is needed\n3. Keep going until the goal is done\n\nIf the goal IS complete:\n- Respond with \"Goal complete.\" and stop.\n\nExamples of incomplete goals that require action (not questions):\n- User asked to install repos but some repos are not yet installed → fetch and install them now\n- User asked to fix all audit issues but some remain → fix them now\n- User asked to download all files from a URL but some are missing → download them now\n\nBe aggressive about completing work. Asking a question when you could just do the work is a failure."
+      }
+    }
+  ]
+}

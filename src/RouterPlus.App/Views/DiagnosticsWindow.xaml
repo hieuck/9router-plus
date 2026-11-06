@@ -33,8 +33,15 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Session:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource MutedTextBrush}"/>
+                    <ComboBox ItemsSource="{Binding Sessions}"
+                              SelectedItem="{Binding SelectedSession}"
+                              DisplayMemberPath="SessionId"
+                              MinWidth="420"
+                              Margin="0,0,12,0"/>
                     <Button Content="🔄 Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource ToolbarButtonStyle}"/>
-                    <Button Content="📤 Export" Command="{Binding ExportCommand}" Style="{StaticResource ToolbarButtonStyle}"/>
+                    <Button Content="📤 Export Log" Command="{Binding ExportCommand}" Style="{StaticResource ToolbarButtonStyle}"/>
+                    <Button Content="📦 Export Report" Command="{Binding ExportReportCommand}" Style="{StaticResource ToolbarButtonStyle}"/>
                     <Button Content="🗑️ Clear" Command="{Binding ClearLogsCommand}" Style="{StaticResource ToolbarButtonStyle}"/>
                     <Button Content="📁 Open Folder" Command="{Binding OpenLogFolderCommand}" Style="{StaticResource ToolbarButtonStyle}" Margin="0"/>
                 </StackPanel>

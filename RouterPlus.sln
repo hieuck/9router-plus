@@ -25,6 +25,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RouterPlus.Infrastructure.T
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RouterPlus.App.Tests", "tests\RouterPlus.App.Tests\RouterPlus.App.Tests.csproj", "{EA9B9B27-7E40-416A-B4C2-3BB3A71B3CC6}"
 EndProject
+
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -70,6 +71,7 @@ Global
 		{EA9B9B27-7E40-416A-B4C2-3BB3A71B3CC6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EA9B9B27-7E40-416A-B4C2-3BB3A71B3CC6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EA9B9B27-7E40-416A-B4C2-3BB3A71B3CC6}.Release|Any CPU.Build.0 = Release|Any CPU
+
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{4B485463-C5D9-44F8-85B7-DF081E5E9157} = {782AA691-B1A5-4E91-ACAB-1920E31FCB18}
@@ -81,5 +83,6 @@ Global
 		{063908AA-64F4-4749-998D-A5E3BB564BEC} = {480C3A07-01CD-402A-808E-078997553B22}
 		{EFE33375-4629-45F8-A373-2BDEF2845505} = {480C3A07-01CD-402A-808E-078997553B22}
 		{EA9B9B27-7E40-416A-B4C2-3BB3A71B3CC6} = {480C3A07-01CD-402A-808E-078997553B22}
+
 	EndGlobalSection
 EndGlobal

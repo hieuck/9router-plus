@@ -84,8 +84,6 @@ Build script sẽ restore, test, build và publish vào `artifacts\publish`.
 
 - Pull request vào `main` và push lên `main` tự động chạy restore, test, build và publish qua workflow **CI** (`.github/workflows/ci.yml`).
 - CI tạo artifact self-contained `win-x64` để tải từ trang Actions; artifact CI được giữ trong 14 ngày.
-- **Harness Audit** chạy trong CI (`ecc:harness-audit repo --format json`) và kết quả được lưu làm artifact `harness-audit`; báo cáo tóm tắt có thể xem trong Actions.
-- **Security Scan** chạy trong CI (`ecc:security-scan`) với guardhooks từ `hooks/hooks.json` (prompt pre-flight, tool guard, rate-limit, redact secrets).
 - Dev build local có thể chạy:
 
   ```powershell
@@ -106,6 +104,7 @@ Build script sẽ restore, test, build và publish vào `artifacts\publish`.
 - Production release tự động đính kèm ZIP `win-x64` và `.sha256`; workflow chỉ còn các gate public repository, kênh security private và kiểm tra nội dung release.
 - Bản phát hành self-contained không yêu cầu cài .NET 8 Runtime.
 - Executable unsigned có thể chạy sau khi người dùng xác nhận cảnh báo Windows; self-update chỉ đọc stable release tag `v...` từ GitHub qua HTTPS và chỉ cài package có checksum khớp. Xem thêm [release checklist](docs/release-checklist.md).
+
 ## Chạy ứng dụng
 
 ```powershell

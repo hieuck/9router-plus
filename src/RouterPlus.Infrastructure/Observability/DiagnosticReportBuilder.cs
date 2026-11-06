@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 
 namespace RouterPlus.Infrastructure.Observability;
@@ -74,14 +77,27 @@ public sealed class DiagnosticReportBuilder
         try
         {
             using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Update);
+            var sessionDir = _paths.GetSessionDirectory(sessionId);
+            var assembly = typeof(DiagnosticReportBuilder).Assembly;
+            var version = assembly.GetName().Version?.ToString() ?? "unknown";
+            var informationalVersion = assembly
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion;
 
+            var artifacts = EnumerateArtifacts(sessionDir);
             var metadata = new
             {
                 session_id = sessionId,
                 report_generated = DateTime.UtcNow,
-                app_version = typeof(DiagnosticReportBuilder).Assembly.GetName().Version?.ToString(),
-                machine_name = Environment.MachineName,
-                os_version = Environment.OSVersion.ToString()
+                app_version = version,
+                informational_version = informationalVersion,
+                operating_system = Environment.OSVersion.ToString(),
+                os_architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(),
+                dotnet_version = Environment.Version.ToString(),
+                framework = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+                file_count = artifacts.Count,
+                total_bytes = artifacts.Sum(item => item.Bytes),
+                artifacts
             };
 
             var entry = archive.CreateEntry("report_metadata.json");
@@ -93,4 +109,41 @@ public sealed class DiagnosticReportBuilder
             // Metadata is optional - continue if it fails
         }
     }
+
+    private static IReadOnlyList<ReportArtifact> EnumerateArtifacts(string sessionDirectory)
+    {
+        var artifacts = new List<ReportArtifact>();
+        foreach (var path in Directory.EnumerateFiles(sessionDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sessionDirectory, path).Replace('\\', '/');
+            artifacts.Add(new ReportArtifact
+            {
+                Path = relativePath,
+                Bytes = new FileInfo(path).Length,
+                Sha256 = ComputeSha256(path),
+            });
+        }
+
+        return artifacts.OrderBy(a => a.Path, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static string ComputeSha256(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "<unreadable>";
+        }
+    }
+}
+
+internal sealed class ReportArtifact
+{
+    public required string Path { get; init; }
+    public required string Sha256 { get; init; }
+    public required long Bytes { get; init; }
 }

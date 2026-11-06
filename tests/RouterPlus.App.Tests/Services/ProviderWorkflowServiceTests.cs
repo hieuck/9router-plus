@@ -3,6 +3,7 @@ using Moq;
 using RouterPlus.App.Services;
 using RouterPlus.Core.Chrome;
 using RouterPlus.Core.Providers;
+using RouterPlus.Infrastructure.Chrome;
 using RouterPlus.Infrastructure.Router;
 
 namespace RouterPlus.App.Tests.Services;
@@ -238,6 +239,62 @@ public sealed class ProviderWorkflowServiceTests
     }
 
     
+
+    [Fact]
+    public async Task DeviceCodeAutomation_StopsWhenGoogleManualInterventionRequired()
+    {
+        var profile = MakeProfile();
+        var launchCalled = false;
+        var statusMessages = new List<string>();
+        var session = new DeviceCodeSession("dev", "code", "https://example.com", null, 60, 1, null, null, null, null, null, null);
+        var service = new ProviderWorkflowService(
+            selectedProfileGetter: () => profile,
+            installationGetter: () => new ChromeInstallation("Z:\\synthetic\\chrome.exe", profile.UserDataDirectory),
+            tryAutoGoogleLogin: (_, _) => Task.FromResult(GooglePreLoginResult.ManualInterventionRequired),
+            launchManagedChrome: (_, _, _, _) =>
+            {
+                launchCalled = true;
+                throw new InvalidOperationException("Chrome launch should be skipped while Google manual action is pending.");
+            },
+            statusCallback: message => statusMessages.Add(message));
+
+        await service.RunDeviceCodeWithAutomationAsync(
+            new Mock<IRouterApiClient>().Object,
+            ProviderKind.Kiro,
+            "https://device.example/verify",
+            session,
+            CancellationToken.None);
+
+        Assert.False(launchCalled);
+        Assert.Contains(statusMessages, s => s.Contains("Cần hoàn tất xác minh Google"));
+    }
+
+    [Fact]
+    public async Task OAuthAutoLogin_StopsWhenGoogleManualInterventionRequired()
+    {
+        var profile = MakeProfile();
+        var launchCalled = false;
+        var statusMessages = new List<string>();
+        var service = new ProviderWorkflowService(
+            selectedProfileGetter: () => profile,
+            installationGetter: () => new ChromeInstallation("Z:\\synthetic\\chrome.exe", profile.UserDataDirectory),
+            tryAutoGoogleLogin: (_, _) => Task.FromResult(GooglePreLoginResult.ManualInterventionRequired),
+            launchManagedChrome: (_, _, _, _) =>
+            {
+                launchCalled = true;
+                throw new InvalidOperationException("Chrome launch should be skipped while Google manual action is pending.");
+            },
+            statusCallback: message => statusMessages.Add(message));
+
+        await service.RunOAuthAutoLoginAsync(
+            ProviderKind.Codex,
+            "https://auth.example/start",
+            new Uri("https://chatgpt.com"),
+            CancellationToken.None);
+
+        Assert.False(launchCalled);
+        Assert.Contains(statusMessages, s => s.Contains("Cần hoàn tất xác minh Google"));
+    }
 
     [Fact]
     public async Task RefreshConnectionStatusesAsync_StillUsesFullRefreshWithQuotas()

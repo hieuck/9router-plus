@@ -50,6 +50,35 @@ public sealed class OAuthAutoLoginOrchestratorTests
     }
 
     [Fact]
+    public async Task RunAsync_forwards_totp_generator_to_provider_request()
+    {
+        await using var cdpServer = await FakeCdpServer.StartAsync();
+        await using var cdp = await cdpServer.ConnectAsync();
+        var adapter = new RecordingOAuthAdapter(
+            ProviderKind.GitHub,
+            new ProviderOAuthResult(true, AlreadyAuthorized: true, "already authorized"));
+        var orchestrator = new OAuthAutoLoginOrchestrator(
+            new ChromeManagedSessionForTest().Session,
+            cdp,
+            ProviderKind.GitHub,
+            new ProviderOAuthAdapterRegistry(adapter));
+        Func<Task<string?>> totpGenerator = () => Task.FromResult<string?>("123456");
+
+        var result = await orchestrator.RunAsync(
+            new Uri("https://github.com/login/oauth/authorize"),
+            new Uri("https://github.com/"),
+            "user@example.test",
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None,
+            totpGenerator);
+
+        Assert.Equal(OAuthAutoLoginOutcome.Success, result.Outcome);
+        Assert.NotNull(adapter.Request);
+        Assert.Same(totpGenerator, adapter.Request.TotpGenerator);
+        Assert.Equal("123456", await adapter.Request.TotpGenerator!());
+    }
+
+    [Fact]
     public async Task RunAsync_failed_adapter_returns_consent_failed_and_clears_authorized_flag()
     {
         // Arrange

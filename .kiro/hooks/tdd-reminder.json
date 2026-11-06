@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "TDD Reminder",
+      "trigger": "PostFileCreate",
+      "description": "Reminds the agent to consider writing tests when new C# source files are created",
+      "matcher": "src\\\\.*\\.cs$",
+      "action": {
+        "type": "agent",
+        "prompt": "A new C# source file was just created under src/. Consider whether this file needs corresponding test coverage. If it contains logic that should be tested, suggest creating a test file in the appropriate tests/ project following TDD principles. This project uses xUnit + Moq with 6 test projects."
+      }
+    }
+  ]
+}

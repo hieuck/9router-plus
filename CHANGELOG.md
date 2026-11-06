@@ -4,6 +4,16 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 
 ## Unreleased
 
+### Refactored
+
+- **MainViewModel split**: `MainViewModel.cs` (5026 lines) tách thành 12 partial class files, mỗi file ≤ 695 lines — tuân thủ rule "files ≤ 800 lines" trong AGENTS.md. Các file mới: `MainViewModel.Properties.cs`, `MainViewModel.Commands.cs`, `MainViewModel.Init.cs`, `MainViewModel.Updates.cs`, `MainViewModel.Profiles.cs`, `MainViewModel.Batch.cs`, `MainViewModel.Settings.cs`, `MainViewModel.ApiKeys.cs`, `MainViewModel.GoogleLogin.cs`, `MainViewModel.GoogleLoginHelpers.cs`, `MainViewModel.ProfileCrud.cs`.
+- **CredentialsManagerViewModel split**: tách 3 row ViewModel classes (`GoogleAccountRowViewModel`, `ProviderConnectionRowViewModel`, `CodexConnectionRowViewModel`) ra file riêng; main file giảm từ 838 xuống 217 lines.
+- **ProviderWorkflowService split**: tách thành 2 partial files (398 + 395 lines) — main file giữ constructor + OpenProvider, `ProviderWorkflowService.Automation.cs` giữ OAuth/device-code automation.
+- **GoogleLoginCdpBrowser split**: tách 2248 lines thành 3 partial files (693 + 647 + 683 lines) — main, Forms, Helpers.
+- **DashboardPasswordProtector**: xóa 2 `null!` operators dư thừa sau khi đã check `IsNullOrEmpty`.
+- **ProviderWorkflowService**: thêm `getGoogleCredential` parameter; đổi `_tryAutoGoogleLogin` type từ `Task` thành `Task<GooglePreLoginResult>`; thêm `ManualInterventionRequired` guard trong `RunDeviceCodeWithAutomationAsync` và `RunOAuthAutoLoginAsync`.
+- **Empty catch blocks**: thêm `/* best effort */` comments trong `ProviderWorkflowService.cs`, `ProviderWorkflowService.Automation.cs`, `AgnesKeyFlowOrchestrator.cs`, `QuotaPollingService.cs`.
+
 ### Fixed
 
 - **Test suite**: sửa 5 test batch-gate treo `dotnet test` (assert status lệnh thật không bao giờ set khiến teardown chờ batch mãi); căn lại 2 test vault-failure dùng store ném lỗi cả lúc load; sửa race fake CDP server; gate 3 test E2E live sau `ROUTERPLUS_LIVE_E2E=1`.

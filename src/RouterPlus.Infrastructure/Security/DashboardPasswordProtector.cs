@@ -14,7 +14,7 @@ public static class DashboardPasswordProtector
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("9RouterPlus.DashboardAuth.v1");
 
     public static bool IsProtected(string? value) =>
-        !string.IsNullOrEmpty(value) && value!.StartsWith(Prefix, StringComparison.Ordinal);
+        !string.IsNullOrEmpty(value) && value.StartsWith(Prefix, StringComparison.Ordinal);
 
     public static string Protect(string plaintext)
     {
@@ -34,7 +34,7 @@ public static class DashboardPasswordProtector
             return false;
         }
 
-        var payload = protectedValue!.Substring(Prefix.Length);
+        var payload = protectedValue.Substring(Prefix.Length);
         try
         {
             var protectedBytes = Convert.FromBase64String(payload);

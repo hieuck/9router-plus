@@ -278,7 +278,7 @@ public static class AgnesKeyFlowOrchestrator
                     return null;
                 }
             }
-            catch { }
+            catch { /* best effort — if the state read fails, fall through to the failure result */ }
 
             return new AgnesKeyFlowResult(
                 false,

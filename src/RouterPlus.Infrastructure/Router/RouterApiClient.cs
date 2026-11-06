@@ -442,6 +442,8 @@ public sealed class RouterApiClient : IRouterApiClient
 
     private static Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
+        // cancellationToken is not used here: this method performs no I/O and returns
+        // synchronously. The parameter is kept for call-site uniformity only.
         _ = cancellationToken;
         if (response.IsSuccessStatusCode)
         {
