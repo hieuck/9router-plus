@@ -4,6 +4,13 @@ Mọi thay đổi đáng chú ý của RouterPlus được ghi tại đây. Các
 
 ## Unreleased
 
+### Fixed
+
+- **Google auto-login state machine**: extracted duplicated TOTP block into `HandleTotpStepAsync`; fixed bare catch swallowing `OperationCanceledException` during TOTP generation; added 30-second expiry-window guard before submitting TOTP code; added single retry on TOTP rejection.
+- **AutoLoginOrchestrator**: `TryDirectLoginAsync` and `TryGoogleOAuthAsync` now catch `LaunchAsync` exceptions (excluding `OperationCanceledException`) and return failure results instead of propagating.
+- **AgnesKeyFlow test hang**: added `MaxReadCount` safety net to `FakeAgnesBrowserWithStateSequence.ReadStateAsync` — throws `TaskCanceledException` after 50 reads to catch infinite loops in orchestrator when state sequence queue empties.
+- **8 new unit tests** (T-1 through T-8): cancellation during TOTP, consent deadline, submit button not found, unrecognised page state, vault IOException, TOTP expiry guard, manual challenge deadline, browser disposed on first read.
+
 ### Refactored
 
 - **MainViewModel split**: `MainViewModel.cs` (5026 lines) tách thành 12 partial class files, mỗi file ≤ 695 lines — tuân thủ rule "files ≤ 800 lines" trong AGENTS.md. Các file mới: `MainViewModel.Properties.cs`, `MainViewModel.Commands.cs`, `MainViewModel.Init.cs`, `MainViewModel.Updates.cs`, `MainViewModel.Profiles.cs`, `MainViewModel.Batch.cs`, `MainViewModel.Settings.cs`, `MainViewModel.ApiKeys.cs`, `MainViewModel.GoogleLogin.cs`, `MainViewModel.GoogleLoginHelpers.cs`, `MainViewModel.ProfileCrud.cs`.
