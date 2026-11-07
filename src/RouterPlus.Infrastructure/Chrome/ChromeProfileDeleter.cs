@@ -274,7 +274,9 @@ public sealed class ChromeProfileDeleter
         if (changed)
         {
             var options = new JsonSerializerOptions { WriteIndented = true };
-            File.WriteAllText(localStatePath, root.ToJsonString(options));
+            var tempPath = localStatePath + ".tmp";
+            File.WriteAllText(tempPath, root.ToJsonString(options));
+            File.Move(tempPath, localStatePath, overwrite: true);
         }
     }
 

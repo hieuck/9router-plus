@@ -40,6 +40,12 @@ internal sealed class DefaultDirectLoginAutomationFactory : IDirectLoginAutomati
             ProviderKind.Kiro => new KiroDirectLoginAutomation(
                 cdpSession.Client, cdpSession.SessionId, cdpSession.TargetId,
                 credential.Email, credential.Password, totpGenerator),
+            // Agnes, Poolside, Bazaarlink, Ollama use API-key workflows and never
+            // have DirectCredential set; guard here prevents a NotSupportedException
+            // if the connection store somehow contains stale data.
+            ProviderKind.Agnes or ProviderKind.Poolside or ProviderKind.Bazaarlink
+                or ProviderKind.Ollama or ProviderKind.Nous =>
+                throw new NotSupportedException($"Provider {provider} does not support direct login."),
             _ => throw new NotSupportedException($"Direct login not supported for provider {provider}")
         };
 
