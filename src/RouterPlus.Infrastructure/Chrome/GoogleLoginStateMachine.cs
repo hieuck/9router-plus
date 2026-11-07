@@ -460,6 +460,10 @@ public static class GoogleLoginStateMachine
     /// Generates and submits a TOTP code with an expiry-window guard and one retry on rejection.
     /// Returns (null, newState) on success; (errorResult, state) if generation fails or code rejected after retry.
     /// </summary>
+    /// <summary>
+    /// Generates and submits a TOTP code with an expiry-window guard and one retry on rejection.
+    /// Returns (null, newState) on success; (errorResult, state) if generation fails or code rejected after retry.
+    /// </summary>
     private static async Task<(GoogleLoginResult? error, GoogleLoginPageState state)> HandleTotpStepAsync(
         IGoogleLoginBrowser browser,
         GoogleLoginCredential credential,
@@ -467,86 +471,93 @@ public static class GoogleLoginStateMachine
         CancellationToken ct)
     {
         // FR-3: Expiry-window guard — wait if fewer than 5 seconds remain in the current window.
+        await WaitForSafeWindowAsync(ct);
+
+        // FR-2: Typed catch — OperationCanceledException must not be swallowed.
+        var (genError, totpCode) = TryGenerateTotp(credential.TotpSecret);
+        if (genError is not null)
+        {
+            return (genError, state);
+        }
+
+        state = await SubmitTotpCodeAsync(browser, totpCode!, ct);
+
+        // FR-4: Single retry on rejection.
+        if (!state.HasTotpError)
+        {
+            LogTotpAccepted(state);
+            return (null, state);
+        }
+
+        ObservabilityHub.Instance.LogEvent(
+            LogLevel.Warning, "GoogleLogin", "TotpRejected_Retrying",
+            "TOTP code rejected, waiting for next window and retrying once");
+
+        await WaitForSafeWindowAsync(ct);
+        var (retryGenError, retryCode) = TryGenerateTotp(credential.TotpSecret);
+        if (retryGenError is not null)
+        {
+            return (retryGenError, state);
+        }
+
+        state = await SubmitTotpCodeAsync(browser, retryCode!, ct);
+        if (state.HasTotpError)
+        {
+            ObservabilityHub.Instance.LogEvent(
+                LogLevel.Error, "GoogleLogin", "TotpRejected",
+                "TOTP code rejected by Google after retry",
+                new { page_url = state.PageUri.AbsolutePath });
+            return (GoogleLoginResult.InvalidCredentials(), state);
+        }
+
+        LogTotpAccepted(state);
+        return (null, state);
+    }
+
+    /// <summary>Waits until at least 5 seconds remain in the current 30-second TOTP window.</summary>
+    private static async Task WaitForSafeWindowAsync(CancellationToken ct)
+    {
         var secondsLeft = 30 - (DateTimeOffset.UtcNow.ToUnixTimeSeconds() % 30);
         if (secondsLeft < 5)
         {
             await Task.Delay(TimeSpan.FromSeconds(secondsLeft + 1), ct);
         }
+    }
 
-        // FR-2: Typed catch — OperationCanceledException must not be swallowed.
-        string totpCode;
+    /// <summary>Generates a TOTP code; returns (InvalidCredentials, null) on format error.</summary>
+    private static (GoogleLoginResult? error, string? code) TryGenerateTotp(string secret)
+    {
         try
         {
-            totpCode = GoogleTotpGenerator.Generate(
-                credential.TotpSecret,
-                DateTimeOffset.UtcNow,
-                digits: 6,
-                periodSeconds: 30);
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Debug, "GoogleLogin", "TotpCodeGenerated", "TOTP code generated successfully");
+            var code = GoogleTotpGenerator.Generate(secret, DateTimeOffset.UtcNow, digits: 6, periodSeconds: 30);
+            ObservabilityHub.Instance.LogEvent(LogLevel.Debug, "GoogleLogin", "TotpCodeGenerated", "TOTP code generated successfully");
+            return (null, code);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Error, "GoogleLogin", "TotpGenerationFailed",
-                "Failed to generate TOTP code - invalid secret");
-            return (GoogleLoginResult.InvalidCredentials(), state);
+            ObservabilityHub.Instance.LogEvent(LogLevel.Error, "GoogleLogin", "TotpGenerationFailed", "Failed to generate TOTP code - invalid secret");
+            return (GoogleLoginResult.InvalidCredentials(), null);
         }
+    }
 
+    /// <summary>Fills and submits a TOTP code, then reads the resulting page state.</summary>
+    private static async Task<GoogleLoginPageState> SubmitTotpCodeAsync(
+        IGoogleLoginBrowser browser, string totpCode, CancellationToken ct)
+    {
         await FillWithTimeoutAsync(browser, GoogleLoginField.Totp, totpCode, ct);
-        ObservabilityHub.Instance.LogEvent(
-            LogLevel.Debug, "GoogleLogin", "TotpFieldFilled", "TOTP code filled into field");
-        totpCode = string.Empty;
-        ObservabilityHub.Instance.LogEvent(
-            LogLevel.Info, "GoogleLogin", "TotpSubmitStarting", "Starting TOTP submit");
+        ObservabilityHub.Instance.LogEvent(LogLevel.Debug, "GoogleLogin", "TotpFieldFilled", "TOTP code filled into field");
+        _ = string.Empty; // clear local; secret already in totpCode arg (caller clears their copy)
+        ObservabilityHub.Instance.LogEvent(LogLevel.Info, "GoogleLogin", "TotpSubmitStarting", "Starting TOTP submit");
         await SubmitWithTimeoutAsync(browser, GoogleLoginField.Totp, ct);
-        ObservabilityHub.Instance.LogEvent(
-            LogLevel.Info, "GoogleLogin", "TotpSubmitted", "TOTP code submitted, waiting for response");
-        state = await ReadStateWithTimeoutAsync(browser, ct);
+        ObservabilityHub.Instance.LogEvent(LogLevel.Info, "GoogleLogin", "TotpSubmitted", "TOTP code submitted, waiting for response");
+        return await ReadStateWithTimeoutAsync(browser, ct);
+    }
 
-        // FR-4: Single retry on rejection.
-        if (state.HasTotpError)
-        {
-            ObservabilityHub.Instance.LogEvent(
-                LogLevel.Warning, "GoogleLogin", "TotpRejected_Retrying",
-                "TOTP code rejected, waiting for next window and retrying once");
-            var secondsLeftRetry = 30 - (DateTimeOffset.UtcNow.ToUnixTimeSeconds() % 30);
-            await Task.Delay(TimeSpan.FromSeconds(secondsLeftRetry + 1), ct);
-            string retryCode;
-            try
-            {
-                retryCode = GoogleTotpGenerator.Generate(
-                    credential.TotpSecret,
-                    DateTimeOffset.UtcNow,
-                    digits: 6,
-                    periodSeconds: 30);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Error, "GoogleLogin", "TotpRetryGenerationFailed",
-                    "Failed to generate retry TOTP code");
-                return (GoogleLoginResult.InvalidCredentials(), state);
-            }
-            await FillWithTimeoutAsync(browser, GoogleLoginField.Totp, retryCode, ct);
-            retryCode = string.Empty;
-            await SubmitWithTimeoutAsync(browser, GoogleLoginField.Totp, ct);
-            state = await ReadStateWithTimeoutAsync(browser, ct);
-            if (state.HasTotpError)
-            {
-                ObservabilityHub.Instance.LogEvent(
-                    LogLevel.Error, "GoogleLogin", "TotpRejected",
-                    "TOTP code rejected by Google after retry - wrong or expired code",
-                    new { page_url = state.PageUri.AbsolutePath });
-                return (GoogleLoginResult.InvalidCredentials(), state);
-            }
-        }
-
+    private static void LogTotpAccepted(GoogleLoginPageState state) =>
         ObservabilityHub.Instance.LogEvent(
             LogLevel.Info, "GoogleLogin", "TotpAccepted", "TOTP code accepted",
             new { page_url = state.PageUri.AbsolutePath, has_completion = state.HasCompletionSignal, has_challenge = state.HasManualChallenge });
-        return (null, state);
-    }
+
 
     private static async Task<GoogleLoginPageState> ReadStateWithTimeoutAsync(
         IGoogleLoginBrowser browser,
