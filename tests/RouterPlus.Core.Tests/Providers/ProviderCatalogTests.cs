@@ -243,4 +243,46 @@ public sealed class ProviderCatalogTests
         Assert.True(ProviderCatalog.TryGetByApiAlias("agnes", out var kind));
         Assert.Equal(ProviderKind.Agnes, kind);
     }
+
+    [Fact]
+    public void Bazaarlink_DashboardPath_is_relative_not_absolute()
+    {
+        var definition = ProviderCatalog.Get(ProviderKind.Bazaarlink);
+        Assert.True(definition.DashboardPath.StartsWith("/"), $"DashboardPath should be relative, was: {definition.DashboardPath}");
+    }
+
+    [Fact]
+    public void BuildDashboardUrl_works_for_Bazaarlink_with_custom_base()
+    {
+        var definition = ProviderCatalog.Get(ProviderKind.Bazaarlink);
+        var url = definition.BuildDashboardUrl("https://my-router.example");
+        Assert.Equal("https://my-router.example/dashboard/providers/bazaarlink", url);
+    }
+
+    [Theory]
+    [InlineData(ProviderKind.Poolside, "poolside", "Poolside", "🏊", "PS")]
+    [InlineData(ProviderKind.Bazaarlink, "bazaarlink", "Bazaarlink", "🛒", "BZ")]
+    public void Catalog_exposes_exact_metadata_for_newer_providers(
+        ProviderKind kind,
+        string expectedApiAlias,
+        string expectedShortDisplayName,
+        string expectedGlyph,
+        string expectedShortCode)
+    {
+        var definition = ProviderCatalog.Get(kind);
+        Assert.Equal(expectedApiAlias, definition.ApiAlias);
+        Assert.Equal(expectedShortDisplayName, definition.ShortDisplayName);
+        Assert.Equal(expectedGlyph, definition.Glyph);
+        Assert.Equal(expectedShortCode, definition.ShortCode);
+    }
+
+    [Theory]
+    [InlineData("agnes")]
+    [InlineData("poolside")]
+    [InlineData("bazaarlink")]
+    public void TryGetByApiAlias_round_trips_for_newer_providers(string alias)
+    {
+        Assert.True(ProviderCatalog.TryGetByApiAlias(alias, out var kind));
+        Assert.Equal(alias, ProviderCatalog.Get(kind).ApiAlias, StringComparer.OrdinalIgnoreCase);
+    }
 }

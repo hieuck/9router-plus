@@ -103,7 +103,7 @@ public static class ProviderCatalog
             [ProviderKind.Bazaarlink] = new(
                 ProviderKind.Bazaarlink,
                 "Bazaarlink",
-                "http://localhost:20128/dashboard/providers/bazaarlink",
+                "/dashboard/providers/bazaarlink",
                 "https://bazaarlink.ai/keys",
                 WorkflowKind.ApiKey,
                 true,

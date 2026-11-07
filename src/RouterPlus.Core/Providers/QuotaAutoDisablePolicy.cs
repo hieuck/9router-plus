@@ -8,6 +8,8 @@ public static class QuotaAutoDisablePolicy
             ProviderKind.Codex or ProviderKind.Ollama => connection.IsOverLimit,
             ProviderKind.Kiro => CanAutoDisableKiro(connection),
             ProviderKind.OpenRouter => IsOpenRouterRateLimitExceeded(connection),
+            // API-key providers with quota: auto-disable on over-limit, matching Codex/Ollama pattern.
+            ProviderKind.Agnes or ProviderKind.Poolside or ProviderKind.Bazaarlink => connection.IsOverLimit,
             // Nous and GitHub have no quota API; auto-disable must never trigger.
             ProviderKind.Nous or ProviderKind.GitHub => false,
             _ => false
@@ -18,6 +20,8 @@ public static class QuotaAutoDisablePolicy
         {
             ProviderKind.Kiro => HasRecoveredKiro(connection),
             ProviderKind.OpenRouter => IsOpenRouterRateLimitRecovered(connection),
+            // API-key providers: recover when no longer over limit.
+            ProviderKind.Agnes or ProviderKind.Poolside or ProviderKind.Bazaarlink => !connection.IsOverLimit,
             // Nous and GitHub have no quota API; preserve legacy !IsOverLimit fallback.
             ProviderKind.Nous or ProviderKind.GitHub => !connection.IsOverLimit,
             _ => !connection.IsOverLimit

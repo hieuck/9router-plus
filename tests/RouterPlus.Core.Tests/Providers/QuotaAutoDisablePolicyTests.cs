@@ -10,6 +10,9 @@ public sealed class QuotaAutoDisablePolicyTests
     [Theory]
     [InlineData(ProviderKind.Codex)]
     [InlineData(ProviderKind.Ollama)]
+    [InlineData(ProviderKind.Agnes)]
+    [InlineData(ProviderKind.Poolside)]
+    [InlineData(ProviderKind.Bazaarlink)]
     public void CanAutoDisable_returns_connection_limit_state_for_supported_simple_providers(ProviderKind provider)
     {
         // Arrange

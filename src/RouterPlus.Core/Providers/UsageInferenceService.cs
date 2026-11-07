@@ -39,6 +39,14 @@ public static class UsageInferenceService
             ProviderKind.Ollama => InferOllamaUsage(lastError, lastErrorAt),
             // Nous and GitHub have no reliable usage API; never fabricate numbers.
             ProviderKind.Nous or ProviderKind.GitHub => null,
+            // API-key providers: generic fallback when backend doesn't provide quota data.
+            // Uses monthly reset as the most common billing cycle for API-key providers.
+            ProviderKind.Agnes or ProviderKind.Poolside or ProviderKind.Bazaarlink => new InferredUsage(
+                UsageCount: 100,
+                LimitCount: 100,
+                UsageResetAt: CalculateNextMonthReset(lastErrorAt),
+                IsEstimate: true,
+                Source: "Inferred from error: limit reached"),
             _ => null
         };
     }
