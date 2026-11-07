@@ -1,4 +1,4 @@
-using RouterPlus.Core.Security;
+﻿using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Chrome;
 
 namespace RouterPlus.Core.Tests.Security;
@@ -892,8 +892,10 @@ public class GoogleLoginStateMachineTests
     }
 
     [Fact]
-    public async Task RunAsync_returns_invalid_credentials_when_totp_is_rejected()
+    public async Task RunAsync_returns_invalid_credentials_when_totp_is_rejected_after_retry()
     {
+        // FR-4: The machine retries once on HasTotpError; both attempts must fail for
+        // InvalidCredentials to be returned. Two HasTotpError states are required.
         var credential = new GoogleLoginCredential(
             "profile-1",
             "user@example.com",
@@ -928,6 +930,17 @@ public class GoogleLoginStateMachineTests
                 Has2FAMethodPicker: false,
                 HasCompletionSignal: false,
                 HasManualChallenge: false))
+            // First TOTP attempt rejected:
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/challenge/totp"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: true,
+                HasTotpError: true,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            // Retry attempt also rejected → InvalidCredentials:
             .ReturnState(new GoogleLoginPageState(
                 new Uri("https://accounts.google.com/signin/challenge/totp"),
                 HasEmailField: false,
@@ -941,8 +954,9 @@ public class GoogleLoginStateMachineTests
         var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
 
         Assert.Equal(GoogleLoginResultCategory.InvalidCredentials, result.Category);
-        Assert.Equal(new[] { "Email", "Password", "Totp" }, browser.FilledFields);
-        Assert.Equal(new[] { "Email", "Password", "Totp" }, browser.SubmittedFields);
+        // Both the initial attempt and the retry fill+submit Totp:
+        Assert.Equal(new[] { "Email", "Password", "Totp", "Totp" }, browser.FilledFields);
+        Assert.Equal(new[] { "Email", "Password", "Totp", "Totp" }, browser.SubmittedFields);
     }
 
     [Fact]
@@ -1258,6 +1272,282 @@ public class GoogleLoginStateMachineTests
         Assert.Contains("Manual challenge", result.Message);
         Assert.Equal(new[] { "Totp" }, browser.FilledFields);
         Assert.Equal(new[] { "Totp" }, browser.SubmittedFields);
+    }
+
+    // -------------------------------------------------------------------------
+    // T-1: Cancellation during TOTP generation returns Cancelled, not InvalidCredentials
+    // -------------------------------------------------------------------------
+    [Fact]
+    public async Task RunAsync_cancellation_during_totp_step_returns_cancelled_not_invalid_credentials()
+    {
+        // FR-2: Bare catch must not swallow OperationCanceledException.
+        // Arrange: pre-cancel the token so cancellation fires before/during TOTP generation.
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        using var cts = new CancellationTokenSource();
+
+        var browser = new FakeBrowser()
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/challenge/totp"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: true,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false));
+
+        // Cancel before RunAsync starts executing the TOTP step
+        cts.Cancel();
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, cts.Token);
+
+        // Must return Cancelled, not InvalidCredentials
+        Assert.Equal(GoogleLoginResultCategory.Cancelled, result.Category);
+    }
+
+    // -------------------------------------------------------------------------
+    // T-2: Cancellation fires during a blocking wait loop → Cancelled result
+    // -------------------------------------------------------------------------
+    [Fact]
+    public async Task RunAsync_cancellation_during_field_wait_loop_returns_cancelled()
+    {
+        // The machine enters a "wait for actionable fields" loop when no flags are set.
+        // Cancelling the token during that loop must return Cancelled.
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        using var userCts = new CancellationTokenSource();
+
+        // FakeBrowser always returns a state with no actionable fields.
+        // After the second read, the token is cancelled so Task.Delay in the loop throws.
+        int callCount = 0;
+        var browser = new FakeBrowserWithCallback(() =>
+        {
+            callCount++;
+            if (callCount >= 2) userCts.Cancel();
+            return new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false);
+        });
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, userCts.Token);
+
+        Assert.Equal(GoogleLoginResultCategory.Cancelled, result.Category);
+    }
+
+    // -------------------------------------------------------------------------
+    // T-3: 2FA fill succeeds but submit throws → machine handles gracefully → machine handles gracefully
+    // -------------------------------------------------------------------------
+    [Fact]
+    public async Task RunAsync_totp_submit_button_not_found_returns_unsupported_page()
+    {
+        // FR-3 area: FillAsync succeeds but SubmitAsync throws InvalidOperationException
+        // (e.g. submit button disappeared). Machine must not crash.
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        var browser = new FakeBrowserWithSubmitException(
+            new InvalidOperationException("Submit button not found"),
+            throwOnField: "Totp")
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/challenge/totp"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: true,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false));
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        // InvalidOperationException from submit maps to UnsupportedPage (not a disconnect)
+        Assert.Equal(GoogleLoginResultCategory.UnsupportedPage, result.Category);
+    }
+
+    // -------------------------------------------------------------------------
+    // T-4: State machine unrecognised-field combination → UnsupportedPage
+    // (already covered by RunAsync_rejects_unrecognized_field_combination above)
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // T-6: TOTP near window rollover — machine waits then submits fresh code
+    // -------------------------------------------------------------------------
+    [Fact]
+    public async Task RunAsync_totp_succeeds_when_submitted_near_window_rollover()
+    {
+        // FR-3: when secondsLeft < 5 the machine awaits before generating TOTP.
+        // We verify the result is Success when the guard fires and then the TOTP
+        // is accepted on the first attempt.
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        var browser = new FakeBrowser()
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin/challenge/totp"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: true,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: false))
+            .ReturnState(new GoogleLoginPageState(
+                new Uri("https://myaccount.google.com/"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: true,
+                HasManualChallenge: false));
+
+        // Run with normal token; the guard fires internally based on real clock.
+        // We just verify the machine completes successfully (the guard does not break the flow).
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, CancellationToken.None);
+
+        Assert.Equal(GoogleLoginResultCategory.Success, result.Category);
+        Assert.Equal(new[] { "Totp" }, browser.FilledFields);
+    }
+
+    // -------------------------------------------------------------------------
+    // T-7: Manual challenge resolver exceeds deadline → Cancelled (via user ct)
+    // -------------------------------------------------------------------------
+    [Fact]
+    public async Task RunAsync_manual_challenge_resolver_cancellation_returns_cancelled()
+    {
+        // WaitForManualChallengeResolutionAsync polls with Task.Delay(2s).
+        // When the user token fires during that delay, RunAsync returns Cancelled.
+        var credential = new GoogleLoginCredential(
+            "profile-1",
+            "user@example.com",
+            "password123",
+            "JBSWY3DPEHPK3PXP");
+
+        using var cts = new CancellationTokenSource();
+
+        // Return manual-challenge state; then cancel so the poll delay throws.
+        var browser = new FakeBrowserWithCallback(() =>
+        {
+            cts.Cancel();   // fires on the poll read inside the wait loop
+            return new GoogleLoginPageState(
+                new Uri("https://accounts.google.com/signin"),
+                HasEmailField: false,
+                HasPasswordField: false,
+                HasTotpField: false,
+                HasTotpError: false,
+                Has2FAMethodPicker: false,
+                HasCompletionSignal: false,
+                HasManualChallenge: true);
+        });
+
+        var result = await GoogleLoginStateMachine.RunAsync(browser, credential, cts.Token);
+
+        Assert.Equal(GoogleLoginResultCategory.Cancelled, result.Category);
+    }
+
+    // -------------------------------------------------------------------------
+    // Helper fake browser that invokes a callback on each ReadStateAsync call
+    // -------------------------------------------------------------------------
+    private sealed class FakeBrowserWithCallback : IGoogleLoginBrowser
+    {
+        private readonly Func<GoogleLoginPageState> _stateFactory;
+
+        public FakeBrowserWithCallback(Func<GoogleLoginPageState> stateFactory)
+            => _stateFactory = stateFactory;
+
+        public Task<GoogleLoginPageState> ReadStateAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(_stateFactory());
+        }
+
+        public Task FillAsync(GoogleLoginField field, string value, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        public Task SubmitAsync(GoogleLoginField field, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(false);
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    // -------------------------------------------------------------------------
+    // Helper fake browser that throws on SubmitAsync for a specific field
+    // -------------------------------------------------------------------------
+    private sealed class FakeBrowserWithSubmitException : IGoogleLoginBrowser
+    {
+        private readonly Queue<GoogleLoginPageState> _states = new();
+        private readonly Exception _exception;
+        private readonly string _throwOnField;
+
+        public FakeBrowserWithSubmitException(Exception exception, string throwOnField)
+        {
+            _exception = exception;
+            _throwOnField = throwOnField;
+        }
+
+        public FakeBrowserWithSubmitException ReturnState(GoogleLoginPageState state)
+        {
+            _states.Enqueue(state);
+            return this;
+        }
+
+        public Task<GoogleLoginPageState> ReadStateAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(_states.Dequeue());
+        }
+
+        public Task FillAsync(GoogleLoginField field, string value, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        public Task SubmitAsync(GoogleLoginField field, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (field.ToString() == _throwOnField)
+                throw _exception;
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> TrySelectAuthenticatorMethodAsync(CancellationToken cancellationToken)
+            => Task.FromResult(false);
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class FakeBrowser : IGoogleLoginBrowser

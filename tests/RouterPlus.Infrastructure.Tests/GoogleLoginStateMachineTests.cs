@@ -92,11 +92,14 @@ public sealed class GoogleLoginStateMachineTests
     }
 
     [Fact]
-    public async Task RunAsync_returns_invalid_credentials_when_totp_is_rejected()
+    public async Task RunAsync_returns_invalid_credentials_when_totp_is_rejected_after_retry()
     {
-        // Arrange
+        // Arrange — FR-4: machine retries once; two HasTotpError states are required.
         var browser = new FakeGoogleLoginBrowser()
             .ReturnState(State("/signin/challenge/totp", totp: true))
+            // First attempt rejected:
+            .ReturnState(State("/signin/challenge/totp", totpError: true))
+            // Retry also rejected → InvalidCredentials:
             .ReturnState(State("/signin/challenge/totp", totpError: true));
 
         // Act
@@ -104,8 +107,13 @@ public sealed class GoogleLoginStateMachineTests
 
         // Assert
         Assert.Equal(GoogleLoginResultCategory.InvalidCredentials, result.Category);
-        Assert.Equal(new[] { GoogleLoginField.Totp }, browser.FilledFields);
-        Assert.Equal(new[] { GoogleLoginField.Totp }, browser.SubmittedFields);
+        // Both initial attempt and retry fill+submit Totp:
+        Assert.Equal(
+            new[] { GoogleLoginField.Totp, GoogleLoginField.Totp },
+            browser.FilledFields);
+        Assert.Equal(
+            new[] { GoogleLoginField.Totp, GoogleLoginField.Totp },
+            browser.SubmittedFields);
     }
 
     [Fact]
