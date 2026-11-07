@@ -45,9 +45,8 @@ public sealed record ProviderConnection(
         || (!HasSuccessfulTestStatus && !HasError);
 
     public bool HasError => !HasSuccessfulTestStatus &&
-        !string.IsNullOrWhiteSpace(ErrorCode) ||
-        !HasSuccessfulTestStatus &&
-        (!string.IsNullOrWhiteSpace(LastError) ||
+        (!string.IsNullOrWhiteSpace(ErrorCode) ||
+         !string.IsNullOrWhiteSpace(LastError) ||
          string.Equals(TestStatus, "error", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(TestStatus, "expired", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(TestStatus, "unavailable", StringComparison.OrdinalIgnoreCase) ||
@@ -83,6 +82,7 @@ public sealed record ProviderQuota(
         || Remaining.HasValue && Remaining.Value <= 0m;
 
     private static string FormatValue(decimal value) =>
-        // Use invariant culture to ensure '.' as decimal separator regardless of system locale
+        // Use current culture so decimal separators match the user's system locale.
+        // (UsageText / PercentageText are display-only; never parsed back.)
         value.ToString("0.##", System.Globalization.CultureInfo.CurrentCulture);
 }

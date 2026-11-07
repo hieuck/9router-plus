@@ -10,10 +10,6 @@ namespace RouterPlus.Infrastructure.Chrome;
 /// </summary>
 public static class GoogleOAuthPageDetector
 {
-    internal static bool IsGoogleOAuthHost(string host) =>
-        string.Equals(host, "accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(host, "accounts.google.com.", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>
     /// Detects Google-specific page state from the current page.
     /// Returns null if not on a Google OAuth page.
