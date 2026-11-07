@@ -96,6 +96,9 @@ A running `testhost` process from a previous `dotnet test` run can lock output D
 ### Fake browser ReadStateAsync must have a MaxReadCount safety net
 Test fake browsers that use a `Queue<T>` for state sequences will return the last state forever once the queue empties. If the orchestrator loops waiting for a state change that never comes (e.g., "Google button not found"), the test hangs indefinitely with no timeout. Fix: add a `MaxReadCount` property (default 50) to the fake — after that many reads, throw `TaskCanceledException` with a message indicating a possible infinite loop. This catches all tests using the fake, not just the ones you've manually audited. Found in `AgnesKeyFlowOrchestratorTests` where 3+ tests used `CancellationToken.None` with an empty queue.
 
+### Issues marked "bug/high-priority" in audit may already be resolved — verify before fixing
+Audit issues filed against a codebase snapshot can be stale by the time they are worked. Issues #14 (Nullable not enabled), #21 (no atomic vault write), and #15 (README references master) were all already resolved before being touched — Directory.Build.props had Nullable=enable globally, VaultStoreBase had atomic write + operation guard, and README already said main. Always read the current code before spending time on an audit issue.
+
 ### Operator precedence in multi-part boolean expressions — always use explicit parentheses
 `&&` binds tighter than `||` in C#. `A && B || A && C` evaluates as `(A&&B)||(A&&C)` not `A&&(B||C)`. When the intent is the latter (shared guard), write `A && (B || C)` explicitly. Found in `ProviderConnection.HasError` — refactored to the clearer form without behavior change.
 
