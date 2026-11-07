@@ -236,7 +236,15 @@ public sealed class AutoLoginOrchestrator
 
         // Launch browser
         var loginUrl = GetProviderLoginUrl(provider, startUri);
-        var cdp = await _chromeLauncher.LaunchAsync(connection.ProfileName, loginUrl, cancellationToken);
+        CdpSession? cdp;
+        try
+        {
+            cdp = await _chromeLauncher.LaunchAsync(connection.ProfileName, loginUrl, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new AutoLoginResult(false, AuthMethod.GoogleOAuth, ex.Message);
+        }
         if (cdp == null)
         {
             return new AutoLoginResult(false, AuthMethod.GoogleOAuth, "Failed to launch browser");
@@ -291,7 +299,15 @@ public sealed class AutoLoginOrchestrator
 
         // Launch browser
         var loginUrl = GetProviderLoginUrl(provider, startUri);
-        var cdp = await _chromeLauncher.LaunchAsync(connection.ProfileName, loginUrl, cancellationToken);
+        CdpSession? cdp;
+        try
+        {
+            cdp = await _chromeLauncher.LaunchAsync(connection.ProfileName, loginUrl, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new AutoLoginResult(false, AuthMethod.Direct, ex.Message);
+        }
         if (cdp == null)
         {
             return new AutoLoginResult(false, AuthMethod.Direct, "Failed to launch browser");

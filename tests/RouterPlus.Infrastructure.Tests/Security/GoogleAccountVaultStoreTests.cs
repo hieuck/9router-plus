@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using RouterPlus.Core.Security;
 using RouterPlus.Infrastructure.Security;
@@ -354,5 +354,32 @@ public sealed class GoogleAccountVaultStoreTests : IDisposable
 
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             store.CreateAsync(vaultPath, "password"));
+    }
+
+    // -------------------------------------------------------------------------
+    // T-5: Vault key file throws IOException — vault propagates the error
+    // -------------------------------------------------------------------------
+    [Fact]
+    public async Task OpenAsync_FileLocked_ThrowsIOException()
+    {
+        // Arrange: create a valid vault file, then hold an exclusive lock on it
+        // so the vault store's file-read call gets an IOException (sharing violation).
+        var store = new GoogleAccountVaultStore(_paths);
+        var vaultPath = Path.Combine(_testDirectory, "locked.vault");
+
+        // Create a valid vault so the path exists
+        await using var session = await store.CreateAsync(vaultPath, "test-password");
+        await store.SaveAsync(session);
+
+        // Hold exclusive lock on the file
+        using var exclusiveLock = new FileStream(
+            vaultPath,
+            FileMode.Open,
+            FileAccess.ReadWrite,
+            FileShare.None);
+
+        // Act & Assert: OpenAsync must propagate the IOException, not swallow it
+        await Assert.ThrowsAnyAsync<IOException>(() =>
+            store.OpenAsync(vaultPath, "test-password"));
     }
 }

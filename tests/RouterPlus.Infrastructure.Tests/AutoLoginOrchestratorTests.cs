@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using RouterPlus.Core.Models;
 using RouterPlus.Core.Providers;
 using RouterPlus.Core.Security;
@@ -672,5 +672,59 @@ public sealed class AutoLoginOrchestratorTests
             TestDirectory.Delete(tempDir);
         }
     }
-}
 
+    // -------------------------------------------------------------------------
+    // T-8: Browser session launch throws exception — orchestrator handles gracefully
+    // -------------------------------------------------------------------------
+    [Fact]
+    public async Task LoginAsync_BrowserLaunchThrowsException_ReturnsFailureResult()
+    {
+        // Arrange: configure a direct-login profile; LaunchAsync throws instead of
+        // returning null, verifying the orchestrator handles launch exceptions.
+        var tempDir = TestDirectory.Create();
+        try
+        {
+            var providerVault = new ProviderConnectionVaultStore(Path.Combine(tempDir, "provider.json"));
+            await providerVault.SaveConnectionAsync(new RouterPlus.Core.Models.ProviderAuthConnection
+            {
+                ProfileName = "TestProfile",
+                Provider = RouterPlus.Core.Providers.ProviderKind.Codex,
+                PreferredMethod = RouterPlus.Core.Models.AuthMethod.Direct,
+                DirectCredential = new RouterPlus.Core.Models.ProviderCredential
+                {
+                    Email = "direct@example.test",
+                    Password = "synthetic-password",
+                    TotpSecret = "NONE"
+                }
+            });
+
+            var launcher = new Mock<IChromeLauncher>();
+            launcher
+                .Setup(l => l.LaunchAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Uri>(),
+                    It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Chrome executable not found"));
+
+            var vaultPaths = new RouterPlus.Infrastructure.Security.GoogleAccountVaultPaths(tempDir);
+            var googleVault = new RouterPlus.Infrastructure.Security.GoogleAccountVaultStore(vaultPaths);
+            var orchestrator = new AutoLoginOrchestrator(googleVault, providerVault, launcher.Object);
+
+            // Act
+            var result = await orchestrator.LoginAsync(
+                "TestProfile",
+                RouterPlus.Core.Providers.ProviderKind.Codex,
+                new Uri("https://codex.openai.com"),
+                TimeSpan.FromMinutes(1),
+                CancellationToken.None);
+
+            // Assert: must not throw; must return a failure result
+            Assert.False(result.Success);
+            Assert.NotNull(result.ErrorMessage);
+        }
+        finally
+        {
+            TestDirectory.Delete(tempDir);
+        }
+    }
+}
