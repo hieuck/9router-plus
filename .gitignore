@@ -160,3 +160,9 @@ test-output.txt
 
 # Agent Loop runtime state
 .harness/
+
+# Auto-generated agent plugin directories (REA, OpenCode, etc.)
+.agents/
+
+# Kiro permissions file
+permissions.yaml
