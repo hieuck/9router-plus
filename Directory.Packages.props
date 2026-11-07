@@ -7,7 +7,7 @@
   <ItemGroup>
     <!-- Production packages -->
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
-    <PackageVersion Include="System.Management" Version="8.0.0" />
+    <PackageVersion Include="System.Management" Version="10.0.14" />
     <PackageVersion Include="FlaUI.Core" Version="5.0.0" />
     <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" />
