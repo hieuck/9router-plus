@@ -114,3 +114,10 @@ Dùng [bug report template](https://github.com/hieuck/9router-plus/issues/new?te
 - Thay path bằng `C:\Users\demo\...`.
 - Xóa API key, OAuth code, cookie và token.
 - Ghi version/tag release, Windows version và bước tái hiện.
+
+## Biến môi trường debug
+
+| Biến | Giá trị | Tác dụng |
+|---|---|---|
+| `ROUTERPLUS_DEBUG_AUTOLOGIN` | `1` | Kích hoạt luồng auto-login debug — chạy validation production flow thay vì UI flow thông thường. Chỉ dùng khi phát triển/debug. |
+| `ROUTERPLUS_RUN_E2E` | `1` | Kích thích E2E tests (mặc định bị skip). E2E tests mở app thật và điều khiển mouse/keyboard — chỉ chạy trong môi trường dev có GUI. |
