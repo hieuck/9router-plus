@@ -38,6 +38,7 @@ public sealed partial class CredentialsManagerViewModel : INotifyPropertyChanged
     private string _statusMessage = string.Empty;
     private readonly object _initializationLock = new();
     private Task? _initializationTask;
+    private int _disposed;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -230,6 +231,7 @@ public sealed partial class CredentialsManagerViewModel : INotifyPropertyChanged
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         await CancelBatchLoginAsync();
         _providerLoginCts?.Cancel();
         _providerLoginCts?.Dispose();
