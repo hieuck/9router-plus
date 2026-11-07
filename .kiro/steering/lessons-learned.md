@@ -90,6 +90,9 @@ The hooks table and Example 5 in README.md document the action type (`runCommand
 ### Commit message body can false-trigger `dotnet` command hooks
 A hook matching `dotnet\s+(build|test)` anywhere in the shell command will fire on `git commit -m "... dotnet build ..."` because the message text is part of the command string. Fix: split the command on `;` and `\n`, then anchor each line with `^` before matching, so only actual `dotnet build` invocations at statement-start are caught.
 
+### Stale testhost process locks DLLs and produces false test failures
+A running `testhost` process from a previous `dotnet test` run can lock output DLLs in `bin/Release/`. The next build emits MSB3026 copy-retry warnings and silently fails to update the test binaries, so tests run against stale code. Symptoms include intermittent Moq assembly load failures (`FileNotFoundException` for `Moq.dll`) that vanish after killing the process. Fix: `Get-Process -Name "testhost","dotnet" | Stop-Process -Force` before rebuilding. Always check build output for MSB3026 warnings — they indicate stale binaries even when exit code is 0.
+
 ### Operator precedence in multi-part boolean expressions — always use explicit parentheses
 `&&` binds tighter than `||` in C#. `A && B || A && C` evaluates as `(A&&B)||(A&&C)` not `A&&(B||C)`. When the intent is the latter (shared guard), write `A && (B || C)` explicitly. Found in `ProviderConnection.HasError` — refactored to the clearer form without behavior change.
 
