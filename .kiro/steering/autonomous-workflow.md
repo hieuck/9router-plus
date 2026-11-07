@@ -55,6 +55,19 @@ Work is done when ALL of these are true:
 2. A separate reviewer subagent confirms PASS
 3. Git operations completed (commit pushed, PR created)
 
+## Hook Enforcement (System-Level)
+
+The following operations are **hard-blocked** by PreToolUse hooks (exit 2 — tool never executes):
+
+| Hook file | Blocks | Allowed exception |
+|---|---|---|
+| `techlead-no-source-read.json` | `read_file` / `read_code` on `src/**/*.cs` | `.kiro/**`, `docs/**`, `*.md` |
+| `techlead-no-source-write.json` | `fs_write` / `str_replace` / `fs_append` on `src/**/*.cs` | `AGENTS.md`, `.kiro/**` |
+| `techlead-no-build-test.json` | `execute_pwsh` containing `dotnet build` or `dotnet test` | All other shell commands (git ops, etc.) |
+| `techlead-no-source-grep.json` | `grep_search` with `src/**` or unconstrained `**` patterns | `.kiro/**`, `docs/**`, explicit non-src paths |
+
+These hooks use `command` type with `exit 2` — they are not advisory prompts. The TechLead cannot override them.
+
 ## Dispatch Templates
 
 ### Feature implementation

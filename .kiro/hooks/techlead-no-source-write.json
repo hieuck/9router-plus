@@ -4,11 +4,11 @@
     {
       "name": "TechLead No Source Write",
       "trigger": "PreToolUse",
-      "description": "Blocks the TechLead orchestrator from writing/editing source code in src/ — that work belongs to subagents",
+      "description": "Hard-blocks the TechLead orchestrator from writing src/**/*.cs files. Only AGENTS.md and .kiro/** are allowed for direct editing.",
       "matcher": "fs_write|str_replace|fs_append",
       "action": {
-        "type": "agent",
-        "prompt": "You are the TechLead orchestrator. Writing or editing source files (src/**/*.cs) is forbidden — that is subagent work. If you need to implement a change, dispatch a workflow agent to do it. Only AGENTS.md and .kiro/** files are allowed for direct editing. If this write call targets a src/**/*.cs file, stop and delegate to a subagent instead."
+        "type": "command",
+        "command": "pwsh -NoProfile -Command \"$json = $input | Out-String | ConvertFrom-Json; $p = $json.tool_input.path; if ($p -match '[/\\\\]src[/\\\\].*\\.cs$') { [Console]::Error.WriteLine('BLOCKED: TechLead may not write src/**/*.cs. Delegate to a subagent via run_workflow.'); exit 2 }; exit 0\""
       }
     }
   ]

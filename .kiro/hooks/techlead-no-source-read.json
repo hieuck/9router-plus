@@ -4,11 +4,11 @@
     {
       "name": "TechLead No Source Read",
       "trigger": "PreToolUse",
-      "description": "Blocks the TechLead orchestrator from reading source files in src/ — that work belongs to subagents",
+      "description": "Hard-blocks the TechLead orchestrator from reading src/**/*.cs files. .kiro/**, docs/**, and *.md are allowed.",
       "matcher": "read_file|read_code",
       "action": {
-        "type": "agent",
-        "prompt": "You are the TechLead orchestrator. Reading source files (src/**/*.cs) is forbidden — that is subagent work. If you need to understand a problem, dispatch a workflow agent to investigate. Only docs (*.md), config (.kiro/**), and AGENTS.md are allowed for direct reading. If this read_file call targets a src/**/*.cs file, stop and delegate to a subagent instead."
+        "type": "command",
+        "command": "pwsh -NoProfile -Command \"$json = $input | Out-String | ConvertFrom-Json; $p = $json.tool_input.path; if ($p -match '[/\\\\]src[/\\\\].*\\.cs$') { [Console]::Error.WriteLine('BLOCKED: TechLead may not read src/**/*.cs. Delegate to a subagent.'); exit 2 }; exit 0\""
       }
     }
   ]
