@@ -93,6 +93,9 @@ A hook matching `dotnet\s+(build|test)` anywhere in the shell command will fire 
 ### Stale testhost process locks DLLs and produces false test failures
 A running `testhost` process from a previous `dotnet test` run can lock output DLLs in `bin/Release/`. The next build emits MSB3026 copy-retry warnings and silently fails to update the test binaries, so tests run against stale code. Symptoms include intermittent Moq assembly load failures (`FileNotFoundException` for `Moq.dll`) that vanish after killing the process. Fix: `Get-Process -Name "testhost","dotnet" | Stop-Process -Force` before rebuilding. Always check build output for MSB3026 warnings — they indicate stale binaries even when exit code is 0.
 
+### Fake browser ReadStateAsync must have a MaxReadCount safety net
+Test fake browsers that use a `Queue<T>` for state sequences will return the last state forever once the queue empties. If the orchestrator loops waiting for a state change that never comes (e.g., "Google button not found"), the test hangs indefinitely with no timeout. Fix: add a `MaxReadCount` property (default 50) to the fake — after that many reads, throw `TaskCanceledException` with a message indicating a possible infinite loop. This catches all tests using the fake, not just the ones you've manually audited. Found in `AgnesKeyFlowOrchestratorTests` where 3+ tests used `CancellationToken.None` with an empty queue.
+
 ### Operator precedence in multi-part boolean expressions — always use explicit parentheses
 `&&` binds tighter than `||` in C#. `A && B || A && C` evaluates as `(A&&B)||(A&&C)` not `A&&(B||C)`. When the intent is the latter (shared guard), write `A && (B || C)` explicitly. Found in `ProviderConnection.HasError` — refactored to the clearer form without behavior change.
 
