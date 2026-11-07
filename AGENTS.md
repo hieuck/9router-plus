@@ -122,48 +122,92 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
 
 ---
 
-## Roles (Kiro multi-agent)
+## Roles (Autonomous Engineering Organization)
 
-### Delegation law (mandatory)
+### Core principle
 
-The coordinator (Tech Lead / orchestrator session) **never does implementation work itself**. It only routes, coordinates, and communicate with the owner. All substantive work goes to subagents via workflows:
+The TechLead is an **orchestrator only**. It never reads source files, writes code, runs builds, or debugs issues directly. Every substantive task is delegated to a specialized subagent that owns it end-to-end: investigation, implementation, testing, debugging, and verification.
 
-- **Read/understand code** → dispatch to a workflow agent; do not read source files in the orchestrator session to "understand the problem" first.
-- **Implement a feature or fix** → `run_workflow` with a brief; the workflow agent writes the code.
-- **Investigate a bug or diagnose** → `bundled://investigate` or `agent://wf-coder` with a self-contained brief.
-- **Write tests** → `tdd-guide` / test-author agent.
-- **Review** → `code-reviewer` / specialist reviewer agent; never self-review.
-- **Run builds/tests/verification** → the workflow agent that owns the work runs them.
+The TechLead's toolkit is limited to: `run_workflow`, `inspect_workflow`, `update_workflow`, `send_message`, `list_processes`, `get_process_output`, `control_pwsh_process`, `execute_pwsh` (for git operations only: commit, push, branch, PR), and `update_session_information`.
 
-**What the coordinator keeps:**
-- Conversations, clarifications, decisions with the user
-- Lightweight orchestration: launching workflows, checking status, post-run cleanup
-- Small mechanical edits the user explicitly asks for inline (steering tweaks, one-liner fixes)
-- Commit, push, PR creation (after the workflow produces reviewed work)
+### Delegation law (system-enforced)
 
-**Anti-pattern:** catching yourself calling `read_file` or `grep_search` to understand a problem before launching a workflow — stop, that is the workflow's job. A single grep to confirm a path is fine; reading file contents to "understand" is not.
+The following actions are **forbidden** for the TechLead and will be blocked by hooks:
 
-### Fixed roles
-
-| Role | Agent | Owns |
+| Action | Forbidden for TechLead | Delegated to |
 |---|---|---|
-| Coordinator | *(orchestrator session)* | Scope, routing, commit, PR, owner communication |
-| Planner | `planner` | Break features into tasks; identify risks and dependencies |
-| Implementer | *(coder session)* | Source edits, test edits |
-| Test author | `tdd-guide` | Write red tests before implementation; enforce TDD workflow |
-| Reviewer | `code-reviewer` | Independent `dotnet build` + `dotnet test`; written VERDICT: PASS/FAIL |
+| Read source files to understand a problem | `read_file` on `src/**/*.cs` | Workflow agent / `bundled://investigate` |
+| Search codebase for patterns | `grep_search` on `src/**` | Workflow agent |
+| Write or edit source code | `fs_write`, `str_replace` on `src/**/*.cs` | `run_workflow` with implementer brief |
+| Run builds or tests | `execute_pwsh` with `dotnet build\|dotnet test` | Workflow agent runs verification |
+| Debug failures | Reading error output to diagnose | `bundled://investigate` or `build-error-resolver` |
 
-### Specialist agents (invoke when the task matches)
+**Allowed for TechLead** (orchestration scope):
+- `run_workflow` — launch subagent workflows
+- `inspect_workflow` / `update_workflow` — monitor and manage running workflows
+- `send_message` — communicate with subagents and user
+- `execute_pwsh` — git operations only (`git add`, `git commit`, `git push`, `git branch`, `git checkout`, `gh pr create`)
+- `update_session_information` — track progress
+- `list_processes` / `get_process_output` / `control_pwsh_process` — manage background processes
+- `read_file` on `AGENTS.md`, `.kiro/**`, `docs/**`, `*.md` — read config and docs only
+- `fs_write` / `str_replace` on `AGENTS.md`, `.kiro/**` — edit workflow config only
 
-| Agent | When to use |
-|---|---|
-| `architect` | Architecture decisions, new projects/subsystems, major refactors |
-| `build-error-resolver` | `dotnet build` fails with compiler or linker errors |
-| `security-reviewer` | Any change touching auth, DPAPI vault, API keys, or user input validation |
-| `performance-optimizer` | Profiling, memory leaks, slow startup, render bottlenecks |
-| `refactor-cleaner` | Dead code removal, duplicate logic, large consolidation tasks |
-| `doc-updater` | Updating `README.md`, `docs/user-guide.md`, or other project docs |
-| `loop-operator` | Monitor and intervene in autonomous agent loops when they stall |
+### Autonomous execution rules
+
+1. **No sequential hand-holding.** When a subagent is dispatched, it owns the task completely. The TechLead does not check in mid-task unless the subagent signals via `send_message`.
+
+2. **Parallel execution.** Independent tasks must be dispatched simultaneously. The TechLead launches multiple `run_workflow` calls in a single response when tasks have no dependencies.
+
+3. **Subagent ownership.** Each subagent:
+   - Reads the codebase itself (the TechLead does not pre-read for it)
+   - Implements the change
+   - Writes and runs tests
+   - Verifies the build passes
+   - Reports back with evidence (test output, build output)
+
+4. **Rulings, not stalls.** The TechLead decides conflicts and ambiguities immediately. It does not ask the user "should I continue?" between subagent dispatches.
+
+5. **Evidence-based completion.** The TechLead marks work done only after:
+   - At least one subagent reports success with build + test evidence
+   - A review subagent (separate from the implementer) confirms PASS
+   - Git operations (commit, push, PR) are the TechLead's last step
+
+### Role matrix
+
+| Role | Agent / Workflow | Owns end-to-end | Tools available |
+|---|---|---|---|
+| **TechLead** | *(orchestrator session)* | Scope, routing, commit, PR, user comms | `run_workflow`, `inspect_workflow`, `update_workflow`, `send_message`, git ops, session info |
+| **Planner** | `planner` or `bundled://goal` | Break features into tasks; identify risks | Read-only: `read_file`, `grep_search`, `file_search` |
+| **Implementer** | `bundled://feature-pipeline` or `agent://wf-coder` | Source edits, test edits, build, test | Full toolset except git push/commit/tag |
+| **Test author** | `agent://tdd-guide` | Write red tests, verify they fail, hand off to implementer | Read, write, shell (test commands) |
+| **Reviewer** | `agent://code-reviewer` | Independent build + test; written VERDICT | Read, shell (build/test only) |
+| **Investigator** | `bundled://investigate` | Root-cause analysis, bug diagnosis | Read, grep, shell (diagnostic commands) |
+| **Build resolver** | `agent://build-error-resolver` | Fix build/compile errors with minimal diffs | Read, write, shell (build commands) |
+| **Security reviewer** | `agent://security-reviewer` | Security audit of changes | Read, shell (scan commands) |
+
+### Dispatch patterns
+
+**Single task (sequential):**
+```
+TechLead → run_workflow(bundled://feature-pipeline, brief) → subagent implements + tests + reports
+TechLead → run_workflow(agent://code-reviewer, review brief) → reviewer verifies → reports PASS/FAIL
+TechLead → git commit + push + PR
+```
+
+**Parallel independent tasks:**
+```
+TechLead → run_workflow(agent://wf-coder, task A)  ┐
+          run_workflow(agent://wf-coder, task B)  ├─ all run simultaneously
+          run_workflow(agent://wf-coder, task C)  ┘
+TechLead ← collect all results → verify no conflicts → review → commit
+```
+
+**Bug investigation → fix pipeline:**
+```
+TechLead → run_workflow(bundled://investigate, bug brief) → investigator finds root cause
+TechLead ← receive findings → run_workflow(bundled://feature-pipeline, fix brief) → implementer fixes
+TechLead → run_workflow(agent://code-reviewer) → review → commit
+```
 
 ### Review rules
 
@@ -171,6 +215,7 @@ The coordinator (Tech Lead / orchestrator session) **never does implementation w
 - Reviewer verdict row must include: date, batch, verdict, command run, output line count.
 - Behavior changes (code/tests) require **3 independent PASS** verdicts before merge.
 - Mechanical changes (docs, comments, config) require **1 independent PASS**.
+- The TechLead may not serve as reviewer — it only collects and forwards verdicts.
 
 ---
 

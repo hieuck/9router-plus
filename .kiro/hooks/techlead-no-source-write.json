@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "TechLead No Source Write",
+      "trigger": "PreToolUse",
+      "description": "Blocks the TechLead orchestrator from writing/editing source code in src/ — that work belongs to subagents",
+      "matcher": "fs_write|str_replace|fs_append",
+      "action": {
+        "type": "agent",
+        "prompt": "You are the TechLead orchestrator. Writing or editing source files (src/**/*.cs) is forbidden — that is subagent work. If you need to implement a change, dispatch a workflow agent to do it. Only AGENTS.md and .kiro/** files are allowed for direct editing. If this write call targets a src/**/*.cs file, stop and delegate to a subagent instead."
+      }
+    }
+  ]
+}

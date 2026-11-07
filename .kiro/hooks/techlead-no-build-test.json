@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "TechLead No Build/Test",
+      "trigger": "PreToolUse",
+      "description": "Blocks the TechLead orchestrator from running dotnet build or dotnet test — that verification belongs to subagents",
+      "matcher": "execute_pwsh",
+      "action": {
+        "type": "agent",
+        "prompt": "You are the TechLead orchestrator. Running `dotnet build` or `dotnet test` is forbidden — that verification belongs to subagents. If this shell command contains `dotnet build` or `dotnet test`, stop and delegate to a subagent instead. Git commands (git add, git commit, git push, git branch, git checkout, gh pr create) are allowed."
+      }
+    }
+  ]
+}
