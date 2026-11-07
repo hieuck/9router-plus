@@ -13,7 +13,7 @@ namespace RouterPlus.Core.Models;
 ///
 /// User request: "commit và bắt đầu" - implementing Phase 1 Step 1.1 (Create Models)
 /// </summary>
-public class GoogleCredential
+public sealed class GoogleCredential
 {
     /// <summary>
     /// Google account email address.

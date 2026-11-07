@@ -11,7 +11,7 @@ namespace RouterPlus.Core.Models;
 /// Schema: { Email: string, Password: string, TotpSecret?: string }
 /// User request: "commit và bắt đầu" - implementing Phase 1 Step 1.1 (Create Models)
 /// </summary>
-public class ProviderCredential
+public sealed class ProviderCredential
 {
     /// <summary>
     /// Email or username for the provider account.
