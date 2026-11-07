@@ -84,6 +84,12 @@ The hooks table and Example 5 in README.md document the action type (`runCommand
 - Update patterns as the project evolves
 - Focus on what's unique to this project
 
+### Hook type `agent` vs `command` — use `command` + exit 2 for hard enforcement
+`agent`-type hooks inject a prompt asking the model to self-enforce, but the tool still executes unless the model voluntarily stops. Use `command`-type hooks with `exit 2` when you need a hard block (e.g. TechLead forbidden from reading `src/**/*.cs`). Reserve `agent`-type only for advisory nudges where the model should decide. Found when all three TechLead enforcement hooks were `agent`-type and source reads were silently going through.
+
+### Commit message body can false-trigger `dotnet` command hooks
+A hook matching `dotnet\s+(build|test)` anywhere in the shell command will fire on `git commit -m "... dotnet build ..."` because the message text is part of the command string. Fix: split the command on `;` and `\n`, then anchor each line with `^` before matching, so only actual `dotnet build` invocations at statement-start are caught.
+
 ### Operator precedence in multi-part boolean expressions — always use explicit parentheses
 `&&` binds tighter than `||` in C#. `A && B || A && C` evaluates as `(A&&B)||(A&&C)` not `A&&(B||C)`. When the intent is the latter (shared guard), write `A && (B || C)` explicitly. Found in `ProviderConnection.HasError` — refactored to the clearer form without behavior change.
 
