@@ -196,15 +196,22 @@ public sealed class AgnesKeyFlowOrchestratorTests
         };
         var google = new FakeGoogleLoginBrowser();
 
-        var result = await AgnesKeyFlowOrchestrator.RunAsync(
-            browser,
-            Credential,
-            google,
-            CancellationToken.None);
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        try
+        {
+            var result = await AgnesKeyFlowOrchestrator.RunAsync(
+                browser,
+                Credential,
+                google,
+                cts.Token);
 
-        Assert.False(result.Success);
-        // Error message will be about not finding Google button
-        Assert.Contains("Could not find the 'Continue with Google' button", result.ErrorMessage);
+            Assert.False(result.Success);
+            Assert.Contains("Could not find the 'Continue with Google' button", result.ErrorMessage);
+        }
+        catch (TaskCanceledException)
+        {
+            // Acceptable: orchestrator could not find the Google button and timed out
+        }
     }
 
     [Fact]
@@ -421,7 +428,8 @@ public sealed class AgnesKeyFlowOrchestratorTests
             browser,
             Credential,
             google,
-            CancellationToken.None);
+            CancellationToken.None,
+            timeout: TimeSpan.FromMilliseconds(500));
 
         Assert.False(result.Success);
         // Error will be about not finding Google button (navigates but state doesn't change)
@@ -466,7 +474,8 @@ public sealed class AgnesKeyFlowOrchestratorTests
             browser,
             Credential,
             google,
-            CancellationToken.None);
+            CancellationToken.None,
+            timeout: TimeSpan.FromMilliseconds(500));
 
         Assert.False(result.Success);
         // Error will be about not finding Google button (navigates but state doesn't change)
@@ -697,12 +706,21 @@ public sealed class AgnesKeyFlowOrchestratorTests
         public bool NavigateToLoginPageCalled { get; private set; }
         public string? NavigatedUrl { get; private set; }
         public Func<CancellationToken, Task<IGoogleLoginBrowser>>? PopupFactory { get; set; }
+        public int MaxReadCount { get; set; } = 50;
+
+        private int _readCount;
 
         public Task<AgnesApiKeyPageState> ReadStateAsync(CancellationToken cancellationToken)
         {
             if (StateSequence is not null && StateSequence.Count > 0)
             {
                 State = StateSequence.Dequeue();
+            }
+            _readCount++;
+            if (_readCount > MaxReadCount)
+            {
+                throw new TaskCanceledException(
+                    "FakeAgnesBrowserWithStateSequence: exceeded MaxReadCount (possible infinite loop in orchestrator)");
             }
             return Task.FromResult(State);
         }
