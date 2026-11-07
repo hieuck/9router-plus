@@ -46,25 +46,10 @@ public static class GoogleLoginStateMachine
             var state = await ReadStateWithTimeoutAsync(browser, totalCts.Token);
 
             // Validate entry page origin (allow OAuth consent/chooser only on Google hosts)
-            if (!AllowedEntryHosts.Contains(state.PageUri.Host))
+            if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
             {
-                if ((state.HasAccountChooser || state.HasConsentScreen) && 
-                    (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
-                     state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
-                     state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
-                     state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
-                {
-                    // Continue processing only on known Google hosts
-                }
-                else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
-                {
-                    // Continue processing
-                }
-                else
-                {
-                    return GoogleLoginResult.UnsupportedPage(
-                        $"Wrong origin: {state.PageUri.Host}. Expected accounts.google.com.");
-                }
+                return GoogleLoginResult.UnsupportedPage(
+                    $"Wrong origin: {state.PageUri.Host}. Expected accounts.google.com.");
             }
 
             // Check for manual challenge and wait for the user to complete it
@@ -150,24 +135,8 @@ public static class GoogleLoginStateMachine
                 // Validate we're still on allowed origin
                 if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
                 {
-                    // Allow OAuth redirects only on known Google hosts
-                    if ((state.HasAccountChooser || state.HasConsentScreen) &&
-                        (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
-                         state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
-                         state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
-                         state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        // Continue processing
-                    }
-                    else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
-                    {
-                        // Continue processing
-                    }
-                    else
-                    {
-                        return GoogleLoginResult.UnsupportedPage(
-                            $"Navigation to unexpected origin: {state.PageUri.Host}.");
-                    }
+                    return GoogleLoginResult.UnsupportedPage(
+                        $"Navigation to unexpected origin: {state.PageUri.Host}.");
                 }
 
                 // Check for manual challenge - wait for user to complete it
@@ -249,23 +218,8 @@ public static class GoogleLoginStateMachine
                 // Validate origin
                 if (!AllowedEntryHosts.Contains(state.PageUri.Host) && !AllowedCompletionHosts.Contains(state.PageUri.Host))
                 {
-                    if ((state.HasAccountChooser || state.HasConsentScreen) &&
-                        (state.PageUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase) ||
-                         state.PageUri.Host.Equals("myaccount.google.com", StringComparison.OrdinalIgnoreCase) ||
-                         state.PageUri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase) ||
-                         state.PageUri.Host.Equals("gds.google.com", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        // Continue processing
-                    }
-                    else if (AllowedCompletionHosts.Contains(state.PageUri.Host))
-                    {
-                        // Continue processing
-                    }
-                    else
-                    {
-                        return GoogleLoginResult.UnsupportedPage(
-                            $"Navigation to unexpected origin: {state.PageUri.Host}.");
-                    }
+                    return GoogleLoginResult.UnsupportedPage(
+                        $"Navigation to unexpected origin: {state.PageUri.Host}.");
                 }
 
                 // Check for manual challenge - wait for user to complete it
